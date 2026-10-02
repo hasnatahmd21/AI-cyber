@@ -22,9 +22,9 @@ jobs:
         with:
           python-version: "3.12"
       - name: Run repository forensic audit
-        run: python tools/forensic_audit.py
+        run: python tools/forensic_audit.py --json > forensic-report.json
       - name: Validate audit output
-        run: python tools/forensic_audit.py --json > forensic-report.json && test -s forensic-report.json
+        run: test -s forensic-report.json
       - name: Compile legacy sources
         run: |
           python -m py_compile "Assrf next .py"
