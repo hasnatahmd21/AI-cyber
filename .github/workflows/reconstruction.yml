@@ -23,6 +23,8 @@ jobs:
           python-version: "3.12"
       - name: Run repository forensic audit
         run: python tools/forensic_audit.py
+      - name: Validate audit output
+        run: python tools/forensic_audit.py --json > forensic-report.json && test -s forensic-report.json
       - name: Compile legacy sources
         run: |
           python -m py_compile "Assrf next .py"
@@ -31,7 +33,7 @@ jobs:
           python -m py_compile "HYDRA_patched-3.py"
           python -m py_compile "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
           python -m py_compile "New tech .py"
-      - name: Verify baseline artifact
+      - name: Run forensic unit tests
         run: |
-          test -s docs/FORENSIC_BASELINE.md
-          test -s docs/FORENSIC_BASELINE.json
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q tests/test_forensic_audit.py
