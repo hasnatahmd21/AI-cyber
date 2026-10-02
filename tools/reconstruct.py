@@ -49,15 +49,17 @@ def is_main_guard(node: ast.AST) -> bool:
         return False
 
 def defined_names(node: ast.AST) -> set[str]:
+    if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return {node.name}
     out: set[str] = set()
-    for n in ast.walk(node):
-        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            if n is node:
-                out.add(n.name)
-        elif isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
-            out.add(n.id)
-        elif isinstance(n, ast.alias):
-            out.add(n.asname or n.name.split(".")[0])
+    if isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+        targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+        for target in targets:
+            if isinstance(target, ast.Name):
+                out.add(target.id)
+    elif isinstance(node, (ast.Import, ast.ImportFrom)):
+        for alias in node.names:
+            out.add(alias.asname or alias.name.split(".")[0])
     return out
 
 def loaded_names(node: ast.AST) -> set[str]:
