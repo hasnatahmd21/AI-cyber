@@ -90,7 +90,7 @@ def scan_file(path: Path) -> dict:
                 "line": node.lineno,
                 "end_line": getattr(node, "end_lineno", node.lineno),
                 "signature": _signature(node),
-                "fingerprint": _fingerprint(source, node),
+                "fingerprint": _fingerprint(node),
             })
         elif isinstance(node, ast.Import):
             out["imports"].extend(a.name for a in node.names)
