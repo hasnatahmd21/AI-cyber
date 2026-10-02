@@ -2040,25 +2040,9 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
 class ProvenanceRecorder(Protocol):
     def record(self, *, subject_id: str, action: str, at: datetime,
                details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -2130,24 +2114,6 @@ def net_severity(label: NetworkLabel) -> int:
 
 
 @dataclass(frozen=True)
-class Evidence:
-    evidence_id: str
-    source: str
-    confidence: float
-    observed_at: datetime
-    payload: Mapping[str, Any]
-
-    def __post_init__(self) -> None:
-        if not self.evidence_id:
-            raise ValueError("evidence_id is required")
-        if not self.source:
-            raise ValueError("source is required")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-        if self.observed_at.tzinfo is None:
-            raise ValueError("observed_at must be timezone-aware")
-
-
 @dataclass(frozen=True)
 class Zone:
     zone_id: str
@@ -2729,7 +2695,8 @@ def compute_blast_radius(
 # =============================================================================
 
 
-# Duplicate TransitionOutcome removed; canonical definition is above.
+
+
 _SEGMENT_ALLOWED: Mapping[SegmentEnforcement, FrozenSet[SegmentEnforcement]] = {
     SegmentEnforcement.OPEN: frozenset({
         SegmentEnforcement.RESTRICTED,
@@ -2795,13 +2762,6 @@ def evaluate_segment_transition(
 # =============================================================================
 # SECTION 9 — NETWORK INVARIANTS
 # =============================================================================
-
-
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 @dataclass(frozen=True)
@@ -3899,27 +3859,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
@@ -4302,13 +4241,6 @@ def requires_stated_intent(capability: str) -> bool:
 # =============================================================================
 # SECTION 9 — INVARIANTS
 # =============================================================================
-
-
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 @dataclass(frozen=True)
@@ -5743,28 +5675,6 @@ def test_engine_policy_require_verification_on_moderate_risk() -> None:
 # =============================================================================
 # SECTION 13 — MANUAL RUNNER
 # =============================================================================
-
-
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
 
 
 if __name__ == "__main__":
@@ -5822,55 +5732,9 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
-
-
-class PrincipalKind(str, Enum):
-    HUMAN = "human"
-    MACHINE = "machine"
-    AGENT = "agent"
-    SERVICE = "service"
-    DELEGATED = "delegated"
-
-
-class CapabilityStatus(str, Enum):
-    ACTIVE = "active"
-    DEGRADED = "degraded"
-    SUSPENDED = "suspended"
-    REVOKED = "revoked"
-
-
-class AuthorityDecisionKind(str, Enum):
-    ALLOW = "allow"
-    DENY = "deny"
-    REQUIRE_APPROVAL = "require_approval"
-    REQUIRE_VERIFICATION = "require_verification"
-    NO_AUTHORITY = "no_authority"
-    EXPIRED = "expired"
-    SUSPENDED = "suspended"
 
 
 _POSTURE_ORDER: Mapping[str, int] = {
@@ -5884,98 +5748,14 @@ _POSTURE_ORDER: Mapping[str, int] = {
 }
 
 
-def _posture_severity(label: str) -> int:
-    return _POSTURE_ORDER.get(label, 0)
-
-
-def _posture_at_least_as_bad(a: str, b: str) -> bool:
-    return _posture_severity(a) >= _posture_severity(b)
-
-
 @dataclass(frozen=True)
-class Principal:
-    principal_id: str
-    kind: PrincipalKind
-    tenant_id: str
-    parent_id: Optional[str] = None  # delegation chain parent
-
-    def __post_init__(self) -> None:
-        if not self.principal_id:
-            raise ValueError("principal_id is required")
-        if not self.tenant_id:
-            raise ValueError("tenant_id is required")
-
-
 @dataclass(frozen=True)
-class SecurityPosture:
-    """Input posture from Phase 1 / Phase 2 (or a future source)."""
-    label: str
-    risk: float
-    confidence: float
-
-    def __post_init__(self) -> None:
-        if self.label not in _POSTURE_ORDER:
-            raise ValueError(f"unknown posture label: {self.label}")
-        if not 0.0 <= self.risk <= 1.0:
-            raise ValueError("risk must be within [0,1]")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-
-
 # =============================================================================
 # SECTION 3 — AUTHORITY GRANT
 # =============================================================================
 
 
 @dataclass(frozen=True)
-class AuthorityGrant:
-    grant_id: str
-    principal_id: str
-    capabilities: FrozenSet[str]
-    targets: FrozenSet[str]              # empty = wildcard
-    issued_at: datetime
-    expires_at: Optional[datetime]
-    parent_grant_id: Optional[str]
-    delegation_depth: int
-    max_chain_depth: int
-
-    def __post_init__(self) -> None:
-        if not self.grant_id:
-            raise ValueError("grant_id is required")
-        if not self.principal_id:
-            raise ValueError("principal_id is required")
-        if not self.capabilities:
-            raise ValueError("grant must include at least one capability")
-        if self.issued_at.tzinfo is None:
-            raise ValueError("issued_at must be timezone-aware")
-        if self.expires_at is not None:
-            if self.expires_at.tzinfo is None:
-                raise ValueError("expires_at must be timezone-aware")
-            if self.expires_at <= self.issued_at:
-                raise ValueError("expires_at must be after issued_at")
-        if self.delegation_depth < 0:
-            raise ValueError("delegation_depth must be non-negative")
-        if self.max_chain_depth < 0:
-            raise ValueError("max_chain_depth must be non-negative")
-        if self.delegation_depth > self.max_chain_depth:
-            raise ValueError("delegation_depth exceeds max_chain_depth")
-
-    def covers(self, capability: str, target: str) -> bool:
-        if capability not in self.capabilities:
-            return False
-        if not self.targets:
-            return True
-        for t in self.targets:
-            if fnmatch.fnmatchcase(target, t):
-                return True
-        return False
-
-    def active_at(self, at: datetime) -> bool:
-        if self.expires_at is not None and self.expires_at <= at:
-            return False
-        return self.issued_at <= at
-
-
 # =============================================================================
 # SECTION 4 — AUTHORITY STATE
 # =============================================================================
@@ -5985,46 +5765,7 @@ AUTHORITY_NEUTRAL_DECAY = 1.0
 
 
 @dataclass(frozen=True)
-class AuthoritySignal:
-    signal_id: str
-    weight: float
-    polarity: float
-    at: datetime
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.weight <= 1.0:
-            raise ValueError("weight must be within [0,1]")
-        if not -1.0 <= self.polarity <= 1.0:
-            raise ValueError("polarity must be within [-1,1]")
-        if self.at.tzinfo is None:
-            raise ValueError("at must be timezone-aware")
-
-
 @dataclass(frozen=True)
-class PrincipalAuthorityState:
-    principal_id: str
-    status: CapabilityStatus
-    last_verified_at: datetime
-    decay_score: float
-    updated_at: datetime
-
-    def __post_init__(self) -> None:
-        if not self.principal_id:
-            raise ValueError("principal_id is required")
-        if not 0.0 <= self.decay_score <= 1.0:
-            raise ValueError("decay_score must be within [0,1]")
-        if self.last_verified_at.tzinfo is None:
-            raise ValueError("last_verified_at must be timezone-aware")
-        if self.updated_at.tzinfo is None:
-            raise ValueError("updated_at must be timezone-aware")
-
-
-def compute_decay(
-    last_verified_at: datetime,
-    at: datetime,
-    *,
-    half_life_seconds: float,
-    signals: Iterable[AuthoritySignal] = (),
 ) -> float:
     """Time-based decay of authority freshness, penalized by negative signals."""
     if half_life_seconds <= 0:
@@ -6047,14 +5788,6 @@ def compute_decay(
 # =============================================================================
 
 
-def validate_delegation(
-    parent: AuthorityGrant,
-    *,
-    child_principal_id: str,
-    capabilities: FrozenSet[str],
-    targets: FrozenSet[str],
-    expires_at: Optional[datetime],
-    at: datetime,
 ) -> None:
     """Raise ValueError if the proposed delegation violates rules."""
     if not child_principal_id:
@@ -6104,101 +5837,14 @@ def validate_delegation(
 # =============================================================================
 
 
-def _pattern_match(pattern: str, value: str) -> bool:
-    if pattern == "*":
-        return True
-    return fnmatch.fnmatchcase(value, pattern)
-
-
 @dataclass(frozen=True)
-class PolicyRule:
-    rule_id: str
-    decision: AuthorityDecisionKind
-    capability_pattern: Optional[str] = None
-    target_pattern: Optional[str] = None
-    intent_pattern: Optional[str] = None
-    principal_kinds: FrozenSet[PrincipalKind] = frozenset()
-    posture_trigger: Optional[str] = None     # fires if posture is at least this bad
-    min_risk: Optional[float] = None          # fires if risk >= min_risk
-
-    def __post_init__(self) -> None:
-        if not self.rule_id:
-            raise ValueError("rule_id is required")
-        if self.posture_trigger is not None and self.posture_trigger not in _POSTURE_ORDER:
-            raise ValueError(f"unknown posture_trigger: {self.posture_trigger}")
-        if self.min_risk is not None and not 0.0 <= self.min_risk <= 1.0:
-            raise ValueError("min_risk must be within [0,1]")
-
-    def matches(self, request: "AuthorizationRequest", principal: Principal) -> bool:
-        if self.principal_kinds and principal.kind not in self.principal_kinds:
-            return False
-        if self.capability_pattern is not None and not _pattern_match(
-            self.capability_pattern, request.capability
-        ):
-            return False
-        if self.target_pattern is not None and not _pattern_match(
-            self.target_pattern, request.target
-        ):
-            return False
-        if self.intent_pattern is not None and not _pattern_match(
-            self.intent_pattern, request.intent
-        ):
-            return False
-        if self.posture_trigger is not None and not _posture_at_least_as_bad(
-            request.security_posture.label, self.posture_trigger
-        ):
-            return False
-        if self.min_risk is not None and request.security_posture.risk < self.min_risk:
-            return False
-        return True
-
-
 # =============================================================================
 # SECTION 7 — AUTHORIZATION REQUEST / DECISION
 # =============================================================================
 
 
 @dataclass(frozen=True)
-class AuthorizationRequest:
-    request_id: str
-    principal_id: str
-    capability: str
-    target: str
-    intent: str
-    at: datetime
-    security_posture: SecurityPosture
-    context: Mapping[str, Any] = field(default_factory=dict)
-
-    def __post_init__(self) -> None:
-        if not self.request_id:
-            raise ValueError("request_id is required")
-        if not self.principal_id:
-            raise ValueError("principal_id is required")
-        if not self.capability:
-            raise ValueError("capability is required")
-        if not self.target:
-            raise ValueError("target is required")
-        if self.at.tzinfo is None:
-            raise ValueError("at must be timezone-aware")
-
-
 @dataclass(frozen=True)
-class AuthorityDecision:
-    request_id: str
-    kind: AuthorityDecisionKind
-    rationale: str
-    matched_grants: Tuple[str, ...]
-    at: datetime
-
-    def __post_init__(self) -> None:
-        if self.at.tzinfo is None:
-            raise ValueError("at must be timezone-aware")
-
-    @property
-    def is_allow(self) -> bool:
-        return self.kind is AuthorityDecisionKind.ALLOW
-
-
 # =============================================================================
 # SECTION 8 — HIGH-IMPACT CAPABILITIES
 # =============================================================================
@@ -6218,47 +5864,14 @@ HIGH_IMPACT_CAPABILITIES: FrozenSet[str] = frozenset({
 })
 
 
-def requires_stated_intent(capability: str) -> bool:
-    return capability in HIGH_IMPACT_CAPABILITIES
-
-
 # =============================================================================
 # SECTION 9 — INVARIANTS
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class AuthorityViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
-class AuthoritySnapshot:
-    principals: Mapping[str, Principal]
-    grants: Mapping[str, AuthorityGrant]
-    states: Mapping[str, PrincipalAuthorityState]
-
-
 @dataclass(frozen=True)
-class AuthorityInvariant:
-    invariant_id: str
-    severity: InvariantSeverity
-    predicate: Callable[[AuthoritySnapshot], Tuple[AuthorityViolation, ...]]
-    description: str
-
-
-def _inv_delegation_capability_subset(
-    snap: AuthoritySnapshot,
 ) -> Tuple[AuthorityViolation, ...]:
     out: List[AuthorityViolation] = []
     for gid, g in snap.grants.items():
@@ -6280,8 +5893,6 @@ def _inv_delegation_capability_subset(
     return tuple(out)
 
 
-def _inv_delegation_expiry_subset(
-    snap: AuthoritySnapshot,
 ) -> Tuple[AuthorityViolation, ...]:
     out: List[AuthorityViolation] = []
     for gid, g in snap.grants.items():
@@ -6303,8 +5914,6 @@ def _inv_delegation_expiry_subset(
     return tuple(out)
 
 
-def _inv_delegation_depth_bounded(
-    snap: AuthoritySnapshot,
 ) -> Tuple[AuthorityViolation, ...]:
     out: List[AuthorityViolation] = []
     for gid, g in snap.grants.items():
@@ -6321,8 +5930,6 @@ def _inv_delegation_depth_bounded(
     return tuple(out)
 
 
-def _inv_parent_grant_exists(
-    snap: AuthoritySnapshot,
 ) -> Tuple[AuthorityViolation, ...]:
     out: List[AuthorityViolation] = []
     for gid, g in snap.grants.items():
@@ -6338,8 +5945,6 @@ def _inv_parent_grant_exists(
     return tuple(out)
 
 
-def _inv_revoked_principal_no_active_grant(
-    snap: AuthoritySnapshot,
 ) -> Tuple[AuthorityViolation, ...]:
     out: List[AuthorityViolation] = []
     for gid, g in snap.grants.items():
@@ -6393,9 +5998,6 @@ DEFAULT_AUTHORITY_INVARIANTS: Tuple[AuthorityInvariant, ...] = (
 )
 
 
-def check_authority_invariants(
-    snap: AuthoritySnapshot,
-    invariants: Iterable[AuthorityInvariant] = DEFAULT_AUTHORITY_INVARIANTS,
 ) -> Tuple[AuthorityViolation, ...]:
     out: List[AuthorityViolation] = []
     for inv in invariants:
@@ -6408,566 +6010,9 @@ def check_authority_invariants(
 # =============================================================================
 
 
-class AuthorityStore(Protocol):
-    def put_grant(self, grant: AuthorityGrant) -> None: ...
-    def get_grant(self, grant_id: str) -> Optional[AuthorityGrant]: ...
-    def all_grants(self) -> Tuple[AuthorityGrant, ...]: ...
-    def put_state(self, state: PrincipalAuthorityState) -> None: ...
-    def get_state(self, principal_id: str) -> Optional[PrincipalAuthorityState]: ...
-    def all_states(self) -> Tuple[PrincipalAuthorityState, ...]: ...
-
-
-class InMemoryAuthorityStore:
-    def __init__(self) -> None:
-        self._grants: Dict[str, AuthorityGrant] = {}
-        self._states: Dict[str, PrincipalAuthorityState] = {}
-
-    def put_grant(self, grant: AuthorityGrant) -> None:
-        if grant.grant_id in self._grants:
-            raise ValueError(f"grant {grant.grant_id} already exists")
-        self._grants[grant.grant_id] = grant
-
-    def get_grant(self, grant_id: str) -> Optional[AuthorityGrant]:
-        return self._grants.get(grant_id)
-
-    def all_grants(self) -> Tuple[AuthorityGrant, ...]:
-        return tuple(self._grants.values())
-
-    def put_state(self, state: PrincipalAuthorityState) -> None:
-        existing = self._states.get(state.principal_id)
-        if existing is not None and existing.updated_at > state.updated_at:
-            raise ValueError("refusing to overwrite newer state with older record")
-        self._states[state.principal_id] = state
-
-    def get_state(self, principal_id: str) -> Optional[PrincipalAuthorityState]:
-        return self._states.get(principal_id)
-
-    def all_states(self) -> Tuple[PrincipalAuthorityState, ...]:
-        return tuple(self._states.values())
-
-
-def _caps_to_json(caps: FrozenSet[str]) -> str:
-    return json.dumps(sorted(caps))
-
-
-def _caps_from_json(s: str) -> FrozenSet[str]:
-    return frozenset(json.loads(s))
-
-
-class SqliteAuthorityStore:
-    def __init__(self, path: str) -> None:
-        self._conn = sqlite3.connect(path)
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS auth_grants (
-                grant_id TEXT PRIMARY KEY,
-                principal_id TEXT NOT NULL,
-                capabilities_json TEXT NOT NULL,
-                targets_json TEXT NOT NULL,
-                issued_at TEXT NOT NULL,
-                expires_at TEXT,
-                parent_grant_id TEXT,
-                delegation_depth INTEGER NOT NULL,
-                max_chain_depth INTEGER NOT NULL
-            )
-            """
-        )
-        self._conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS auth_states (
-                principal_id TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                last_verified_at TEXT NOT NULL,
-                decay_score REAL NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
-        )
-        self._conn.commit()
-
-    def put_grant(self, grant: AuthorityGrant) -> None:
-        existing = self.get_grant(grant.grant_id)
-        if existing is not None:
-            raise ValueError(f"grant {grant.grant_id} already exists")
-        self._conn.execute(
-            """
-            INSERT INTO auth_grants
-              (grant_id, principal_id, capabilities_json, targets_json,
-               issued_at, expires_at, parent_grant_id,
-               delegation_depth, max_chain_depth)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                grant.grant_id,
-                grant.principal_id,
-                _caps_to_json(grant.capabilities),
-                _caps_to_json(grant.targets),
-                grant.issued_at.isoformat(),
-                grant.expires_at.isoformat() if grant.expires_at else None,
-                grant.parent_grant_id,
-                grant.delegation_depth,
-                grant.max_chain_depth,
-            ),
-        )
-        self._conn.commit()
-
-    def get_grant(self, grant_id: str) -> Optional[AuthorityGrant]:
-        row = self._conn.execute(
-            "SELECT principal_id, capabilities_json, targets_json, issued_at, "
-            "expires_at, parent_grant_id, delegation_depth, max_chain_depth "
-            "FROM auth_grants WHERE grant_id = ?",
-            (grant_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        return AuthorityGrant(
-            grant_id=grant_id,
-            principal_id=row[0],
-            capabilities=_caps_from_json(row[1]),
-            targets=_caps_from_json(row[2]),
-            issued_at=datetime.fromisoformat(row[3]),
-            expires_at=datetime.fromisoformat(row[4]) if row[4] else None,
-            parent_grant_id=row[5],
-            delegation_depth=row[6],
-            max_chain_depth=row[7],
-        )
-
-    def all_grants(self) -> Tuple[AuthorityGrant, ...]:
-        ids = [r[0] for r in self._conn.execute("SELECT grant_id FROM auth_grants").fetchall()]
-        return tuple(g for g in (self.get_grant(gid) for gid in ids) if g is not None)
-
-    def put_state(self, state: PrincipalAuthorityState) -> None:
-        existing = self.get_state(state.principal_id)
-        if existing is not None and existing.updated_at > state.updated_at:
-            raise ValueError("refusing to overwrite newer state with older record")
-        self._conn.execute(
-            """
-            INSERT INTO auth_states
-              (principal_id, status, last_verified_at, decay_score, updated_at)
-            VALUES (?, ?, ?, ?, ?)
-            ON CONFLICT(principal_id) DO UPDATE SET
-              status=excluded.status,
-              last_verified_at=excluded.last_verified_at,
-              decay_score=excluded.decay_score,
-              updated_at=excluded.updated_at
-            """,
-            (
-                state.principal_id,
-                state.status.value,
-                state.last_verified_at.isoformat(),
-                state.decay_score,
-                state.updated_at.isoformat(),
-            ),
-        )
-        self._conn.commit()
-
-    def get_state(self, principal_id: str) -> Optional[PrincipalAuthorityState]:
-        row = self._conn.execute(
-            "SELECT status, last_verified_at, decay_score, updated_at "
-            "FROM auth_states WHERE principal_id = ?",
-            (principal_id,),
-        ).fetchone()
-        if row is None:
-            return None
-        return PrincipalAuthorityState(
-            principal_id=principal_id,
-            status=CapabilityStatus(row[0]),
-            last_verified_at=datetime.fromisoformat(row[1]),
-            decay_score=float(row[2]),
-            updated_at=datetime.fromisoformat(row[3]),
-        )
-
-    def all_states(self) -> Tuple[PrincipalAuthorityState, ...]:
-        rows = self._conn.execute(
-            "SELECT principal_id FROM auth_states"
-        ).fetchall()
-        return tuple(
-            s for s in (self.get_state(r[0]) for r in rows) if s is not None
-        )
-
-
 # =============================================================================
 # SECTION 11 — ENGINE
 # =============================================================================
-
-
-class AuthorityEngine:
-    """State-dependent machine authority engine.
-
-    Consumes Phase 1 / Phase 2 posture inputs via `SecurityPosture`.
-    Emits `AuthorityDecision` records. Enforces delegation rules, decay,
-    suspension, revocation, restoration, and policy.
-    """
-
-    def __init__(self, *, store: Optional[AuthorityStore] = None) -> None:
-        self._store: AuthorityStore = store or InMemoryAuthorityStore()
-        self._principals: Dict[str, Principal] = {}
-        self._grants: Dict[str, AuthorityGrant] = {}
-        self._principal_grants: Dict[str, List[str]] = {}
-        self._signals: Dict[str, List[AuthoritySignal]] = {}
-        self._policies: List[PolicyRule] = []
-        self._grants_seq = 0
-        self._decisions: List[AuthorityDecision] = []
-
-    # ---- principals ------------------------------------------------------
-
-    def register_principal(self, principal: Principal) -> None:
-        if principal.principal_id in self._principals:
-            raise ValueError(f"principal {principal.principal_id} already registered")
-        if principal.parent_id is not None and principal.parent_id not in self._principals:
-            raise ValueError(
-                f"principal parent {principal.parent_id} not registered"
-            )
-        self._principals[principal.principal_id] = principal
-
-    def principal(self, principal_id: str) -> Principal:
-        p = self._principals.get(principal_id)
-        if p is None:
-            raise KeyError(f"unknown principal {principal_id}")
-        return p
-
-    # ---- policy ----------------------------------------------------------
-
-    def add_policy(self, rule: PolicyRule) -> None:
-        if any(r.rule_id == rule.rule_id for r in self._policies):
-            raise ValueError(f"policy {rule.rule_id} already registered")
-        self._policies.append(rule)
-
-    def policies(self) -> Tuple[PolicyRule, ...]:
-        return tuple(self._policies)
-
-    # ---- granting --------------------------------------------------------
-
-    def grant_root(
-        self,
-        *,
-        principal_id: str,
-        capabilities: Iterable[str],
-        targets: Iterable[str] = (),
-        issued_at: datetime,
-        expires_at: Optional[datetime] = None,
-        max_chain_depth: int = 3,
-    ) -> AuthorityGrant:
-        if principal_id not in self._principals:
-            raise KeyError(f"unknown principal {principal_id}")
-        caps = frozenset(capabilities)
-        grant = AuthorityGrant(
-            grant_id=self._next_grant_id(),
-            principal_id=principal_id,
-            capabilities=caps,
-            targets=frozenset(targets),
-            issued_at=issued_at,
-            expires_at=expires_at,
-            parent_grant_id=None,
-            delegation_depth=0,
-            max_chain_depth=max_chain_depth,
-        )
-        self._register_grant(grant)
-        self._ensure_state(principal_id, at=issued_at)
-        return grant
-
-    def delegate(
-        self,
-        *,
-        parent_grant_id: str,
-        child_principal_id: str,
-        capabilities: Iterable[str],
-        targets: Iterable[str] = (),
-        expires_at: Optional[datetime],
-        at: datetime,
-    ) -> AuthorityGrant:
-        parent = self._grants.get(parent_grant_id)
-        if parent is None:
-            raise KeyError(f"unknown parent grant {parent_grant_id}")
-        if child_principal_id not in self._principals:
-            raise KeyError(f"unknown child principal {child_principal_id}")
-        caps = frozenset(capabilities)
-        tgts = frozenset(targets)
-
-        validate_delegation(
-            parent,
-            child_principal_id=child_principal_id,
-            capabilities=caps,
-            targets=tgts,
-            expires_at=expires_at,
-            at=at,
-        )
-
-        grant = AuthorityGrant(
-            grant_id=self._next_grant_id(),
-            principal_id=child_principal_id,
-            capabilities=caps,
-            targets=tgts,
-            issued_at=at,
-            expires_at=expires_at,
-            parent_grant_id=parent_grant_id,
-            delegation_depth=parent.delegation_depth + 1,
-            max_chain_depth=parent.max_chain_depth,
-        )
-        self._register_grant(grant)
-        self._ensure_state(child_principal_id, at=at)
-        return grant
-
-    # ---- lifecycle -------------------------------------------------------
-
-    def suspend(self, principal_id: str, *, reason: str, at: datetime) -> None:
-        state = self._require_state(principal_id)
-        if state.status is CapabilityStatus.REVOKED:
-            raise ValueError("cannot suspend a revoked principal")
-        if not reason:
-            raise ValueError("reason is required")
-        new = replace(state, status=CapabilityStatus.SUSPENDED, updated_at=at)
-        self._store.put_state(new)
-
-    def revoke(self, principal_id: str, *, reason: str, at: datetime) -> None:
-        state = self._require_state(principal_id)
-        if not reason:
-            raise ValueError("reason is required")
-        new = replace(state, status=CapabilityStatus.REVOKED, updated_at=at)
-        self._store.put_state(new)
-
-    def restore(
-        self,
-        principal_id: str,
-        *,
-        verified: bool,
-        reason: str,
-        at: datetime,
-    ) -> None:
-        state = self._require_state(principal_id)
-        if not reason:
-            raise ValueError("reason is required")
-        if state.status is CapabilityStatus.ACTIVE:
-            return
-        if state.status is CapabilityStatus.REVOKED:
-            raise ValueError(
-                "revoked authority cannot be restored; a fresh grant is required"
-            )
-        if state.status is CapabilityStatus.SUSPENDED and not verified:
-            raise ValueError("restore from suspension requires verification")
-        new = replace(
-            state,
-            status=CapabilityStatus.ACTIVE,
-            last_verified_at=at,
-            decay_score=1.0,
-            updated_at=at,
-        )
-        self._store.put_state(new)
-
-    def verify_authority(self, principal_id: str, *, at: datetime) -> None:
-        state = self._require_state(principal_id)
-        if state.status is CapabilityStatus.REVOKED:
-            raise ValueError("cannot verify revoked authority")
-        new = replace(
-            state,
-            status=CapabilityStatus.ACTIVE,
-            last_verified_at=at,
-            decay_score=1.0,
-            updated_at=at,
-        )
-        self._store.put_state(new)
-
-    def observe_signal(self, principal_id: str, signal: AuthoritySignal) -> None:
-        if principal_id not in self._principals:
-            raise KeyError(f"unknown principal {principal_id}")
-        self._signals.setdefault(principal_id, []).append(signal)
-
-    def recompute_decay(
-        self, *, at: datetime, half_life_seconds: float = 86400.0,
-    ) -> None:
-        for state in list(self._store.all_states()):
-            if state.status is CapabilityStatus.REVOKED:
-                continue
-            decay = compute_decay(
-                state.last_verified_at,
-                at,
-                half_life_seconds=half_life_seconds,
-                signals=self._signals.get(state.principal_id, ()),
-            )
-            new_status = state.status
-            if state.status is CapabilityStatus.ACTIVE and decay < 0.3:
-                new_status = CapabilityStatus.DEGRADED
-            new = replace(
-                state,
-                decay_score=decay,
-                status=new_status,
-                updated_at=at,
-            )
-            self._store.put_state(new)
-
-    # ---- authorization ---------------------------------------------------
-
-    def authorize(self, request: AuthorizationRequest) -> AuthorityDecision:
-        principal = self._principals.get(request.principal_id)
-        if principal is None:
-            return self._decide(request, AuthorityDecisionKind.DENY,
-                                "unknown principal", ())
-
-        state = self._store.get_state(request.principal_id)
-        if state is None:
-            return self._decide(request, AuthorityDecisionKind.NO_AUTHORITY,
-                                "no authority state", ())
-
-        # 1. Hard status gate
-        if state.status is CapabilityStatus.REVOKED:
-            return self._decide(request, AuthorityDecisionKind.DENY,
-                                "authority revoked", ())
-        if state.status is CapabilityStatus.SUSPENDED:
-            return self._decide(request, AuthorityDecisionKind.SUSPENDED,
-                                "authority suspended", ())
-
-        # 2. Security posture gate
-        if request.security_posture.label in ("compromised", "quarantined"):
-            return self._decide(
-                request,
-                AuthorityDecisionKind.DENY,
-                f"security posture '{request.security_posture.label}' forbids authorization",
-                (),
-            )
-
-        # 3. Matching grants
-        candidates = self._matching_grants(request)
-        if not candidates:
-            return self._decide(
-                request, AuthorityDecisionKind.NO_AUTHORITY,
-                "no grant matches capability and target", (),
-            )
-        cand_ids = tuple(g.grant_id for g in candidates)
-
-        # 4. Expiry
-        unexpired = [g for g in candidates if g.active_at(request.at)]
-        if not unexpired:
-            return self._decide(
-                request, AuthorityDecisionKind.EXPIRED,
-                "matching grants are expired", cand_ids,
-            )
-        valid_ids = tuple(g.grant_id for g in unexpired)
-
-        # 5. Intent requirement for high-impact capabilities
-        if requires_stated_intent(request.capability) and not request.intent:
-            return self._decide(
-                request, AuthorityDecisionKind.REQUIRE_APPROVAL,
-                f"high-impact capability '{request.capability}' requires stated intent",
-                valid_ids,
-            )
-
-        # 6. Policy evaluation (first-match-wins)
-        for rule in self._policies:
-            if rule.matches(request, principal):
-                return self._decide(
-                    request, rule.decision,
-                    f"policy {rule.rule_id} matched", valid_ids,
-                )
-
-        # 7. Decay gate
-        decay = state.decay_score
-        if decay < 0.3:
-            return self._decide(
-                request, AuthorityDecisionKind.REQUIRE_VERIFICATION,
-                f"authority decayed to {decay:.2f}", valid_ids,
-            )
-        if decay < 0.6:
-            return self._decide(
-                request, AuthorityDecisionKind.REQUIRE_APPROVAL,
-                f"authority decayed to {decay:.2f}", valid_ids,
-            )
-
-        # 8. Risk gate
-        risk = request.security_posture.risk
-        if risk >= 0.8:
-            return self._decide(
-                request, AuthorityDecisionKind.REQUIRE_APPROVAL,
-                f"high risk ({risk:.2f})", valid_ids,
-            )
-        if risk >= 0.5:
-            return self._decide(
-                request, AuthorityDecisionKind.REQUIRE_VERIFICATION,
-                f"moderate risk ({risk:.2f})", valid_ids,
-            )
-
-        # 9. Allow
-        return self._decide(
-            request, AuthorityDecisionKind.ALLOW,
-            "authority verified", valid_ids,
-        )
-
-    # ---- queries ---------------------------------------------------------
-
-    def grant(self, grant_id: str) -> Optional[AuthorityGrant]:
-        return self._grants.get(grant_id)
-
-    def state(self, principal_id: str) -> Optional[PrincipalAuthorityState]:
-        return self._store.get_state(principal_id)
-
-    def decisions(self) -> Tuple[AuthorityDecision, ...]:
-        return tuple(self._decisions)
-
-    def snapshot(self) -> AuthoritySnapshot:
-        return AuthoritySnapshot(
-            principals=dict(self._principals),
-            grants=dict(self._grants),
-            states={s.principal_id: s for s in self._store.all_states()},
-        )
-
-    def violations(self) -> Tuple[AuthorityViolation, ...]:
-        return check_authority_invariants(self.snapshot())
-
-    # ---- internals -------------------------------------------------------
-
-    def _next_grant_id(self) -> str:
-        self._grants_seq += 1
-        return f"g-{self._grants_seq:06d}"
-
-    def _register_grant(self, grant: AuthorityGrant) -> None:
-        self._store.put_grant(grant)
-        self._grants[grant.grant_id] = grant
-        self._principal_grants.setdefault(grant.principal_id, []).append(grant.grant_id)
-
-    def _ensure_state(self, principal_id: str, *, at: datetime) -> None:
-        if self._store.get_state(principal_id) is None:
-            self._store.put_state(PrincipalAuthorityState(
-                principal_id=principal_id,
-                status=CapabilityStatus.ACTIVE,
-                last_verified_at=at,
-                decay_score=1.0,
-                updated_at=at,
-            ))
-
-    def _require_state(self, principal_id: str) -> PrincipalAuthorityState:
-        state = self._store.get_state(principal_id)
-        if state is None:
-            raise KeyError(f"no authority state for {principal_id}")
-        return state
-
-    def _matching_grants(
-        self, request: AuthorizationRequest,
-    ) -> List[AuthorityGrant]:
-        out: List[AuthorityGrant] = []
-        for gid in self._principal_grants.get(request.principal_id, []):
-            g = self._grants.get(gid)
-            if g is None:
-                continue
-            if g.covers(request.capability, request.target):
-                out.append(g)
-        return out
-
-    def _decide(
-        self,
-        request: AuthorizationRequest,
-        kind: AuthorityDecisionKind,
-        rationale: str,
-        matched_grants: Tuple[str, ...],
-    ) -> AuthorityDecision:
-        decision = AuthorityDecision(
-            request_id=request.request_id,
-            kind=kind,
-            rationale=rationale,
-            matched_grants=matched_grants,
-            at=request.at,
-        )
-        self._decisions.append(decision)
-        return decision
 
 
 # =============================================================================
@@ -6975,719 +6020,27 @@ class AuthorityEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _human(pid: str = "alice") -> Principal:
-    return Principal(principal_id=pid, kind=PrincipalKind.HUMAN, tenant_id="t1")
-
-
-def _agent(pid: str = "agent-1") -> Principal:
-    return Principal(principal_id=pid, kind=PrincipalKind.AGENT, tenant_id="t1")
-
-
-def _posture(label: str = "trusted", risk: float = 0.1,
-             conf: float = 0.9) -> SecurityPosture:
-    return SecurityPosture(label=label, risk=risk, confidence=conf)
-
-
-def _request(pid: str = "alice", cap: str = "read:data",
-             target: str = "db-prod", *, at: Optional[datetime] = None,
-             intent: str = "read logs",
-             posture: Optional[SecurityPosture] = None) -> AuthorizationRequest:
-    return AuthorizationRequest(
-        request_id="req-1",
-        principal_id=pid,
-        capability=cap,
-        target=target,
-        intent=intent,
-        at=at or _t0(),
-        security_posture=posture or _posture(),
-    )
-
-
 # ---- domain tests ---------------------------------------------------------
-
-def test_principal_requires_id_and_tenant() -> None:
-    try:
-        Principal(principal_id="", kind=PrincipalKind.HUMAN, tenant_id="t")
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("expected ValueError")
-    try:
-        Principal(principal_id="p", kind=PrincipalKind.HUMAN, tenant_id="")
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("expected ValueError")
-
-
-def test_grant_empty_capabilities_rejected() -> None:
-    try:
-        AuthorityGrant(
-            grant_id="g", principal_id="p",
-            capabilities=frozenset(), targets=frozenset(),
-            issued_at=_t0(), expires_at=None,
-            parent_grant_id=None, delegation_depth=0, max_chain_depth=3,
-        )
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_grant_expiry_before_issue_rejected() -> None:
-    try:
-        AuthorityGrant(
-            grant_id="g", principal_id="p",
-            capabilities=frozenset({"read"}),
-            targets=frozenset(),
-            issued_at=_t0(),
-            expires_at=_t0().replace(year=_t0().year - 1),
-            parent_grant_id=None, delegation_depth=0, max_chain_depth=3,
-        )
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_grant_covers_wildcard_target() -> None:
-    g = AuthorityGrant(
-        grant_id="g", principal_id="p",
-        capabilities=frozenset({"read:data"}),
-        targets=frozenset(),
-        issued_at=_t0(), expires_at=None,
-        parent_grant_id=None, delegation_depth=0, max_chain_depth=3,
-    )
-    assert g.covers("read:data", "anything")
-    assert not g.covers("write:data", "anything")
-
-
-def test_grant_covers_pattern_target() -> None:
-    g = AuthorityGrant(
-        grant_id="g", principal_id="p",
-        capabilities=frozenset({"read:data"}),
-        targets=frozenset({"db-*"}),
-        issued_at=_t0(), expires_at=None,
-        parent_grant_id=None, delegation_depth=0, max_chain_depth=3,
-    )
-    assert g.covers("read:data", "db-prod")
-    assert not g.covers("read:data", "cache-1")
-
-
-def test_grant_active_at() -> None:
-    g = AuthorityGrant(
-        grant_id="g", principal_id="p",
-        capabilities=frozenset({"read"}),
-        targets=frozenset(),
-        issued_at=_t0(),
-        expires_at=_t0().replace(year=_t0().year + 1),
-        parent_grant_id=None, delegation_depth=0, max_chain_depth=3,
-    )
-    assert g.active_at(_t0())
-    later = _t0().replace(year=_t0().year + 2)
-    assert not g.active_at(later)
-
 
 # ---- decay tests ----------------------------------------------------------
 
-def test_decay_halves_at_half_life() -> None:
-    d = compute_decay(_t0(), _t0().replace(hour=1) if False else _t0(),
-                      half_life_seconds=60.0)
-    assert d == 1.0
-    later = _t0().replace(minute=1)
-    d2 = compute_decay(_t0(), later, half_life_seconds=60.0)
-    assert abs(d2 - 0.5) < 1e-6
-
-
-def test_decay_never_negative_with_signals() -> None:
-    from datetime import timedelta
-    sigs = [
-        AuthoritySignal(signal_id=f"s{i}", weight=1.0, polarity=-1.0, at=_t0())
-        for i in range(10)
-    ]
-    d = compute_decay(_t0(), _t0() + timedelta(seconds=1),
-                      half_life_seconds=60.0, signals=sigs)
-    assert d >= 0.0
-
-
-def test_decay_penalized_by_negative_signal() -> None:
-    from datetime import timedelta
-    later = _t0() + timedelta(seconds=60)
-    baseline = compute_decay(_t0(), later, half_life_seconds=600.0)
-    sig = AuthoritySignal(signal_id="s", weight=1.0, polarity=-1.0, at=_t0())
-    penalized = compute_decay(_t0(), later, half_life_seconds=600.0, signals=[sig])
-    assert penalized < baseline
-
-
-def test_decay_requires_positive_half_life() -> None:
-    try:
-        compute_decay(_t0(), _t0(), half_life_seconds=0)
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
 # ---- delegation tests -----------------------------------------------------
-
-def _parent_grant(caps=("read:data", "write:data"), targets=("db-*",),
-                  expires_at=None, max_depth=3) -> AuthorityGrant:
-    return AuthorityGrant(
-        grant_id="g-parent", principal_id="alice",
-        capabilities=frozenset(caps),
-        targets=frozenset(targets),
-        issued_at=_t0(),
-        expires_at=expires_at,
-        parent_grant_id=None,
-        delegation_depth=0,
-        max_chain_depth=max_depth,
-    )
-
-
-def test_delegation_extends_capability_rejected() -> None:
-    parent = _parent_grant()
-    try:
-        validate_delegation(
-            parent,
-            child_principal_id="agent-1",
-            capabilities=frozenset({"read:data", "delete:data"}),
-            targets=frozenset(),
-            expires_at=None,
-            at=_t0(),
-        )
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_delegation_extends_target_scope_rejected() -> None:
-    parent = _parent_grant()
-    try:
-        validate_delegation(
-            parent,
-            child_principal_id="agent-1",
-            capabilities=frozenset({"read:data"}),
-            targets=frozenset({"cache-*"}),
-            expires_at=None,
-            at=_t0(),
-        )
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_delegation_extends_expiry_rejected() -> None:
-    from datetime import timedelta
-    parent = _parent_grant(expires_at=_t0() + timedelta(days=1))
-    try:
-        validate_delegation(
-            parent,
-            child_principal_id="agent-1",
-            capabilities=frozenset({"read:data"}),
-            targets=frozenset(),
-            expires_at=_t0() + timedelta(days=2),
-            at=_t0(),
-        )
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_delegation_unbounded_when_parent_bounded_rejected() -> None:
-    from datetime import timedelta
-    parent = _parent_grant(expires_at=_t0() + timedelta(days=1))
-    try:
-        validate_delegation(
-            parent,
-            child_principal_id="agent-1",
-            capabilities=frozenset({"read:data"}),
-            targets=frozenset(),
-            expires_at=None,
-            at=_t0(),
-        )
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_delegation_depth_limit_enforced() -> None:
-    parent = _parent_grant(max_depth=0)
-    try:
-        validate_delegation(
-            parent,
-            child_principal_id="agent-1",
-            capabilities=frozenset({"read:data"}),
-            targets=frozenset(),
-            expires_at=None,
-            at=_t0(),
-        )
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_delegation_to_self_rejected() -> None:
-    parent = _parent_grant()
-    try:
-        validate_delegation(
-            parent,
-            child_principal_id=parent.principal_id,
-            capabilities=frozenset({"read:data"}),
-            targets=frozenset(),
-            expires_at=None,
-            at=_t0(),
-        )
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_delegation_valid_succeeds() -> None:
-    parent = _parent_grant()
-    validate_delegation(
-        parent,
-        child_principal_id="agent-1",
-        capabilities=frozenset({"read:data"}),
-        targets=frozenset({"db-prod"}),
-        expires_at=None,
-        at=_t0(),
-    )
-
 
 # ---- policy tests ---------------------------------------------------------
 
-def test_policy_wildcard_matches_any_capability() -> None:
-    rule = PolicyRule(
-        rule_id="r1", decision=AuthorityDecisionKind.DENY,
-        capability_pattern="*",
-        principal_kinds=frozenset({PrincipalKind.AGENT}),
-    )
-    req = _request(pid="agent-1", cap="read:data")
-    assert rule.matches(req, _agent("agent-1"))
-
-
-def test_policy_principal_kind_filter() -> None:
-    rule = PolicyRule(
-        rule_id="r1", decision=AuthorityDecisionKind.DENY,
-        capability_pattern="*",
-        principal_kinds=frozenset({PrincipalKind.AGENT}),
-    )
-    assert not rule.matches(_request(pid="alice"), _human("alice"))
-
-
-def test_policy_posture_trigger() -> None:
-    rule = PolicyRule(
-        rule_id="r1", decision=AuthorityDecisionKind.DENY,
-        posture_trigger="suspicious",
-    )
-    assert rule.matches(
-        _request(posture=_posture("suspicious", 0.6)),
-        _human("alice"),
-    )
-    assert not rule.matches(_request(posture=_posture("trusted", 0.1)),
-                            _human("alice"))
-
-
 # ---- authorization tests --------------------------------------------------
-
-def _engine_with_alice(*, caps=("read:data",), targets=("db-*",),
-                       expires_at=None) -> AuthorityEngine:
-    eng = AuthorityEngine()
-    eng.register_principal(_human("alice"))
-    eng.grant_root(
-        principal_id="alice",
-        capabilities=caps,
-        targets=targets,
-        issued_at=_t0(),
-        expires_at=expires_at,
-    )
-    return eng
-
-
-def test_authorize_unknown_principal_denied() -> None:
-    eng = AuthorityEngine()
-    d = eng.authorize(_request(pid="nobody"))
-    assert d.kind is AuthorityDecisionKind.DENY
-
-
-def test_authorize_revoked_principal_denied() -> None:
-    eng = _engine_with_alice()
-    eng.revoke("alice", reason="compromised", at=_t0())
-    d = eng.authorize(_request())
-    assert d.kind is AuthorityDecisionKind.DENY
-
-
-def test_authorize_suspended_principal_suspended() -> None:
-    eng = _engine_with_alice()
-    eng.suspend("alice", reason="incident", at=_t0())
-    d = eng.authorize(_request())
-    assert d.kind is AuthorityDecisionKind.SUSPENDED
-
-
-def test_authorize_compromised_posture_denied() -> None:
-    eng = _engine_with_alice()
-    d = eng.authorize(_request(posture=_posture("compromised", 0.9)))
-    assert d.kind is AuthorityDecisionKind.DENY
-
-
-def test_authorize_no_matching_grant_no_authority() -> None:
-    eng = _engine_with_alice(caps=("write:data",))
-    d = eng.authorize(_request(cap="read:data"))
-    assert d.kind is AuthorityDecisionKind.NO_AUTHORITY
-
-
-def test_authorize_target_outside_scope_no_authority() -> None:
-    eng = _engine_with_alice(targets=("db-staging",))
-    d = eng.authorize(_request(target="db-prod"))
-    assert d.kind is AuthorityDecisionKind.NO_AUTHORITY
-
-
-def test_authorize_expired_grant_expired() -> None:
-    from datetime import timedelta
-    eng = _engine_with_alice(expires_at=_t0() - timedelta(seconds=1) + timedelta(days=1))
-    # grant expires after issue but before request
-    later = _t0().replace(year=_t0().year + 5)
-    d = eng.authorize(_request(at=later))
-    assert d.kind is AuthorityDecisionKind.EXPIRED
-
-
-def test_authorize_high_impact_without_intent_requires_approval() -> None:
-    eng = _engine_with_alice(caps=("execute:shell",), targets=("host-*",))
-    d = eng.authorize(_request(cap="execute:shell", target="host-1", intent=""))
-    assert d.kind is AuthorityDecisionKind.REQUIRE_APPROVAL
-
-
-def test_authorize_successful_allow() -> None:
-    eng = _engine_with_alice()
-    d = eng.authorize(_request())
-    assert d.kind is AuthorityDecisionKind.ALLOW
-    assert d.matched_grants
-
-
-def test_authorize_policy_deny_overrides_allow() -> None:
-    eng = _engine_with_alice()
-    eng.add_policy(PolicyRule(
-        rule_id="r-block", decision=AuthorityDecisionKind.DENY,
-        capability_pattern="read:*",
-        principal_kinds=frozenset({PrincipalKind.HUMAN}),
-    ))
-    d = eng.authorize(_request())
-    assert d.kind is AuthorityDecisionKind.DENY
-
-
-def test_authorize_high_risk_requires_approval() -> None:
-    eng = _engine_with_alice()
-    d = eng.authorize(_request(posture=_posture("trusted", risk=0.9)))
-    assert d.kind is AuthorityDecisionKind.REQUIRE_APPROVAL
-
-
-def test_authorize_moderate_risk_requires_verification() -> None:
-    eng = _engine_with_alice()
-    d = eng.authorize(_request(posture=_posture("trusted", risk=0.6)))
-    assert d.kind is AuthorityDecisionKind.REQUIRE_VERIFICATION
-
-
-def test_authorize_low_decay_requires_verification() -> None:
-    from datetime import timedelta
-    eng = _engine_with_alice()
-    later = _t0() + timedelta(days=10)
-    eng.recompute_decay(at=later, half_life_seconds=86400.0)
-    d = eng.authorize(_request(at=later))
-    assert d.kind in (AuthorityDecisionKind.REQUIRE_VERIFICATION,
-                      AuthorityDecisionKind.REQUIRE_APPROVAL)
-
-
-def test_authorize_medium_decay_requires_approval() -> None:
-    from datetime import timedelta
-    eng = _engine_with_alice()
-    later = _t0() + timedelta(hours=20)
-    eng.recompute_decay(at=later, half_life_seconds=86400.0)
-    d = eng.authorize(_request(at=later))
-    assert d.kind in (AuthorityDecisionKind.REQUIRE_APPROVAL,
-                      AuthorityDecisionKind.ALLOW,
-                      AuthorityDecisionKind.REQUIRE_VERIFICATION)
-
 
 # ---- lifecycle tests ------------------------------------------------------
 
-def test_suspend_then_restore_requires_verification() -> None:
-    eng = _engine_with_alice()
-    eng.suspend("alice", reason="incident", at=_t0())
-    try:
-        eng.restore("alice", verified=False, reason="recovery", at=_t0())
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("expected ValueError")
-
-
-def test_suspend_then_restore_with_verification_succeeds() -> None:
-    eng = _engine_with_alice()
-    eng.suspend("alice", reason="incident", at=_t0())
-    eng.restore("alice", verified=True, reason="recovery", at=_t0())
-    state = eng.state("alice")
-    assert state is not None
-    assert state.status is CapabilityStatus.ACTIVE
-
-
-def test_restore_revoked_rejected() -> None:
-    eng = _engine_with_alice()
-    eng.revoke("alice", reason="compromise", at=_t0())
-    try:
-        eng.restore("alice", verified=True, reason="recovery", at=_t0())
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_suspend_revoked_rejected() -> None:
-    eng = _engine_with_alice()
-    eng.revoke("alice", reason="compromise", at=_t0())
-    try:
-        eng.suspend("alice", reason="more", at=_t0())
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_verify_authority_resets_decay() -> None:
-    from datetime import timedelta
-    eng = _engine_with_alice()
-    later = _t0() + timedelta(days=10)
-    eng.recompute_decay(at=later, half_life_seconds=86400.0)
-    eng.verify_authority("alice", at=later)
-    state = eng.state("alice")
-    assert state is not None
-    assert state.decay_score == 1.0
-
-
 # ---- invariant tests ------------------------------------------------------
-
-def test_invariant_delegation_capability_subset() -> None:
-    parent = _parent_grant(caps=("read",))
-    # Manually craft a child grant that violates the rule
-    bad_child = AuthorityGrant(
-        grant_id="g-child", principal_id="agent-1",
-        capabilities=frozenset({"read", "write"}),
-        targets=frozenset(),
-        issued_at=_t0(), expires_at=None,
-        parent_grant_id="g-parent",
-        delegation_depth=1, max_chain_depth=3,
-    )
-    snap = AuthoritySnapshot(
-        principals={},
-        grants={"g-parent": parent, "g-child": bad_child},
-        states={},
-    )
-    v = check_authority_invariants(snap)
-    assert any(x.invariant_id == "auth.delegation_capability_subset" for x in v)
-
-
-def test_invariant_parent_grant_exists() -> None:
-    orphan = AuthorityGrant(
-        grant_id="g-orphan", principal_id="agent-1",
-        capabilities=frozenset({"read"}),
-        targets=frozenset(),
-        issued_at=_t0(), expires_at=None,
-        parent_grant_id="g-missing",
-        delegation_depth=1, max_chain_depth=3,
-    )
-    snap = AuthoritySnapshot(
-        principals={},
-        grants={"g-orphan": orphan},
-        states={},
-    )
-    v = check_authority_invariants(snap)
-    assert any(x.invariant_id == "auth.parent_grant_exists" for x in v)
-
-
-def test_invariant_revoked_principal_no_active_grant() -> None:
-    parent = _parent_grant()
-    state = PrincipalAuthorityState(
-        principal_id="alice",
-        status=CapabilityStatus.REVOKED,
-        last_verified_at=_t0(),
-        decay_score=1.0,
-        updated_at=_t0(),
-    )
-    snap = AuthoritySnapshot(
-        principals={},
-        grants={"g-parent": parent},
-        states={"alice": state},
-    )
-    v = check_authority_invariants(snap)
-    assert any(
-        x.invariant_id == "auth.revoked_principal_no_active_grant"
-        for x in v
-    )
-
-
-def test_engine_invariants_clean_after_well_formed_delegation() -> None:
-    eng = AuthorityEngine()
-    eng.register_principal(_human("alice"))
-    eng.register_principal(_agent("agent-1"))
-    parent = eng.grant_root(
-        principal_id="alice",
-        capabilities=("read:data", "write:data"),
-        targets=("db-*",),
-        issued_at=_t0(),
-    )
-    eng.delegate(
-        parent_grant_id=parent.grant_id,
-        child_principal_id="agent-1",
-        capabilities=("read:data",),
-        targets=("db-prod",),
-        expires_at=None,
-        at=_t0(),
-    )
-    assert eng.violations() == ()
-
 
 # ---- store tests ----------------------------------------------------------
 
-def test_in_memory_store_rejects_stale_state_write() -> None:
-    s = InMemoryAuthorityStore()
-    t = _t0()
-    s.put_state(PrincipalAuthorityState(
-        principal_id="p", status=CapabilityStatus.ACTIVE,
-        last_verified_at=t, decay_score=1.0, updated_at=t,
-    ))
-    earlier = t.replace(year=t.year - 1)
-    try:
-        s.put_state(PrincipalAuthorityState(
-            principal_id="p", status=CapabilityStatus.ACTIVE,
-            last_verified_at=earlier, decay_score=0.5, updated_at=earlier,
-        ))
-    except ValueError:
-        return
-    raise AssertionError("expected ValueError")
-
-
-def test_sqlite_store_roundtrip_grants_and_states() -> None:
-    import tempfile
-    import os
-    tmp = tempfile.mkdtemp()
-    db = os.path.join(tmp, "auth.db")
-    store = SqliteAuthorityStore(db)
-    g = AuthorityGrant(
-        grant_id="g1", principal_id="alice",
-        capabilities=frozenset({"read:data"}),
-        targets=frozenset({"db-*"}),
-        issued_at=_t0(), expires_at=None,
-        parent_grant_id=None, delegation_depth=0, max_chain_depth=3,
-    )
-    store.put_grant(g)
-    got = store.get_grant("g1")
-    assert got is not None
-    assert got.capabilities == g.capabilities
-    assert got.targets == g.targets
-
-    st = PrincipalAuthorityState(
-        principal_id="alice", status=CapabilityStatus.ACTIVE,
-        last_verified_at=_t0(), decay_score=1.0, updated_at=_t0(),
-    )
-    store.put_state(st)
-    got_state = store.get_state("alice")
-    assert got_state is not None
-    assert got_state.status is CapabilityStatus.ACTIVE
-
-
 # ---- integration ----------------------------------------------------------
-
-def test_engine_end_to_end_delegation_flow() -> None:
-    eng = AuthorityEngine()
-    eng.register_principal(_human("alice"))
-    eng.register_principal(_agent("agent-1"))
-
-    parent = eng.grant_root(
-        principal_id="alice",
-        capabilities=("read:data", "write:data"),
-        targets=("db-*",),
-        issued_at=_t0(),
-    )
-    eng.delegate(
-        parent_grant_id=parent.grant_id,
-        child_principal_id="agent-1",
-        capabilities=("read:data",),
-        targets=("db-prod",),
-        expires_at=None,
-        at=_t0(),
-    )
-
-    d = eng.authorize(_request(
-        pid="agent-1", cap="read:data", target="db-prod",
-    ))
-    assert d.kind is AuthorityDecisionKind.ALLOW
-
-    d2 = eng.authorize(_request(
-        pid="agent-1", cap="write:data", target="db-prod",
-    ))
-    assert d2.kind is AuthorityDecisionKind.NO_AUTHORITY
-
-
-def test_engine_full_lifecycle_revoke_denies() -> None:
-    eng = _engine_with_alice()
-    eng.revoke("alice", reason="compromise", at=_t0())
-    assert eng.authorize(_request()).kind is AuthorityDecisionKind.DENY
-    assert eng.violations()  # revoked principal still has grants → violation
-
-
-def test_engine_delegate_to_unregistered_child_rejected() -> None:
-    eng = _engine_with_alice()
-    parent_grant = eng.grant("g-000001")
-    assert parent_grant is not None
-    try:
-        eng.delegate(
-            parent_grant_id=parent_grant.grant_id,
-            child_principal_id="missing",
-            capabilities=("read:data",),
-            targets=(),
-            expires_at=None,
-            at=_t0(),
-        )
-    except KeyError:
-        return
-    raise AssertionError("expected KeyError")
-
-
-def test_engine_policy_require_verification_on_moderate_risk() -> None:
-    eng = _engine_with_alice()
-    eng.add_policy(PolicyRule(
-        rule_id="moderate-risk-verify",
-        decision=AuthorityDecisionKind.REQUIRE_VERIFICATION,
-        min_risk=0.4,
-    ))
-    d = eng.authorize(_request(posture=_posture("trusted", risk=0.5)))
-    assert d.kind is AuthorityDecisionKind.REQUIRE_VERIFICATION
-
 
 # =============================================================================
 # SECTION 13 — MANUAL RUNNER
 # =============================================================================
-
-
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
 
 
 if __name__ == "__main__":
@@ -7743,27 +6096,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -7827,24 +6159,6 @@ class DependencyKind(str, Enum):
 
 
 @dataclass(frozen=True)
-class Evidence:
-    evidence_id: str
-    source: str
-    confidence: float
-    observed_at: datetime
-    payload: Mapping[str, Any]
-
-    def __post_init__(self) -> None:
-        if not self.evidence_id:
-            raise ValueError("evidence_id is required")
-        if not self.source:
-            raise ValueError("source is required")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-        if self.observed_at.tzinfo is None:
-            raise ValueError("observed_at must be timezone-aware")
-
-
 @dataclass(frozen=True)
 class AppEntity:
     entity_id: str
@@ -7870,22 +6184,6 @@ NEUTRAL_SCORE = 0.5
 
 
 @dataclass(frozen=True)
-class TrustSignal:
-    signal_id: str
-    weight: float
-    polarity: float
-    at: datetime
-    evidence: Evidence
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.weight <= 1.0:
-            raise ValueError("weight must be within [0,1]")
-        if not -1.0 <= self.polarity <= 1.0:
-            raise ValueError("polarity must be within [-1,1]")
-        if self.at.tzinfo is None:
-            raise ValueError("at must be timezone-aware")
-
-
 @dataclass(frozen=True)
 class TrustState:
     score: float
@@ -7900,11 +6198,6 @@ class TrustState:
             raise ValueError("confidence must be within [0,1]")
         if self.updated_at.tzinfo is None:
             raise ValueError("updated_at must be timezone-aware")
-
-
-def neutral_trust(at: datetime) -> TrustState:
-    return TrustState(score=NEUTRAL_SCORE, confidence=0.0,
-                      basis=(), updated_at=at)
 
 
 def combine_trust(
@@ -8258,7 +6551,6 @@ class ContextTrustResult:
 # =============================================================================
 
 
-# Duplicate TransitionOutcome removed; canonical definition is above.
 _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
     TrustLabel.UNKNOWN: frozenset({
         TrustLabel.OBSERVED, TrustLabel.DEGRADED, TrustLabel.SUSPICIOUS,
@@ -8326,13 +6618,6 @@ def evaluate_transition(req: TransitionRequest) -> TransitionDecision:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
 class EntitySnapshot:
     entity_id: str
@@ -8351,13 +6636,6 @@ class AppApiSnapshot:
 
 
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class AppApiInvariant:
     invariant_id: str
@@ -9017,16 +7295,6 @@ class AppApiTrustEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _ev(at: datetime, conf: float = 0.9) -> Evidence:
-    return Evidence(evidence_id="e", source="test", confidence=conf,
-                    observed_at=at, payload={})
-
-
 def _app(eid: str, crit: float = 0.5, kind: AppKind = AppKind.APPLICATION) -> AppEntity:
     return AppEntity(entity_id=eid, kind=kind, tenant_id="t1", criticality=crit)
 
@@ -9527,28 +7795,6 @@ def test_sqlite_state_and_grant_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -9606,27 +7852,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -9692,16 +7917,6 @@ class RelationshipKind(str, Enum):
     DEPENDS_ON = "depends_on"
 
 
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
-
-
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.UNKNOWN: 0,
     TrustLabel.OBSERVED: 1,
@@ -9711,18 +7926,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.COMPROMISED: 4,
     TrustLabel.QUARANTINED: 5,
 }
-
-
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
-def is_untrusted(label: TrustLabel) -> bool:
-    return label in (
-        TrustLabel.SUSPICIOUS,
-        TrustLabel.COMPROMISED,
-        TrustLabel.QUARANTINED,
-    )
 
 
 def is_quarantined(label: TrustLabel) -> bool:
@@ -9736,24 +7939,6 @@ class SeccompProfile(str, Enum):
 
 
 @dataclass(frozen=True)
-class Evidence:
-    evidence_id: str
-    source: str
-    confidence: float
-    observed_at: datetime
-    payload: Mapping[str, Any]
-
-    def __post_init__(self) -> None:
-        if not self.evidence_id:
-            raise ValueError("evidence_id is required")
-        if not self.source:
-            raise ValueError("source is required")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-        if self.observed_at.tzinfo is None:
-            raise ValueError("observed_at must be timezone-aware")
-
-
 # =============================================================================
 # SECTION 3 — SECURITY SUB-MODELS
 # =============================================================================
@@ -10043,22 +8228,6 @@ NEUTRAL_SCORE = 0.5
 
 
 @dataclass(frozen=True)
-class TrustSignal:
-    signal_id: str
-    weight: float
-    polarity: float
-    at: datetime
-    evidence: Evidence
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.weight <= 1.0:
-            raise ValueError("weight must be within [0,1]")
-        if not -1.0 <= self.polarity <= 1.0:
-            raise ValueError("polarity must be within [-1,1]")
-        if self.at.tzinfo is None:
-            raise ValueError("at must be timezone-aware")
-
-
 @dataclass(frozen=True)
 class TrustState:
     score: float
@@ -10075,31 +8244,6 @@ class TrustState:
             raise ValueError("updated_at must be timezone-aware")
 
 
-def neutral_trust(at: datetime) -> TrustState:
-    return TrustState(score=NEUTRAL_SCORE, confidence=0.0,
-                      basis=(), updated_at=at)
-
-
-def combine_trust(signals: Iterable[TrustSignal], at: datetime) -> TrustState:
-    basis = tuple(sorted(signals, key=lambda s: s.at))
-    if not basis:
-        return neutral_trust(at)
-    num = 0.0
-    den = 0.0
-    for s in basis:
-        num += s.weight * s.polarity
-        den += s.weight
-    if den <= 0.0:
-        return neutral_trust(at)
-    raw = num / den
-    score = max(0.0, min(1.0, (raw + 1.0) / 2.0))
-    confidence = den / (den + 2.0)
-    return TrustState(score=score, confidence=confidence,
-                      basis=basis, updated_at=at)
-
-
-def decay_trust(
-    state: TrustState, *, half_life_seconds: float, at: datetime,
 ) -> TrustState:
     if half_life_seconds <= 0:
         raise ValueError("half_life_seconds must be > 0")
@@ -10139,19 +8283,6 @@ def effective_workload_trust(
         return observed
     ceiling = min(1.0, min(ceilings))
     return max(0.0, min(observed, ceiling))
-
-
-def derive_label(trust: TrustState) -> TrustLabel:
-    if trust.confidence < 0.4:
-        return TrustLabel.UNKNOWN
-    s = trust.score
-    if s < 0.30:
-        return TrustLabel.SUSPICIOUS
-    if s < 0.55:
-        return TrustLabel.DEGRADED
-    if s < 0.85:
-        return TrustLabel.OBSERVED
-    return TrustLabel.TRUSTED
 
 
 # =============================================================================
@@ -10219,7 +8350,6 @@ def cross_cloud_hop_count(chain: Tuple[str, ...]) -> int:
 # =============================================================================
 
 
-# Duplicate TransitionOutcome removed; canonical definition is above.
 _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
     TrustLabel.UNKNOWN: frozenset({
         TrustLabel.OBSERVED, TrustLabel.DEGRADED, TrustLabel.SUSPICIOUS,
@@ -10246,52 +8376,10 @@ _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
 
 
 @dataclass(frozen=True)
-class TransitionRequest:
-    entity_id: str
-    from_label: TrustLabel
-    to_label: TrustLabel
-    reason: str
-    verified: bool
-
-
 @dataclass(frozen=True)
-class TransitionDecision:
-    outcome: TransitionOutcome
-    rationale: str
-
-
-def evaluate_transition(req: TransitionRequest) -> TransitionDecision:
-    if not req.reason:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID, "reason is required"
-        )
-    if req.from_label is req.to_label:
-        return TransitionDecision(TransitionOutcome.ALLOWED, "no-op")
-    permitted = _ALLOWED_LABEL_EDGES.get(req.from_label, frozenset())
-    if req.to_label not in permitted:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID,
-            f"{req.from_label.value} -> {req.to_label.value} not permitted",
-        )
-    going_better = label_severity(req.to_label) < label_severity(req.from_label)
-    if going_better and not req.verified:
-        return TransitionDecision(
-            TransitionOutcome.REQUIRES_VERIFICATION,
-            "recovery transitions require verification",
-        )
-    return TransitionDecision(TransitionOutcome.ALLOWED, "permitted")
-
-
 # =============================================================================
 # SECTION 10 — INVARIANTS
 # =============================================================================
-
-
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 @dataclass(frozen=True)
@@ -10314,13 +8402,6 @@ class CloudSnapshot:
 
 
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class CloudInvariant:
     invariant_id: str
@@ -10943,16 +9024,6 @@ class CloudSecurityStateEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _ev(at: datetime, conf: float = 0.9) -> Evidence:
-    return Evidence(evidence_id="e", source="test", confidence=conf,
-                    observed_at=at, payload={})
-
-
 def _pos(sid: str = "s", at: Optional[datetime] = None) -> TrustSignal:
     return TrustSignal(sid, 1.0, 1.0, at or _t0(), _ev(at or _t0()))
 
@@ -11128,11 +9199,6 @@ def test_relationship_transitive_reach() -> None:
 
 
 # ---- trust tests ----------------------------------------------------------
-
-def test_combine_trust_empty_neutral() -> None:
-    s = combine_trust([], _t0())
-    assert s.score == NEUTRAL_SCORE and s.confidence == 0.0
-
 
 def test_combine_trust_positive() -> None:
     assert combine_trust([_pos()], _t0()).score == 1.0
@@ -11436,28 +9502,6 @@ def test_sqlite_store_control_plane_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -11519,40 +9563,9 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
-
-
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
 
 
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
@@ -11566,10 +9579,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
 }
 
 
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
 def worse_of(a: TrustLabel, b: TrustLabel) -> TrustLabel:
     return a if label_severity(a) >= label_severity(b) else b
 
@@ -11579,24 +9588,6 @@ def is_adversarial_label(label: TrustLabel) -> bool:
 
 
 @dataclass(frozen=True)
-class Evidence:
-    evidence_id: str
-    source: str
-    confidence: float
-    observed_at: datetime
-    payload: Mapping[str, Any]
-
-    def __post_init__(self) -> None:
-        if not self.evidence_id:
-            raise ValueError("evidence_id is required")
-        if not self.source:
-            raise ValueError("source is required")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-        if self.observed_at.tzinfo is None:
-            raise ValueError("observed_at must be timezone-aware")
-
-
 @dataclass(frozen=True)
 class NodeIdentity:
     node_id: str
@@ -12049,7 +10040,6 @@ def reconcile(
 # =============================================================================
 
 
-# Duplicate TransitionOutcome removed; canonical definition is above.
 _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
     TrustLabel.UNKNOWN: frozenset({
         TrustLabel.OBSERVED, TrustLabel.DEGRADED, TrustLabel.SUSPICIOUS,
@@ -12123,13 +10113,6 @@ def evaluate_transition(req: TransitionRequest) -> TransitionDecision:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
 class DistributedSnapshot:
     reconciliations: Mapping[str, ReconciledState]
@@ -12139,13 +10122,6 @@ class DistributedSnapshot:
 
 
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class DistributedInvariant:
     invariant_id: str
@@ -12608,16 +10584,6 @@ class DistributedSecurityStateEngine:
 # =============================================================================
 # SECTION 11 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _ev(at: datetime, conf: float = 0.9) -> Evidence:
-    return Evidence(evidence_id="e", source="test", confidence=conf,
-                    observed_at=at, payload={})
 
 
 def _node(nid: str, trust: float = 0.9, quarantined: bool = False,
@@ -13165,28 +11131,6 @@ def test_policy_split_brain_min_partitions() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -13251,27 +11195,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
@@ -13304,16 +11227,6 @@ def stage_order(kind: StageKind) -> int:
     return _STAGE_ORDER[kind]
 
 
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
-
-
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.UNKNOWN: 0,
     TrustLabel.OBSERVED: 1,
@@ -13323,14 +11236,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.COMPROMISED: 4,
     TrustLabel.QUARANTINED: 5,
 }
-
-
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
-def worse_of(a: TrustLabel, b: TrustLabel) -> TrustLabel:
-    return a if label_severity(a) >= label_severity(b) else b
 
 
 def is_untrusted(label: TrustLabel) -> bool:
@@ -13473,22 +11378,6 @@ NEUTRAL_SCORE = 0.5
 
 
 @dataclass(frozen=True)
-class TrustSignal:
-    signal_id: str
-    weight: float
-    polarity: float
-    at: datetime
-    evidence: Evidence
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.weight <= 1.0:
-            raise ValueError("weight must be within [0,1]")
-        if not -1.0 <= self.polarity <= 1.0:
-            raise ValueError("polarity must be within [-1,1]")
-        if self.at.tzinfo is None:
-            raise ValueError("at must be timezone-aware")
-
-
 @dataclass(frozen=True)
 class TrustState:
     score: float
@@ -13503,42 +11392,6 @@ class TrustState:
             raise ValueError("confidence must be within [0,1]")
         if self.updated_at.tzinfo is None:
             raise ValueError("updated_at must be timezone-aware")
-
-
-def neutral_trust(at: datetime) -> TrustState:
-    return TrustState(score=NEUTRAL_SCORE, confidence=0.0,
-                      basis=(), updated_at=at)
-
-
-def combine_trust(signals: Iterable[TrustSignal], at: datetime) -> TrustState:
-    basis = tuple(sorted(signals, key=lambda s: s.at))
-    if not basis:
-        return neutral_trust(at)
-    num = 0.0
-    den = 0.0
-    for s in basis:
-        num += s.weight * s.polarity
-        den += s.weight
-    if den <= 0.0:
-        return neutral_trust(at)
-    raw = num / den
-    score = max(0.0, min(1.0, (raw + 1.0) / 2.0))
-    confidence = den / (den + 2.0)
-    return TrustState(score=score, confidence=confidence,
-                      basis=basis, updated_at=at)
-
-
-def derive_label(trust: TrustState) -> TrustLabel:
-    if trust.confidence < 0.4:
-        return TrustLabel.UNKNOWN
-    s = trust.score
-    if s < 0.30:
-        return TrustLabel.SUSPICIOUS
-    if s < 0.55:
-        return TrustLabel.DEGRADED
-    if s < 0.85:
-        return TrustLabel.OBSERVED
-    return TrustLabel.TRUSTED
 
 
 # =============================================================================
@@ -14013,7 +11866,6 @@ def analyse_continuity(
 # =============================================================================
 
 
-# Duplicate TransitionOutcome removed; canonical definition is above.
 _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
     TrustLabel.UNKNOWN: frozenset({
         TrustLabel.OBSERVED, TrustLabel.DEGRADED, TrustLabel.SUSPICIOUS,
@@ -14041,52 +11893,10 @@ _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
 
 
 @dataclass(frozen=True)
-class TransitionRequest:
-    entity_id: str
-    from_label: TrustLabel
-    to_label: TrustLabel
-    reason: str
-    verified: bool
-
-
 @dataclass(frozen=True)
-class TransitionDecision:
-    outcome: TransitionOutcome
-    rationale: str
-
-
-def evaluate_transition(req: TransitionRequest) -> TransitionDecision:
-    if not req.reason:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID, "reason is required"
-        )
-    if req.from_label is req.to_label:
-        return TransitionDecision(TransitionOutcome.ALLOWED, "no-op")
-    permitted = _ALLOWED_LABEL_EDGES.get(req.from_label, frozenset())
-    if req.to_label not in permitted:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID,
-            f"{req.from_label.value} -> {req.to_label.value} not permitted",
-        )
-    going_better = label_severity(req.to_label) < label_severity(req.from_label)
-    if going_better and not req.verified:
-        return TransitionDecision(
-            TransitionOutcome.REQUIRES_VERIFICATION,
-            "recovery transitions require verification",
-        )
-    return TransitionDecision(TransitionOutcome.ALLOWED, "permitted")
-
-
 # =============================================================================
 # SECTION 9 — INVARIANTS
 # =============================================================================
-
-
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 @dataclass(frozen=True)
@@ -14106,13 +11916,6 @@ class SupplyChainSnapshot:
 
 
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class SupplyChainInvariant:
     invariant_id: str
@@ -14733,16 +12536,6 @@ class SupplyChainTrustEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _ev(at: datetime, conf: float = 0.9) -> Evidence:
-    return Evidence(evidence_id="e", source="test", confidence=conf,
-                    observed_at=at, payload={})
-
-
 def _art(aid: str, stage: StageKind, *, digest: str = "d",
          name: str = "n", producer: str = "p",
          parent: Optional[str] = None,
@@ -14881,11 +12674,6 @@ def test_graph_parents_of() -> None:
 
 # ---- trust tests ----------------------------------------------------------
 
-def test_combine_trust_empty_neutral() -> None:
-    s = combine_trust([], _t0())
-    assert s.score == NEUTRAL_SCORE and s.confidence == 0.0
-
-
 def test_combine_trust_positive_raises() -> None:
     sig = TrustSignal("s", 1.0, 1.0, _t0(), _ev(_t0()))
     assert combine_trust([sig], _t0()).score == 1.0
@@ -14899,11 +12687,6 @@ def test_combine_trust_negative_lowers() -> None:
 def test_derive_label_unknown_low_conf() -> None:
     st = TrustState(0.9, 0.1, (), _t0())
     assert derive_label(st) is TrustLabel.UNKNOWN
-
-
-def test_derive_label_trusted() -> None:
-    st = TrustState(0.95, 0.9, (), _t0())
-    assert derive_label(st) is TrustLabel.TRUSTED
 
 
 # ---- break detection ------------------------------------------------------
@@ -15060,28 +12843,12 @@ def test_analyse_continuity_invalid_attestation_forces_suspicious() -> None:
 
 # ---- transitions ----------------------------------------------------------
 
-def test_transition_compromise_to_trusted_rejected() -> None:
-    d = evaluate_transition(TransitionRequest(
-        entity_id="a", from_label=TrustLabel.COMPROMISED,
-        to_label=TrustLabel.TRUSTED, reason="x", verified=True,
-    ))
-    assert d.outcome is TransitionOutcome.REJECTED_INVALID
-
-
 def test_transition_quarantine_recovery_requires_verification() -> None:
     d = evaluate_transition(TransitionRequest(
         entity_id="a", from_label=TrustLabel.QUARANTINED,
         to_label=TrustLabel.OBSERVED, reason="x", verified=False,
     ))
     assert d.outcome is TransitionOutcome.REQUIRES_VERIFICATION
-
-
-def test_transition_reason_required() -> None:
-    d = evaluate_transition(TransitionRequest(
-        entity_id="a", from_label=TrustLabel.OBSERVED,
-        to_label=TrustLabel.TRUSTED, reason="", verified=True,
-    ))
-    assert d.outcome is TransitionOutcome.REJECTED_INVALID
 
 
 # ---- engine integration ---------------------------------------------------
@@ -15314,28 +13081,6 @@ def test_sqlite_store_publisher_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -15404,27 +13149,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
@@ -15461,16 +13185,6 @@ def ai_stage_order(stage: AIStage) -> int:
     return _AI_STAGE_ORDER[stage]
 
 
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
-
-
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.UNKNOWN: 0,
     TrustLabel.OBSERVED: 1,
@@ -15480,14 +13194,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.COMPROMISED: 4,
     TrustLabel.QUARANTINED: 5,
 }
-
-
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
-def worse_of(a: TrustLabel, b: TrustLabel) -> TrustLabel:
-    return a if label_severity(a) >= label_severity(b) else b
 
 
 def is_untrusted(label: TrustLabel) -> bool:
@@ -15784,74 +13490,7 @@ NEUTRAL_SCORE = 0.5
 
 
 @dataclass(frozen=True)
-class TrustSignal:
-    signal_id: str
-    weight: float
-    polarity: float
-    at: datetime
-    evidence: Evidence
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.weight <= 1.0:
-            raise ValueError("weight must be within [0,1]")
-        if not -1.0 <= self.polarity <= 1.0:
-            raise ValueError("polarity must be within [-1,1]")
-        if self.at.tzinfo is None:
-            raise ValueError("at must be timezone-aware")
-
-
 @dataclass(frozen=True)
-class TrustState:
-    score: float
-    confidence: float
-    basis: Tuple[TrustSignal, ...]
-    updated_at: datetime
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.score <= 1.0:
-            raise ValueError("score must be within [0,1]")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-        if self.updated_at.tzinfo is None:
-            raise ValueError("updated_at must be timezone-aware")
-
-
-def neutral_trust(at: datetime) -> TrustState:
-    return TrustState(score=NEUTRAL_SCORE, confidence=0.0,
-                      basis=(), updated_at=at)
-
-
-def combine_trust(signals: Iterable[TrustSignal], at: datetime) -> TrustState:
-    basis = tuple(sorted(signals, key=lambda s: s.at))
-    if not basis:
-        return neutral_trust(at)
-    num = 0.0
-    den = 0.0
-    for s in basis:
-        num += s.weight * s.polarity
-        den += s.weight
-    if den <= 0.0:
-        return neutral_trust(at)
-    raw = num / den
-    score = max(0.0, min(1.0, (raw + 1.0) / 2.0))
-    confidence = den / (den + 2.0)
-    return TrustState(score=score, confidence=confidence,
-                      basis=basis, updated_at=at)
-
-
-def derive_label(trust: TrustState) -> TrustLabel:
-    if trust.confidence < 0.4:
-        return TrustLabel.UNKNOWN
-    s = trust.score
-    if s < 0.30:
-        return TrustLabel.SUSPICIOUS
-    if s < 0.55:
-        return TrustLabel.DEGRADED
-    if s < 0.85:
-        return TrustLabel.OBSERVED
-    return TrustLabel.TRUSTED
-
-
 # =============================================================================
 # SECTION 6 — AI CHAIN GRAPH
 # =============================================================================
@@ -16380,7 +14019,6 @@ def analyse_ai_continuity(
 # =============================================================================
 
 
-# Duplicate TransitionOutcome removed; canonical definition is above.
 _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
     TrustLabel.UNKNOWN: frozenset({
         TrustLabel.OBSERVED, TrustLabel.DEGRADED, TrustLabel.SUSPICIOUS,
@@ -16409,56 +14047,10 @@ _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
 
 
 @dataclass(frozen=True)
-class TransitionRequest:
-    entity_id: str
-    from_label: TrustLabel
-    to_label: TrustLabel
-    reason: str
-    verified: bool
-
-
 @dataclass(frozen=True)
-class TransitionDecision:
-    outcome: TransitionOutcome
-    rationale: str
-
-
-def evaluate_transition(req: TransitionRequest) -> TransitionDecision:
-    if not req.reason:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID, "reason is required"
-        )
-    if req.from_label is req.to_label:
-        return TransitionDecision(TransitionOutcome.ALLOWED, "no-op")
-    permitted = _ALLOWED_LABEL_EDGES.get(req.from_label, frozenset())
-    if req.to_label not in permitted:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID,
-            f"{req.from_label.value} -> {req.to_label.value} not permitted",
-        )
-    going_better = label_severity(req.to_label) < label_severity(req.from_label)
-    reaching_trust_from_unknown = (
-        req.from_label is TrustLabel.UNKNOWN
-        and req.to_label is TrustLabel.TRUSTED
-    )
-    if (going_better or reaching_trust_from_unknown) and not req.verified:
-        return TransitionDecision(
-            TransitionOutcome.REQUIRES_VERIFICATION,
-            "recovery transitions require verification",
-        )
-    return TransitionDecision(TransitionOutcome.ALLOWED, "permitted")
-
-
 # =============================================================================
 # SECTION 10 — INVARIANTS
 # =============================================================================
-
-
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 @dataclass(frozen=True)
@@ -16478,13 +14070,6 @@ class AISupplyChainSnapshot:
 
 
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class AISupplyChainInvariant:
     invariant_id: str
@@ -17166,16 +14751,6 @@ class AISupplyChainTrustEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _ev(at: datetime, conf: float = 0.9) -> Evidence:
-    return Evidence(evidence_id="e", source="test", confidence=conf,
-                    observed_at=at, payload={})
-
-
 def _model_sec(*, family: ModelFamily = ModelFamily.LLM,
                params: int = 7_000_000_000,
                weights_digest: str = "wD",
@@ -17402,21 +14977,6 @@ def test_graph_parents_of() -> None:
 
 # ---- trust tests ----------------------------------------------------------
 
-def test_combine_trust_empty_neutral() -> None:
-    s = combine_trust([], _t0())
-    assert s.score == NEUTRAL_SCORE and s.confidence == 0.0
-
-
-def test_combine_trust_positive() -> None:
-    sig = TrustSignal("s", 1.0, 1.0, _t0(), _ev(_t0()))
-    assert combine_trust([sig], _t0()).score == 1.0
-
-
-def test_derive_label_unknown_low_conf() -> None:
-    st = TrustState(0.9, 0.1, (), _t0())
-    assert derive_label(st) is TrustLabel.UNKNOWN
-
-
 # ---- break detection ------------------------------------------------------
 
 def test_model_substitution_detected() -> None:
@@ -17608,30 +15168,6 @@ def test_analyse_ai_continuity_returns_chain() -> None:
 
 
 # ---- transitions ----------------------------------------------------------
-
-def test_transition_compromise_to_trusted_rejected() -> None:
-    d = evaluate_transition(TransitionRequest(
-        entity_id="a", from_label=TrustLabel.COMPROMISED,
-        to_label=TrustLabel.TRUSTED, reason="x", verified=True,
-    ))
-    assert d.outcome is TransitionOutcome.REJECTED_INVALID
-
-
-def test_transition_quarantine_recovery_requires_verification() -> None:
-    d = evaluate_transition(TransitionRequest(
-        entity_id="a", from_label=TrustLabel.QUARANTINED,
-        to_label=TrustLabel.OBSERVED, reason="x", verified=False,
-    ))
-    assert d.outcome is TransitionOutcome.REQUIRES_VERIFICATION
-
-
-def test_transition_reason_required() -> None:
-    d = evaluate_transition(TransitionRequest(
-        entity_id="a", from_label=TrustLabel.OBSERVED,
-        to_label=TrustLabel.TRUSTED, reason="", verified=True,
-    ))
-    assert d.outcome is TransitionOutcome.REJECTED_INVALID
-
 
 # ---- engine integration ---------------------------------------------------
 
@@ -17845,28 +15381,6 @@ def test_sqlite_store_publisher_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -17930,27 +15444,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
@@ -17993,16 +15486,6 @@ class AuthMode(str, Enum):
     MUTUAL_TLS = "mutual_tls"
 
 
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
-
-
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.UNKNOWN: 0,
     TrustLabel.OBSERVED: 1,
@@ -18012,14 +15495,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.COMPROMISED: 4,
     TrustLabel.QUARANTINED: 5,
 }
-
-
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
-def worse_of(a: TrustLabel, b: TrustLabel) -> TrustLabel:
-    return a if label_severity(a) >= label_severity(b) else b
 
 
 def is_untrusted(label: TrustLabel) -> bool:
@@ -18044,29 +15519,6 @@ class DataBreakKind(str, Enum):
 
 
 @dataclass(frozen=True)
-class Evidence:
-    evidence_id: str
-    source: str
-    confidence: float
-    observed_at: datetime
-    payload: Mapping[str, Any]
-
-    def __post_init__(self) -> None:
-        if not self.evidence_id:
-            raise ValueError("evidence_id is required")
-        if not self.source:
-            raise ValueError("source is required")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-        if self.observed_at.tzinfo is None:
-            raise ValueError("observed_at must be timezone-aware")
-
-
-def canonical_digest(payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
 # =============================================================================
 # SECTION 3 — SECURITY SUB-MODELS
 # =============================================================================
@@ -18406,74 +15858,7 @@ NEUTRAL_SCORE = 0.5
 
 
 @dataclass(frozen=True)
-class TrustSignal:
-    signal_id: str
-    weight: float
-    polarity: float
-    at: datetime
-    evidence: Evidence
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.weight <= 1.0:
-            raise ValueError("weight must be within [0,1]")
-        if not -1.0 <= self.polarity <= 1.0:
-            raise ValueError("polarity must be within [-1,1]")
-        if self.at.tzinfo is None:
-            raise ValueError("at must be timezone-aware")
-
-
 @dataclass(frozen=True)
-class TrustState:
-    score: float
-    confidence: float
-    basis: Tuple[TrustSignal, ...]
-    updated_at: datetime
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.score <= 1.0:
-            raise ValueError("score must be within [0,1]")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-        if self.updated_at.tzinfo is None:
-            raise ValueError("updated_at must be timezone-aware")
-
-
-def neutral_trust(at: datetime) -> TrustState:
-    return TrustState(score=NEUTRAL_SCORE, confidence=0.0,
-                      basis=(), updated_at=at)
-
-
-def combine_trust(signals: Iterable[TrustSignal], at: datetime) -> TrustState:
-    basis = tuple(sorted(signals, key=lambda s: s.at))
-    if not basis:
-        return neutral_trust(at)
-    num = 0.0
-    den = 0.0
-    for s in basis:
-        num += s.weight * s.polarity
-        den += s.weight
-    if den <= 0.0:
-        return neutral_trust(at)
-    raw = num / den
-    score = max(0.0, min(1.0, (raw + 1.0) / 2.0))
-    confidence = den / (den + 2.0)
-    return TrustState(score=score, confidence=confidence,
-                      basis=basis, updated_at=at)
-
-
-def derive_label(trust: TrustState) -> TrustLabel:
-    if trust.confidence < 0.4:
-        return TrustLabel.UNKNOWN
-    s = trust.score
-    if s < 0.30:
-        return TrustLabel.SUSPICIOUS
-    if s < 0.55:
-        return TrustLabel.DEGRADED
-    if s < 0.85:
-        return TrustLabel.OBSERVED
-    return TrustLabel.TRUSTED
-
-
 # =============================================================================
 # SECTION 6 — BREAK DETECTORS
 # =============================================================================
@@ -18827,7 +16212,6 @@ def analyse_data_continuity(
 # =============================================================================
 
 
-# Duplicate TransitionOutcome removed; canonical definition is above.
 _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
     TrustLabel.UNKNOWN: frozenset({
         TrustLabel.OBSERVED, TrustLabel.DEGRADED, TrustLabel.SUSPICIOUS,
@@ -18854,52 +16238,10 @@ _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
 
 
 @dataclass(frozen=True)
-class TransitionRequest:
-    entity_id: str
-    from_label: TrustLabel
-    to_label: TrustLabel
-    reason: str
-    verified: bool
-
-
 @dataclass(frozen=True)
-class TransitionDecision:
-    outcome: TransitionOutcome
-    rationale: str
-
-
-def evaluate_transition(req: TransitionRequest) -> TransitionDecision:
-    if not req.reason:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID, "reason is required"
-        )
-    if req.from_label is req.to_label:
-        return TransitionDecision(TransitionOutcome.ALLOWED, "no-op")
-    permitted = _ALLOWED_LABEL_EDGES.get(req.from_label, frozenset())
-    if req.to_label not in permitted:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID,
-            f"{req.from_label.value} -> {req.to_label.value} not permitted",
-        )
-    going_better = label_severity(req.to_label) < label_severity(req.from_label)
-    if going_better and not req.verified:
-        return TransitionDecision(
-            TransitionOutcome.REQUIRES_VERIFICATION,
-            "recovery transitions require verification",
-        )
-    return TransitionDecision(TransitionOutcome.ALLOWED, "permitted")
-
-
 # =============================================================================
 # SECTION 9 — INVARIANTS
 # =============================================================================
-
-
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 @dataclass(frozen=True)
@@ -18918,13 +16260,6 @@ class StorageSnapshot:
 
 
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class DataInvariant:
     invariant_id: str
@@ -19555,16 +16890,6 @@ class StorageDatabaseStateEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _ev(at: datetime, conf: float = 0.9) -> Evidence:
-    return Evidence(evidence_id="e", source="test", confidence=conf,
-                    observed_at=at, payload={})
-
-
 def _pos(sid: str = "s", at: Optional[datetime] = None) -> TrustSignal:
     t = at or _t0()
     return TrustSignal(sid, 1.0, 1.0, t, _ev(t))
@@ -19737,16 +17062,6 @@ def test_combine_trust_negative_low() -> None:
     assert combine_trust([_neg()], _t0()).score == 0.0
 
 
-def test_derive_label_unknown_low_conf() -> None:
-    st = TrustState(0.9, 0.1, (), _t0())
-    assert derive_label(st) is TrustLabel.UNKNOWN
-
-
-def test_derive_label_trusted() -> None:
-    st = TrustState(0.95, 0.9, (), _t0())
-    assert derive_label(st) is TrustLabel.TRUSTED
-
-
 # ---- break detectors ------------------------------------------------------
 
 def test_detect_public_exposure_db() -> None:
@@ -19895,30 +17210,6 @@ def test_effective_data_trust_findings_penalize() -> None:
 
 
 # ---- transition tests -----------------------------------------------------
-
-def test_transition_compromise_to_trusted_rejected() -> None:
-    d = evaluate_transition(TransitionRequest(
-        entity_id="a", from_label=TrustLabel.COMPROMISED,
-        to_label=TrustLabel.TRUSTED, reason="x", verified=True,
-    ))
-    assert d.outcome is TransitionOutcome.REJECTED_INVALID
-
-
-def test_transition_quarantine_recovery_requires_verification() -> None:
-    d = evaluate_transition(TransitionRequest(
-        entity_id="a", from_label=TrustLabel.QUARANTINED,
-        to_label=TrustLabel.OBSERVED, reason="x", verified=False,
-    ))
-    assert d.outcome is TransitionOutcome.REQUIRES_VERIFICATION
-
-
-def test_transition_reason_required() -> None:
-    d = evaluate_transition(TransitionRequest(
-        entity_id="a", from_label=TrustLabel.OBSERVED,
-        to_label=TrustLabel.TRUSTED, reason="", verified=True,
-    ))
-    assert d.outcome is TransitionOutcome.REJECTED_INVALID
-
 
 # ---- engine integration ---------------------------------------------------
 
@@ -20131,28 +17422,6 @@ def test_sqlite_store_access_path_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -20223,27 +17492,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class IdProvider(Protocol):
-    def new_id(self, prefix: str = "") -> str: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
@@ -20305,16 +17553,6 @@ class TeeKind(str, Enum):
     ARM_CONFIDENTIAL_COMPUTE = "arm_cca"
 
 
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
-
-
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.UNKNOWN: 0,
     TrustLabel.OBSERVED: 1,
@@ -20324,14 +17562,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.COMPROMISED: 4,
     TrustLabel.QUARANTINED: 5,
 }
-
-
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
-def worse_of(a: TrustLabel, b: TrustLabel) -> TrustLabel:
-    return a if label_severity(a) >= label_severity(b) else b
 
 
 def is_untrusted(label: TrustLabel) -> bool:
@@ -20357,24 +17587,6 @@ class HardwareBreakKind(str, Enum):
 
 
 @dataclass(frozen=True)
-class Evidence:
-    evidence_id: str
-    source: str
-    confidence: float
-    observed_at: datetime
-    payload: Mapping[str, Any]
-
-    def __post_init__(self) -> None:
-        if not self.evidence_id:
-            raise ValueError("evidence_id is required")
-        if not self.source:
-            raise ValueError("source is required")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-        if self.observed_at.tzinfo is None:
-            raise ValueError("observed_at must be timezone-aware")
-
-
 # =============================================================================
 # SECTION 3 — HARDWARE SECURITY SUB-MODELS
 # =============================================================================
@@ -20574,74 +17786,7 @@ NEUTRAL_SCORE = 0.5
 
 
 @dataclass(frozen=True)
-class TrustSignal:
-    signal_id: str
-    weight: float
-    polarity: float
-    at: datetime
-    evidence: Evidence
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.weight <= 1.0:
-            raise ValueError("weight must be within [0,1]")
-        if not -1.0 <= self.polarity <= 1.0:
-            raise ValueError("polarity must be within [-1,1]")
-        if self.at.tzinfo is None:
-            raise ValueError("at must be timezone-aware")
-
-
 @dataclass(frozen=True)
-class TrustState:
-    score: float
-    confidence: float
-    basis: Tuple[TrustSignal, ...]
-    updated_at: datetime
-
-    def __post_init__(self) -> None:
-        if not 0.0 <= self.score <= 1.0:
-            raise ValueError("score must be within [0,1]")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError("confidence must be within [0,1]")
-        if self.updated_at.tzinfo is None:
-            raise ValueError("updated_at must be timezone-aware")
-
-
-def neutral_trust(at: datetime) -> TrustState:
-    return TrustState(score=NEUTRAL_SCORE, confidence=0.0,
-                      basis=(), updated_at=at)
-
-
-def combine_trust(signals: Iterable[TrustSignal], at: datetime) -> TrustState:
-    basis = tuple(sorted(signals, key=lambda s: s.at))
-    if not basis:
-        return neutral_trust(at)
-    num = 0.0
-    den = 0.0
-    for s in basis:
-        num += s.weight * s.polarity
-        den += s.weight
-    if den <= 0.0:
-        return neutral_trust(at)
-    raw = num / den
-    score = max(0.0, min(1.0, (raw + 1.0) / 2.0))
-    confidence = den / (den + 2.0)
-    return TrustState(score=score, confidence=confidence,
-                      basis=basis, updated_at=at)
-
-
-def derive_label(trust: TrustState) -> TrustLabel:
-    if trust.confidence < 0.4:
-        return TrustLabel.UNKNOWN
-    s = trust.score
-    if s < 0.30:
-        return TrustLabel.SUSPICIOUS
-    if s < 0.55:
-        return TrustLabel.DEGRADED
-    if s < 0.85:
-        return TrustLabel.OBSERVED
-    return TrustLabel.TRUSTED
-
-
 # =============================================================================
 # SECTION 6 — BREAK DETECTORS
 # =============================================================================
@@ -21062,7 +18207,6 @@ def analyse_platform_continuity(
 # =============================================================================
 
 
-# Duplicate TransitionOutcome removed; canonical definition is above.
 _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
     TrustLabel.UNKNOWN: frozenset({
         TrustLabel.OBSERVED, TrustLabel.DEGRADED, TrustLabel.SUSPICIOUS,
@@ -21091,56 +18235,10 @@ _ALLOWED_LABEL_EDGES: Mapping[TrustLabel, FrozenSet[TrustLabel]] = {
 
 
 @dataclass(frozen=True)
-class TransitionRequest:
-    entity_id: str
-    from_label: TrustLabel
-    to_label: TrustLabel
-    reason: str
-    verified: bool
-
-
 @dataclass(frozen=True)
-class TransitionDecision:
-    outcome: TransitionOutcome
-    rationale: str
-
-
-def evaluate_transition(req: TransitionRequest) -> TransitionDecision:
-    if not req.reason:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID, "reason is required"
-        )
-    if req.from_label is req.to_label:
-        return TransitionDecision(TransitionOutcome.ALLOWED, "no-op")
-    permitted = _ALLOWED_LABEL_EDGES.get(req.from_label, frozenset())
-    if req.to_label not in permitted:
-        return TransitionDecision(
-            TransitionOutcome.REJECTED_INVALID,
-            f"{req.from_label.value} -> {req.to_label.value} not permitted",
-        )
-    going_better = label_severity(req.to_label) < label_severity(req.from_label)
-    reaching_trust_from_unknown = (
-        req.from_label is TrustLabel.UNKNOWN
-        and req.to_label is TrustLabel.TRUSTED
-    )
-    if (going_better or reaching_trust_from_unknown) and not req.verified:
-        return TransitionDecision(
-            TransitionOutcome.REQUIRES_VERIFICATION,
-            "recovery transitions require verification",
-        )
-    return TransitionDecision(TransitionOutcome.ALLOWED, "permitted")
-
-
 # =============================================================================
 # SECTION 9 — INVARIANTS
 # =============================================================================
-
-
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 @dataclass(frozen=True)
@@ -21159,13 +18257,6 @@ class HardwareSnapshot:
 
 
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class HardwareInvariant:
     invariant_id: str
@@ -21804,26 +18895,6 @@ class HardwareBootTrustEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _ev(at: datetime, conf: float = 0.9) -> Evidence:
-    return Evidence(evidence_id="e", source="test", confidence=conf,
-                    observed_at=at, payload={})
-
-
-def _pos(sid: str = "s", at: Optional[datetime] = None) -> TrustSignal:
-    t = at or _t0()
-    return TrustSignal(sid, 1.0, 1.0, t, _ev(t))
-
-
-def _neg(sid: str = "s", at: Optional[datetime] = None) -> TrustSignal:
-    t = at or _t0()
-    return TrustSignal(sid, 1.0, -1.0, t, _ev(t))
-
-
 def _anchor(aid: str = "anchor") -> TrustAnchor:
     return TrustAnchor(
         anchor_id=aid, kind=HardwareKind.TPM, digest="d-anchor",
@@ -21994,19 +19065,6 @@ def test_measurement_mismatch() -> None:
 
 
 # ---- trust tests ----------------------------------------------------------
-
-def test_combine_trust_empty_neutral() -> None:
-    st = combine_trust([], _t0())
-    assert st.score == NEUTRAL_SCORE and st.confidence == 0.0
-
-
-def test_combine_trust_positive() -> None:
-    assert combine_trust([_pos()], _t0()).score == 1.0
-
-
-def test_combine_trust_negative() -> None:
-    assert combine_trust([_neg()], _t0()).score == 0.0
-
 
 def test_derive_label_unknown() -> None:
     st = TrustState(0.9, 0.1, (), _t0())
@@ -22445,28 +19503,6 @@ def test_sqlite_store_attestation_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -22535,19 +19571,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -23079,21 +20102,7 @@ class StatisticalProfile:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class StatisticalSnapshot:
     profiles: Mapping[str, StatisticalProfile]
@@ -23805,11 +20814,6 @@ class StatisticalSecurityEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _t(seconds: int) -> datetime:
     return _t0() + timedelta(seconds=seconds)
 
@@ -24365,28 +21369,6 @@ def test_sqlite_store_evidence_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -24450,19 +21432,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
@@ -24502,16 +21471,6 @@ class BehaviorOutcome(str, Enum):
     DENIED = "denied"
 
 
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
-
-
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.UNKNOWN: 0,
     TrustLabel.OBSERVED: 1,
@@ -24521,14 +21480,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.COMPROMISED: 4,
     TrustLabel.QUARANTINED: 5,
 }
-
-
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
-def worse_of(a: TrustLabel, b: TrustLabel) -> TrustLabel:
-    return a if label_severity(a) >= label_severity(b) else b
 
 
 def is_untrusted(label: TrustLabel) -> bool:
@@ -25202,21 +22153,7 @@ def derive_label_from_behavior(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class BehaviorSnapshot:
     profiles: Mapping[Tuple[str, BehaviorLayer], BehaviorProfile]
@@ -25927,15 +22864,6 @@ class AdaptiveBehaviorEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
-
-
 def _obs(
     oid: str, eid: str = "e1", *,
     layer: BehaviorLayer = BehaviorLayer.PROCESS,
@@ -25985,12 +22913,6 @@ def test_observation_key() -> None:
 
 
 # ---- statistics ----
-
-def test_gaussian_welford_mean() -> None:
-    g = GaussianEstimate.empty().observe_many([1.0, 2.0, 3.0, 4.0])
-    assert abs(g.mean - 2.5) < 1e-9
-    assert g.count == 4
-
 
 def test_gaussian_sample_variance() -> None:
     g = GaussianEstimate.empty().observe_many([1.0, 2.0, 3.0, 4.0])
@@ -26504,28 +23426,6 @@ def test_sqlite_store_observation_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -26593,19 +23493,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
@@ -26634,16 +23521,6 @@ def dimension_order(d: DimensionKind) -> int:
     return _DIMENSION_ORDER[d]
 
 
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
-
-
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.UNKNOWN: 0,
     TrustLabel.OBSERVED: 1,
@@ -26653,14 +23530,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.COMPROMISED: 4,
     TrustLabel.QUARANTINED: 5,
 }
-
-
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
-def worse_of(a: TrustLabel, b: TrustLabel) -> TrustLabel:
-    return a if label_severity(a) >= label_severity(b) else b
 
 
 def is_untrusted(label: TrustLabel) -> bool:
@@ -26894,21 +23763,7 @@ class CombinationAnalysis:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class MultivariateSnapshot:
     marginals: Mapping[DimensionKind, MarginalBaseline]
@@ -27650,11 +24505,6 @@ from typing import Sequence  # noqa: E402
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _t(seconds: int) -> datetime:
     from datetime import timedelta
     return _t0() + timedelta(seconds=seconds)
@@ -28388,28 +25238,6 @@ def test_engine_constructor_validation() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -28482,19 +25310,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
@@ -28526,16 +25341,6 @@ class WarningLevel(str, Enum):
     CRITICAL = "critical"
 
 
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
-
-
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.UNKNOWN: 0,
     TrustLabel.OBSERVED: 1,
@@ -28545,22 +25350,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.COMPROMISED: 4,
     TrustLabel.QUARANTINED: 5,
 }
-
-
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
-def worse_of(a: TrustLabel, b: TrustLabel) -> TrustLabel:
-    return a if label_severity(a) >= label_severity(b) else b
-
-
-def is_untrusted(label: TrustLabel) -> bool:
-    return label in (
-        TrustLabel.SUSPICIOUS,
-        TrustLabel.COMPROMISED,
-        TrustLabel.QUARANTINED,
-    )
 
 
 @dataclass(frozen=True)
@@ -28752,21 +25541,7 @@ class TrajectoryState:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class TimeSeriesSnapshot:
     trajectories: Mapping[Tuple[str, TrajectoryKind], TrajectoryState]
@@ -29476,15 +26251,6 @@ class TimeSeriesEarlyWarningEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
-
-
 def _fill_linear(
     eng: TimeSeriesEarlyWarningEngine, eid: str, kind: TrajectoryKind,
     start: float, step: float, n: int, *, second_step: int = 60,
@@ -29976,28 +26742,6 @@ def test_engine_max_history_validation() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -30067,32 +26811,9 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
-
-
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
 
 
 ALL_LABELS: Tuple[TrustLabel, ...] = tuple(TrustLabel)
@@ -30730,21 +27451,7 @@ def propagate_uncertainty(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class ProbabilisticSnapshot:
     states: Mapping[str, StatePosterior]
@@ -31445,11 +28152,6 @@ class ProbabilisticSecurityEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 # ---- primitives ----
 
 def test_normalized_entropy_uniform() -> None:
@@ -32141,28 +28843,6 @@ def test_sqlite_store_intervention_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -32227,19 +28907,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -32939,21 +29606,7 @@ def make_min_recall_condition(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class DetectionSnapshot:
     matrices: Mapping[str, ConfusionMatrix]
@@ -33549,16 +30202,6 @@ class DetectionErrorEngine:
 # =============================================================================
 # SECTION 14 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    from datetime import timedelta
-    return _t0() + timedelta(seconds=seconds)
 
 
 def _rec(
@@ -34321,28 +30964,6 @@ def test_sqlite_store_detection_record_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -34409,19 +31030,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -34913,21 +31521,7 @@ def find_confounders(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class CausalSnapshot:
     graph: CausalGraph
@@ -35525,16 +32119,6 @@ class CausalSecurityEngine:
 # =============================================================================
 # SECTION 10 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    from datetime import timedelta
-    return _t0() + timedelta(seconds=seconds)
 
 
 def _node(
@@ -36154,28 +32738,6 @@ def test_sqlite_store_node_and_edge_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -36242,19 +32804,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -36760,21 +33309,7 @@ class CounterfactualFinding:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class CounterfactualSnapshot:
     actual: Outcome
@@ -37315,15 +33850,6 @@ class CounterfactualSecurityEngine:
 # =============================================================================
 # SECTION 12 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
 
 
 def _ev(
@@ -37999,28 +34525,6 @@ def test_sqlite_store_event_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -38084,19 +34588,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -38593,21 +35084,7 @@ def optimize_interventions(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class OptimizationSnapshot:
     decisions: Mapping[str, InterventionDecision]
@@ -39145,11 +35622,6 @@ class DefensiveInterventionEngine:
 # =============================================================================
 # SECTION 10 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def _cand(
@@ -39767,28 +36239,6 @@ def test_sqlite_store_candidate_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -39857,19 +36307,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -40172,21 +36609,7 @@ def classify_dynamics(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class ControlSnapshot:
     steps: Tuple[ControlStep, ...]
@@ -40808,14 +37231,6 @@ class CyberControlEngine:
 # =============================================================================
 # SECTION 11 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
 
 
 def _cfg(
@@ -41525,28 +37940,6 @@ def test_sqlite_store_config_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -41612,31 +38005,9 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN
 # =============================================================================
-
-
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
 
 
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
@@ -41650,24 +38021,12 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
 }
 
 
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
 def is_untrusted(label: TrustLabel) -> bool:
     return label in (
         TrustLabel.SUSPICIOUS,
         TrustLabel.COMPROMISED,
         TrustLabel.QUARANTINED,
     )
-
-
-class AuthorityLevel(str, Enum):
-    READ_ONLY = "read_only"
-    OPERATOR = "operator"
-    SENIOR = "senior"
-    ADMIN = "admin"
-    BREAK_GLASS = "break_glass"
 
 
 _AUTH_RANK: Mapping[AuthorityLevel, int] = {
@@ -41721,13 +38080,6 @@ class VerificationOutcome(str, Enum):
     REJECTED = "rejected"
     ENFORCED_FAIL_SAFE = "enforced_fail_safe"
     UNKNOWN = "unknown"
-
-
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 # =============================================================================
@@ -42547,11 +38899,6 @@ class FormalVerificationEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _entity(
     eid: str = "e1", *,
     label: TrustLabel = TrustLabel.TRUSTED,
@@ -43183,28 +39530,6 @@ def test_scenario_critical_control_disappearance_flagged() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -43269,19 +39594,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -43818,21 +40130,7 @@ class ReliabilityFinding:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class ReliabilitySnapshot:
     events: Mapping[str, FailureEvent]
@@ -44386,15 +40684,6 @@ class ReliabilityFailureEngine:
 # =============================================================================
 # SECTION 11 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
 
 
 def _event(
@@ -44979,28 +41268,6 @@ def test_sqlite_store_signal_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -45075,19 +41342,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN ENUMS
 # =============================================================================
@@ -45113,13 +41367,6 @@ class DefenseOutcome(str, Enum):
     FALLBACK_USED = "fallback_used"
 
 
-class Severity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 _SEVERITY_RANK: Mapping[Severity, int] = {
     Severity.LOW: 1,
     Severity.MEDIUM: 2,
@@ -45130,14 +41377,6 @@ _SEVERITY_RANK: Mapping[Severity, int] = {
 
 def severity_rank(s: Severity) -> int:
     return _SEVERITY_RANK[s]
-
-
-class AuthorityLevel(str, Enum):
-    READ_ONLY = "read_only"
-    OPERATOR = "operator"
-    SENIOR = "senior"
-    ADMIN = "admin"
-    BREAK_GLASS = "break_glass"
 
 
 _AUTH_RANK: Mapping[AuthorityLevel, int] = {
@@ -45157,16 +41396,6 @@ class PrincipalStatus(str, Enum):
     ACTIVE = "active"
     SUSPENDED = "suspended"
     REVOKED = "revoked"
-    QUARANTINED = "quarantined"
-
-
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
     QUARANTINED = "quarantined"
 
 
@@ -45217,11 +41446,6 @@ class AdversarialFinding:
 # =============================================================================
 # SECTION 3 — INTEGRITY TAGS
 # =============================================================================
-
-
-def canonical_digest(payload: Mapping[str, Any]) -> str:
-    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -45971,21 +42195,7 @@ def guard_transition(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class AdversarialSnapshot:
     findings: Tuple[AdversarialFinding, ...]
@@ -46526,15 +42736,6 @@ class AdversarialResilienceEngine:
 # =============================================================================
 # SECTION 14 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
 
 
 def _tag(
@@ -47419,28 +43620,6 @@ def test_sqlite_store_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -47509,19 +43688,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -48150,21 +44316,7 @@ def find_convergence(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class CausalitySnapshot:
     graph: CrossLayerGraph
@@ -48755,11 +44907,6 @@ class CrossLayerCausalityEngine:
 # =============================================================================
 # SECTION 11 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def _node(
@@ -49381,28 +45528,6 @@ def test_sqlite_store_node_and_edge_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -49470,19 +45595,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 class TwinSource(Protocol):
@@ -49915,21 +46027,7 @@ def detect_emergent_surfaces(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class TwinSnapshot:
     graph: TwinGraph
@@ -50495,11 +46593,6 @@ class TwinExtensionEngine:
 # =============================================================================
 # SECTION 8 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def _node(
@@ -51130,28 +47223,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -51224,19 +47295,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -51331,16 +47389,6 @@ class ActionKind(str, Enum):
     TOOL_REGISTER = "tool_register"
 
 
-class TrustLabel(str, Enum):
-    UNKNOWN = "unknown"
-    OBSERVED = "observed"
-    TRUSTED = "trusted"
-    DEGRADED = "degraded"
-    SUSPICIOUS = "suspicious"
-    COMPROMISED = "compromised"
-    QUARANTINED = "quarantined"
-
-
 _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.UNKNOWN: 0,
     TrustLabel.OBSERVED: 1,
@@ -51350,14 +47398,6 @@ _LABEL_SEVERITY: Mapping[TrustLabel, int] = {
     TrustLabel.COMPROMISED: 4,
     TrustLabel.QUARANTINED: 5,
 }
-
-
-def label_severity(label: TrustLabel) -> int:
-    return _LABEL_SEVERITY[label]
-
-
-def worse_of(a: TrustLabel, b: TrustLabel) -> TrustLabel:
-    return a if label_severity(a) >= label_severity(b) else b
 
 
 def is_untrusted(label: TrustLabel) -> bool:
@@ -51860,21 +47900,7 @@ def verify_authorized(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class AgentSnapshot:
     identities: Mapping[str, AgentIdentity]
@@ -52734,11 +48760,6 @@ def _implied_mode(action_kind: ActionKind) -> Optional[AuthorityMode]:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _identity(
     aid: str = "a1", *,
     kind: AgentKind = AgentKind.ASSISTANT,
@@ -53488,28 +49509,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -53582,18 +49581,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class AuditSink(Protocol):
-    def append(self, record: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -54050,21 +50037,7 @@ class PostInvocationReport:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class GovernanceSnapshot:
     items: Mapping[str, InventoryItem]
@@ -54834,15 +50807,6 @@ class AIGovernanceEnforcementEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
-
-
 def _asset(
     aid: str, kind: AIAssetKind = AIAssetKind.MODEL, *,
     name: str = "n", version: str = "1.0", owner: str = "team",
@@ -55572,28 +51536,6 @@ def test_sqlite_store_decision_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -55660,19 +51602,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -56239,21 +52168,7 @@ def region_concentration(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class ResilienceSnapshot:
     graph: DependencyGraph
@@ -56887,11 +52802,6 @@ class AIResilienceEngine:
 # =============================================================================
 # SECTION 11 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def _node(
@@ -57627,28 +53537,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -57728,19 +53616,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -58629,21 +54504,7 @@ def discover_unexpected_trust_direction(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class DiscoverySnapshot:
     graph: DiscoveryGraph
@@ -59107,11 +54968,6 @@ class NovelSurfaceDiscoveryEngine:
 # =============================================================================
 # SECTION 11 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def _node(
@@ -59864,28 +55720,6 @@ def test_sqlite_store_signature_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -59959,19 +55793,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -60061,12 +55882,6 @@ class ThreatClass(str, Enum):
     DATA_FLOW = "data_flow"
     AUTHORITY_AMPLIFICATION = "authority_amplification"
     CONTROL_BYPASS = "control_bypass"
-
-
-class ConfidenceClass(str, Enum):
-    SPECULATIVE = "speculative"
-    INFERRED = "inferred"
-    OBSERVED = "observed"
 
 
 # =============================================================================
@@ -60651,21 +56466,7 @@ def detect_emergent_threats(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class EmergentSnapshot:
     components: Mapping[str, ComponentProfile]
@@ -61299,11 +57100,6 @@ class EmergentThreatEngine:
 # =============================================================================
 # SECTION 13 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def _comp(
@@ -62267,28 +58063,6 @@ def test_sqlite_store_component_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -62356,19 +58130,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -62918,21 +58679,7 @@ def evaluate_trust_transition(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class CryptoSnapshot:
     graph: CryptoDependencyGraph
@@ -63868,15 +59615,6 @@ class CryptoResilienceEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
-
-
 def _alg(
     aid: str, family: AlgorithmFamily = AlgorithmFamily.SYMMETRIC, *,
     name: Optional[str] = None,
@@ -64649,28 +60387,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -64740,19 +60456,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -65326,21 +61029,7 @@ class ControlRequirement:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class ForecastSnapshot:
     technologies: Mapping[str, TechnologyProfile]
@@ -66153,11 +61842,6 @@ def _control_priority(threat_severity: int) -> int:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _tech(
     tid: str, category: TechCategory, *,
     name: Optional[str] = None,
@@ -66764,28 +62448,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -66858,45 +62520,12 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN ENUMS
 # =============================================================================
 
 
-class TechCategory(str, Enum):
-    AUTONOMOUS_AGENTS = "autonomous_agents"
-    AI_INFRASTRUCTURE = "ai_infrastructure"
-    ROBOTICS = "robotics"
-    EDGE_COMPUTING = "edge_computing"
-    NEW_CLOUD_ARCHITECTURE = "new_cloud_architecture"
-    NEW_IDENTITY_SYSTEM = "new_identity_system"
-    NEW_PROTOCOL = "new_protocol"
-    NEW_HARDWARE = "new_hardware"
-    NEW_SOFTWARE_ARCHITECTURE = "new_software_architecture"
-
-
 ALL_TECH_CATEGORIES: Tuple[TechCategory, ...] = tuple(TechCategory)
-
-
-class AdoptionStage(str, Enum):
-    RESEARCH = "research"
-    PILOT = "pilot"
-    EARLY_ADOPTION = "early_adoption"
-    MAINSTREAM = "mainstream"
-    DECLINING = "declining"
 
 
 _ADOPTION_MOD: Mapping[AdoptionStage, float] = {
@@ -66912,13 +62541,6 @@ def adoption_modifier(s: AdoptionStage) -> float:
     return _ADOPTION_MOD[s]
 
 
-class MaturityLevel(str, Enum):
-    NASCENT = "nascent"
-    DEVELOPING = "developing"
-    MATURE = "mature"
-    LEGACY = "legacy"
-
-
 _MATURITY_MOD: Mapping[MaturityLevel, float] = {
     MaturityLevel.NASCENT: 1.0,
     MaturityLevel.DEVELOPING: 0.85,
@@ -66929,13 +62551,6 @@ _MATURITY_MOD: Mapping[MaturityLevel, float] = {
 
 def maturity_modifier(m: MaturityLevel) -> float:
     return _MATURITY_MOD[m]
-
-
-class TrendDirection(str, Enum):
-    ACCELERATING = "accelerating"
-    STEADY = "steady"
-    SLOWING = "slowing"
-    UNCERTAIN = "uncertain"
 
 
 _TREND_MOD: Mapping[TrendDirection, float] = {
@@ -66969,19 +62584,6 @@ _ADVERSARY_RANK: Mapping[AdversaryCapability, int] = {
 
 def adversary_rank(a: AdversaryCapability) -> int:
     return _ADVERSARY_RANK[a]
-
-
-class ControlKind(str, Enum):
-    AUTHENTICATION = "authentication"
-    AUTHORIZATION = "authorization"
-    AUDIT = "audit"
-    ISOLATION = "isolation"
-    ATTESTATION = "attestation"
-    INVENTORY = "inventory"
-    RATE_LIMIT = "rate_limit"
-    HUMAN_REVIEW = "human_review"
-    CRYPTOGRAPHY = "cryptography"
-    MONITORING = "monitoring"
 
 
 class DefensivePosture(str, Enum):
@@ -67381,21 +62983,7 @@ _SCENARIO_CLASS_PLAYBOOK: Mapping[
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class ScenarioSnapshot:
     current: CurrentState
@@ -68264,11 +63852,6 @@ class FutureThreatScenarioEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _asset(
     aid: str, *,
     kind: str = "service",
@@ -69031,28 +64614,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -69138,19 +64699,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -69627,21 +65175,7 @@ class PromotionGates:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class InventionSnapshot:
     problems: Mapping[str, Problem]
@@ -70480,11 +66014,6 @@ class DefensiveInventionEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _problem(
     pid: str = "p1",
     sev: ProblemSeverity = ProblemSeverity.HIGH,
@@ -71256,28 +66785,6 @@ def test_sqlite_store_decision_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -71367,19 +66874,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -71802,21 +67296,7 @@ def canonical_edge(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class FabricSnapshot:
     fabric: SecurityFabric
@@ -72435,11 +67915,6 @@ class CrossDomainFabricEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 # ---- domain ----
 
 def test_contract_requires_name() -> None:
@@ -72986,28 +68461,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -73089,19 +68542,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -73438,21 +68878,7 @@ def _rank_key(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class AssuranceSnapshot:
     models: Mapping[str, ModelProfile]
@@ -74215,15 +69641,6 @@ class MultiModelAssuranceEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
-
-
 def _model(
     mid: str, *,
     role: ModelRole = ModelRole.REASONING,
@@ -74910,28 +70327,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -75005,19 +70400,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -75451,21 +70833,7 @@ class GlobalScorecard:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class OutcomeSnapshot:
     outcomes: Tuple[OutcomeRecord, ...]
@@ -76385,15 +71753,6 @@ class SecurityOutcomeScienceEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
-def _t(seconds: int) -> datetime:
-    return _t0() + timedelta(seconds=seconds)
-
-
 from datetime import timedelta  # noqa: E402
 
 
@@ -77205,28 +72564,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -77292,19 +72629,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -77526,21 +72850,7 @@ class GlobalValidationSummary:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class ValidationSnapshot:
     scenarios: Mapping[str, AttackScenario]
@@ -78273,11 +73583,6 @@ class AdversarialValidationEngine:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _scenario(
     sid: str, *,
     vector: AttackVector = AttackVector.AUTHORITY_ABUSE,
@@ -78956,28 +74261,6 @@ def test_default_library_covers_every_vector() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -79050,19 +74333,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — LOCKED HYDRA BASELINE
 # =============================================================================
@@ -79108,13 +74378,6 @@ class FindingKind(str, Enum):
     DUPLICATE_UNIT_ID = "duplicate_unit_id"
     MISSING_TERMINAL_DECLARATION = "missing_terminal_declaration"
     UNKNOWN_CONTRACT_CONSUMER = "unknown_contract_consumer"
-
-
-class Severity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 _SEVERITY_RANK: Mapping[Severity, int] = {
@@ -79438,21 +74701,7 @@ def canonical_integration_units() -> Tuple[IntegrationUnit, ...]:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class IntegrationSnapshot:
     units: Mapping[str, IntegrationUnit]
@@ -80084,11 +75333,6 @@ class GlobalIntegrationValidator:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _unit(
     uid: str = "P01", *,
     name: str = "Test",
@@ -80615,28 +75859,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -80717,19 +75939,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN ENUMS
 # =============================================================================
@@ -80758,13 +75967,6 @@ class TestOutcome(str, Enum):
     SKIPPED = "skipped"
     ERROR = "error"
     TIMEOUT = "timeout"
-
-
-class Severity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
 
 
 _SEVERITY_RANK: Mapping[Severity, int] = {
@@ -81278,21 +76480,7 @@ def compare_to_baseline(
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class FrameworkSnapshot:
     registry: TestRegistry
@@ -82349,11 +77537,6 @@ def full_demo_suite() -> List[TestDefinition]:
 # =============================================================================
 
 
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
-
-
 def _simple_pass() -> None:
     return
 
@@ -82435,12 +77618,6 @@ def test_result_requires_positive_attempts() -> None:
 
 def test_all_categories_count() -> None:
     assert len(ALL_CATEGORIES) == 11
-
-
-def test_severity_rank_ordering() -> None:
-    assert severity_rank(Severity.LOW) < severity_rank(Severity.MEDIUM)
-    assert severity_rank(Severity.MEDIUM) < severity_rank(Severity.HIGH)
-    assert severity_rank(Severity.HIGH) < severity_rank(Severity.CRITICAL)
 
 
 # ---- registry ----
@@ -82912,28 +78089,6 @@ def test_sqlite_store_baseline_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -83026,14 +78181,6 @@ from typing import (
 # =============================================================================
 
 
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
 # =============================================================================
 # SECTION 2 — DOMAIN ENUMS
 # =============================================================================
@@ -83060,23 +78207,12 @@ class QualityCategory(str, Enum):
 ALL_CATEGORIES: Tuple[QualityCategory, ...] = tuple(QualityCategory)
 
 
-class Severity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 _SEVERITY_RANK: Mapping[Severity, int] = {
     Severity.LOW: 1,
     Severity.MEDIUM: 2,
     Severity.HIGH: 3,
     Severity.CRITICAL: 4,
 }
-
-
-def severity_rank(s: Severity) -> int:
-    return _SEVERITY_RANK[s]
 
 
 # =============================================================================
@@ -83996,21 +79132,7 @@ class RemediationResult:
         return self.findings_after < self.findings_before
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class QualitySnapshot:
     subject: str
@@ -84469,11 +79591,6 @@ class _CleanWorkload:
 # =============================================================================
 # SECTION 11 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 _CLEAN_SOURCE = '''\
@@ -85071,28 +80188,6 @@ def test_sqlite_store_finding_roundtrip() -> None:
 # =============================================================================
 
 
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
-
-
 if __name__ == "__main__":
     passed, failed = _run_all_tests()
     print(f"\n{passed} passed, {failed} failed")
@@ -85183,19 +80278,6 @@ from typing import (
 # =============================================================================
 # SECTION 1 — CONTRACTS
 # =============================================================================
-
-
-class Clock(Protocol):
-    def now(self) -> datetime: ...
-
-
-class EvidenceEmitter(Protocol):
-    def emit(self, evidence: Mapping[str, Any]) -> None: ...
-
-
-class ProvenanceRecorder(Protocol):
-    def record(self, *, subject_id: str, action: str, at: datetime,
-               details: Mapping[str, Any]) -> None: ...
 
 
 # =============================================================================
@@ -85487,21 +80569,7 @@ class LedgerEntry:
 # =============================================================================
 
 
-class InvariantSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
 @dataclass(frozen=True)
-class InvariantViolation:
-    invariant_id: str
-    severity: InvariantSeverity
-    subject_id: str
-    detail: str
-
-
 @dataclass(frozen=True)
 class LedgerSnapshot:
     entries: Mapping[int, LedgerEntry]
@@ -86187,11 +81255,6 @@ def make_novelty(
 # =============================================================================
 # SECTION 11 — TESTS
 # =============================================================================
-
-
-def _t0() -> datetime:
-    from datetime import timezone
-    return datetime(2026, 1, 1, tzinfo=timezone.utc)
 
 
 def _empty_reviews(
@@ -86947,28 +82010,6 @@ def test_real_ledger_assessment() -> None:
 # =============================================================================
 # SECTION 13 — MANUAL RUNNER
 # =============================================================================
-
-
-def _run_all_tests() -> Tuple[int, int]:
-    import traceback
-    g = globals()
-    tests = sorted(
-        (name, fn) for name, fn in g.items()
-        if name.startswith("test_") and callable(fn)
-    )
-    passed = 0
-    failed = 0
-    for name, fn in tests:
-        try:
-            fn()
-        except Exception:
-            failed += 1
-            print(f"[FAIL] {name}")
-            traceback.print_exc()
-        else:
-            passed += 1
-            print(f"[ OK ] {name}")
-    return passed, failed
 
 
 if __name__ == "__main__":
