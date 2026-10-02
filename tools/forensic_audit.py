@@ -1,148 +1,56 @@
 #!/usr/bin/env python3
-"""Repository-wide forensic baseline for AI-Cyber.
-
-This tool is intentionally analysis-only: it never rewrites legacy sources.
-It records concrete AST/symbol/import evidence so reconstruction decisions can
-be made without guessing.
-"""
+"""Read-only AST inventory for AI-Cyber repository reconstruction."""
 from __future__ import annotations
-
-import ast
-import hashlib
-import json
+import argparse, ast, json
 from collections import Counter, defaultdict
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "docs" / "FORENSIC_BASELINE.json"
+def duplicate_names(names: list[str]) -> dict[str, int]:
+    counts = Counter(names)
+    return dict(sorted((n, c) for n, c in counts.items() if c > 1))
 
-LEGACY = [
-    "Assrf next .py",
-    "HYDRA_FINAL_CLIENT_HANDOVER_FIXED.py",
-    "HYDRA_MASTER_RECONSTRUCTED_v2.py",
-    "HYDRA_patched-3.py",
-    "IT_tech__MERGED_ALL_FIXES_APPLIED.py",
-    "New tech .py",
-]
-
-
-def audit(path: Path) -> dict:
-    raw = path.read_bytes()
-    text = raw.decode("utf-8")
-    result = {
-        "path": path.name,
-        "bytes": len(raw),
-        "lines": len(text.splitlines()),
-        "sha256": hashlib.sha256(raw).hexdigest(),
-        "parse": "ok",
-        "classes": [],
-        "functions": [],
-        "imports": [],
-        "phase_markers": [],
-        "syntax_error": None,
-    }
+def scan_file(path: Path) -> dict:
+    source = path.read_text(encoding="utf-8", errors="replace")
+    out = {"path": str(path), "bytes": len(source.encode("utf-8")),
+           "lines": source.count("\n") + 1, "classes": [], "functions": [],
+           "imports": [], "syntax_error": None}
     try:
-        tree = ast.parse(text, filename=str(path), type_comments=True)
+        tree = ast.parse(source, filename=str(path))
     except SyntaxError as exc:
-        result["parse"] = "failed"
-        result["syntax_error"] = {
-            "line": exc.lineno,
-            "offset": exc.offset,
-            "message": exc.msg,
-        }
-        return result
-
+        out["syntax_error"] = {"line": exc.lineno, "column": exc.offset, "message": exc.msg}
+        return out
     for node in ast.walk(tree):
-        if isinstance(node, ast.ClassDef):
-            result["classes"].append({
-                "name": node.name,
-                "line": node.lineno,
-                "end_line": getattr(node, "end_lineno", node.lineno),
-            })
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            result["functions"].append({
-                "name": node.name,
-                "line": node.lineno,
-                "end_line": getattr(node, "end_lineno", node.lineno),
-            })
-        elif isinstance(node, ast.Import):
-            result["imports"].extend(a.name for a in node.names)
-        elif isinstance(node, ast.ImportFrom):
-            result["imports"].append(
-                f"{node.module or ''}:"
-                + ",".join(a.name for a in node.names)
-            )
+        if isinstance(node, ast.ClassDef): out["classes"].append(node.name)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)): out["functions"].append(node.name)
+        elif isinstance(node, ast.Import): out["imports"].extend(a.name for a in node.names)
+        elif isinstance(node, ast.ImportFrom): out["imports"].append(f"{'.' * node.level}{node.module or ''}")
+    return out
 
-    result["phase_markers"] = [
-        i + 1 for i, line in enumerate(text.splitlines())
-        if "phase" in line.lower()
-        and any(ch.isdigit() for ch in line)
-    ]
-    return result
+def build_report(root: Path) -> dict:
+    reports = [scan_file(p) for p in sorted(root.rglob("*.py"))]
+    index = defaultdict(list)
+    for item in reports:
+        for n in item["classes"]: index[f"class:{n}"].append(item["path"])
+        for n in item["functions"]: index[f"function:{n}"].append(item["path"])
+    return {"root": str(root), "python_file_count": len(reports), "files": reports,
+            "cross_file_duplicate_symbols": {k: sorted(v) for k,v in index.items() if len(v) > 1}}
 
-
-def duplicate_names(items: list[dict]) -> dict:
-    grouped = defaultdict(list)
-    for item in items:
-        grouped[item["name"]].append(item["line"])
-    return {k: v for k, v in sorted(grouped.items()) if len(v) > 1}
-
-
-def main() -> None:
-    audits = [audit(ROOT / name) for name in LEGACY]
-    all_classes = []
-    all_functions = []
-    for item in audits:
-        all_classes.extend(
-            {"file": item["path"], **x} for x in item["classes"]
-        )
-        all_functions.extend(
-            {"file": item["path"], **x} for x in item["functions"]
-        )
-
-    cross_class = defaultdict(list)
-    cross_function = defaultdict(list)
-    for item in all_classes:
-        cross_class[item["name"]].append(item["file"])
-    for item in all_functions:
-        cross_function[item["name"]].append(item["file"])
-
-    report = {
-        "repository": "hasnatahmd21/AI-cyber",
-        "scope": LEGACY,
-        "source_count": len(audits),
-        "parse_failures": [x for x in audits if x["parse"] != "ok"],
-        "files": audits,
-        "cross_file_class_collisions": {
-            k: sorted(set(v)) for k, v in sorted(cross_class.items())
-            if len(set(v)) > 1
-        },
-        "cross_file_function_collisions": {
-            k: sorted(set(v)) for k, v in sorted(cross_function.items())
-            if len(set(v)) > 1
-        },
-        "totals": {
-            "bytes": sum(x["bytes"] for x in audits),
-            "lines": sum(x["lines"] for x in audits),
-            "classes": sum(len(x["classes"]) for x in audits),
-            "functions": sum(len(x["functions"]) for x in audits),
-        },
-    }
-
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-
-    print(json.dumps({
-        "sources": report["source_count"],
-        "parse_failures": len(report["parse_failures"]),
-        "total_lines": report["totals"]["lines"],
-        "total_classes": report["totals"]["classes"],
-        "total_functions": report["totals"]["functions"],
-        "cross_file_class_collisions": len(report["cross_file_class_collisions"]),
-        "cross_file_function_collisions": len(report["cross_file_function_collisions"]),
-        "output": str(OUTPUT),
-    }, indent=2))
-
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("root", type=Path, nargs="?", default=Path("."))
+    parser.add_argument("--json", action="store_true")
+    args = parser.parse_args()
+    report = build_report(args.root.resolve())
+    if args.json: print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(f"Python files: {report['python_file_count']}")
+        for item in report["files"]:
+            status = "OK" if not item["syntax_error"] else "ERROR"
+            print(f"{item['path']}: {item['lines']} lines, {len(item['classes'])} classes, {len(item['functions'])} functions, syntax={status}")
+            if item["classes"] and duplicate_names(item["classes"]): print("  duplicate classes:", duplicate_names(item["classes"]))
+            if item["functions"] and duplicate_names(item["functions"]): print("  duplicate functions:", duplicate_names(item["functions"]))
+        print("Cross-file duplicate symbols:", len(report["cross_file_duplicate_symbols"]))
+    return 0
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
