@@ -9,8 +9,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: ai-cyber-forensic-${{ github.ref }}
-  cancel-in-progress: true
+  group: ai-cyber-forensic-${{ github.sha }}
+  cancel-in-progress: false
 
 jobs:
   forensic:
