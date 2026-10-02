@@ -1,0 +1,61 @@
+name: AI-Cyber Reconstruction Verification
+
+on:
+  push:
+    branches:
+      - repair/forensic-reconstruction
+
+permissions:
+  contents: write
+
+jobs:
+  reconstruct:
+    if: "!contains(github.event.head_commit.message, '[reconstruction-bot]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate reconstructed package
+        run: python tools/reconstruct.py
+      - name: Compile legacy sources
+        run: |
+          python -m py_compile "Assrf next .py"
+          python -m py_compile "HYDRA_FINAL_CLIENT_HANDOVER_FIXED.py"
+          python -m py_compile "HYDRA_MASTER_RECONSTRUCTED_v2.py"
+          python -m py_compile "HYDRA_patched-3.py"
+          python -m py_compile "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
+          python -m py_compile "New tech .py"
+      - name: Compile reconstructed package
+        env:
+          PYTHONPATH: src
+        run: |
+          python -m compileall -q src
+          python - <<'PY'
+          import ai_cyber_os.reconstructed as pkg
+          print("reconstructed import: OK")
+          print("public symbols:", len([x for x in dir(pkg) if not x.startswith("_")]))
+          PY
+      - name: Structural gates
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          m=json.loads(Path("src/ai_cyber_os/reconstructed/RECONSTRUCTION_MANIFEST.json").read_text())
+          assert m["duplicate_top_level_symbols"] == {}, m["duplicate_top_level_symbols"]
+          assert m["modules"], "no generated modules"
+          assert all(x["lines"] <= 7050 for x in m["modules"])
+          print("structural gates: OK")
+          PY
+      - name: Commit generated reconstruction
+        run: |
+          git config user.name "AI-Cyber Reconstruction Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit."
+          else
+            git commit -m "Reconstruct AI-Cyber into verified modules [reconstruction-bot]"
+            git push
+          fi
