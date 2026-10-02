@@ -27,7 +27,7 @@ def _signature(node: ast.AST) -> str | None:
 
 def _fingerprint(source: str, node: ast.AST) -> str:
     segment = ast.get_source_segment(source, node) or ""
-    normalized = ast.dump(ast.parse(segment), annotate_fields=True, include_attributes=False)
+    normalized = ast.dump(node, annotate_fields=True, include_attributes=False)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
