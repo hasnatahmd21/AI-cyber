@@ -25,8 +25,7 @@ def _signature(node: ast.AST) -> str | None:
     return None
 
 
-def _fingerprint(source: str, node: ast.AST) -> str:
-    segment = ast.get_source_segment(source, node) or ""
+def _fingerprint(node: ast.AST) -> str:
     normalized = ast.dump(node, annotate_fields=True, include_attributes=False)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
@@ -81,7 +80,7 @@ def scan_file(path: Path) -> dict:
                 "line": node.lineno,
                 "end_line": getattr(node, "end_lineno", node.lineno),
                 "bases": [ast.unparse(b) for b in node.bases],
-                "fingerprint": _fingerprint(source, node),
+                "fingerprint": _fingerprint(node),
             })
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             out["functions"].append(node.name)
@@ -98,7 +97,12 @@ def scan_file(path: Path) -> dict:
         elif isinstance(node, ast.ImportFrom):
             out["imports"].append(f"{'.' * node.level}{node.module or ''}")
 
-    out["references"] = sorted(_loaded_names(tree))
+    # Collect loaded names during the same AST traversal used for definitions/imports.
+    loaded_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
+            loaded_names.add(node.id)
+    out["references"] = sorted(loaded_names)
     return out
 
 
