@@ -2441,7 +2441,7 @@ class ContainmentEngine:
             affected_session_ids=affected, computed_at=now,
         )
 
-     def sweep(self) -> tuple[ContainmentRecord, ...]:
+    def sweep(self) -> tuple[ContainmentRecord, ...]:
         """Expire time-bounded containments and return the resulting records.
 
         Expiry is monotonic: a sweep never promotes a containment level and
