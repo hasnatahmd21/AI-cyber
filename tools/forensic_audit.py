@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import copy
 import hashlib
 import json
 from collections import Counter, defaultdict
@@ -26,7 +27,12 @@ def _signature(node: ast.AST) -> str | None:
 
 
 def _fingerprint(node: ast.AST) -> str:
-    normalized = ast.dump(node, annotate_fields=True, include_attributes=False)
+    # Definition identity is intentionally excluded: two differently named
+    # definitions with the same implementation body must be detectable.
+    normalized_node = copy.copy(node)
+    if isinstance(normalized_node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        normalized_node.name = "__duplicate_definition__"
+    normalized = ast.dump(normalized_node, annotate_fields=True, include_attributes=False)
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
