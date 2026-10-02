@@ -1,0 +1,25 @@
+name: AI Cyber OS Validation
+
+on:
+  push:
+    branches: ["main", "refactor/**"]
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile canonical modules
+        run: python -m compileall -q src/ai_cyber_os
+      - name: Import canonical integration
+        run: PYTHONPATH=src python -c "from ai_cyber_os.integration import assert_healthy; assert_healthy()"
+      - name: Run canonical core self-test entrypoint
+        run: PYTHONPATH=src python src/ai_cyber_os/core/hydra_core.py
+      - name: Run OS security tests
+        run: PYTHONPATH=src python src/ai_cyber_os/security/os_security.py
+      - name: Run forensic audit tests
+        run: PYTHONPATH=src python src/ai_cyber_os/audit/forensic.py
