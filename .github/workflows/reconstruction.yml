@@ -1,0 +1,33 @@
+name: AI-Cyber Forensic Verification
+
+on:
+  push:
+    branches:
+      - repair/forensic-reconstruction
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-cyber-forensic-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  forensic:
+    timeout-minutes: 15
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run repository forensic audit
+        run: python tools/forensic_audit.py --json > forensic-report.json
+      - name: Validate audit output
+        run: test -s forensic-report.json
+      - name: Compile canonical runtime
+        run: python -m py_compile src/ai_cyber_os/hydra.py src/ai_cyber_os/__init__.py
+      - name: Run forensic and runtime tests
+        run: |
+          python -m pip install --disable-pip-version-check pytest
+          python -m pytest -q tests/test_forensic_audit.py tests/test_canonical_runtime.py
