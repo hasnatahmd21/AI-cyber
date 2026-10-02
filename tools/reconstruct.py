@@ -20,7 +20,7 @@ SOURCE = ROOT / "HYDRA_patched-3.py"
 OUT = ROOT / "src" / "ai_cyber_os"
 MAX_LINES = 7000
 
-PHASE_RE = re.compile(r"(?im)^\s*#*\s*PHASE\s+(\d{1,2})\b|(?im)^\s*#*\s*Phase\s+(\d{1,2})\b")
+PHASE_RE = re.compile(r"^\s*#*\s*(?:PHASE|Phase)\s+(\d{1,2})\b", re.MULTILINE)
 
 def phase_at(source: str, lineno: int, headers: list[tuple[int,int]]) -> int:
     best = 0
