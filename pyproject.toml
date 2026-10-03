@@ -1,8 +1,12 @@
 [project]
 name = "ai-cyber-os"
 version = "0.1.0"
-description = "Canonical AI-Cyber OS runtime"
+description = "Canonical AI-Cyber cybersecurity intelligence and operations runtime"
 requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.7,<3.0",
+    "pydantic-settings>=2.2,<3.0",
+]
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -33,7 +33,7 @@ jobs:
       - name: Run forensic inventory
         run: python tools/forensic_inventory.py --output forensic_inventory.json
       - name: Install test runner
-        run: python -m pip install --disable-pip-version-check pytest
+        run: python -m pip install --disable-pip-version-check -e . pytest
       - name: Run focused verification
         run: python -m pytest -q tests
       - name: Run complete 27-phase runtime verification
