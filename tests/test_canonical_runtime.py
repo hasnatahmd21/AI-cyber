@@ -10,7 +10,10 @@ def test_canonical_runtime_imports():
 def test_27_phase_runtime_verification():
     from ai_cyber_os.hydra import run_hydra_phase
     result = run_hydra_phase("all")
-    assert result["summary"]["phases"] == 27
+    logical_phases = {f"phase{i}" for i in range(1, 28)}
+    assert logical_phases.issubset(result)
+    assert "phase8_agents" in result  # auxiliary verification inside Phase 8
+    assert len(logical_phases.intersection(result)) == 27
     assert result["summary"]["success"] is True, result
 
 
