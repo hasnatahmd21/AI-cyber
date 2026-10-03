@@ -1,37 +1,49 @@
-name: AI-Cyber Forensic Verification
+name: AI-Cyber Reconstruction Verification
 
 on:
   push:
     branches:
       - repair/forensic-reconstruction
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ai-cyber-forensic-${{ github.ref }}
+  group: ai-cyber-reconstruction-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  forensic:
-    timeout-minutes: 15
+  verify:
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Run repository forensic audit
-        run: python tools/forensic_audit.py
-      - name: Compile legacy sources
+      - name: Compile canonical runtime and verification tooling
         run: |
-          python -m py_compile "Assrf next .py"
-          python -m py_compile "HYDRA_FINAL_CLIENT_HANDOVER_FIXED.py"
-          python -m py_compile "HYDRA_MASTER_RECONSTRUCTED_v2.py"
-          python -m py_compile "HYDRA_patched-3.py"
-          python -m py_compile "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
-          python -m py_compile "New tech .py"
-      - name: Verify baseline artifact
+          python -m py_compile src/ai_cyber_os/hydra.py
+          python -m py_compile src/ai_cyber_os/__init__.py
+          python -m py_compile tools/forensic_audit.py
+          python -m py_compile tools/forensic_inventory.py
+          python -m py_compile tests/*.py
+      - name: Run forensic inventory
+        run: python tools/forensic_inventory.py --output forensic_inventory.json
+      - name: Install test runner
+        run: python -m pip install --disable-pip-version-check pytest
+      - name: Run focused verification
+        run: python -m pytest -q tests
+      - name: Run complete 27-phase runtime verification
+        env:
+          PYTHONPATH: src
+        run: python -c "from ai_cyber_os.hydra import run_hydra_phase; r=run_hydra_phase('all'); assert r['summary']['success'], r"
+      - name: Run final hardening verification
+        env:
+          PYTHONPATH: src
+        run: python -c "from ai_cyber_os.hydra import run_final_hardening_verification; r=run_final_hardening_verification(); assert r['verified'] and r['failed']==0, r"
+      - name: Verify baseline artifacts
         run: |
           test -s docs/FORENSIC_BASELINE.md
           test -s docs/FORENSIC_BASELINE.json
