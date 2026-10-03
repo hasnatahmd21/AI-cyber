@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - repair/forensic-reconstruction
+      - main
   workflow_dispatch:
 
 permissions:
