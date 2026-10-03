@@ -39,7 +39,7 @@ jobs:
           PYTHONPATH: src
         continue-on-error: true
         run: |
-          python -c "from ai_cyber_os.hydra import run_final_hardening_verification; r=run_final_hardening_verification(); print([x for x in r['checks'] if x['status'] != 'PASS'])"
+          python -c "from ai_cyber_os.hydra import run_hydra_phase, run_final_hardening_verification; p=run_hydra_phase('all'); print('PHASE_SUMMARY', p['summary']); h=run_final_hardening_verification(); print('HARDENING_FAILURES', [x for x in h['checks'] if x['status'] != 'PASS'])"
       - name: Run focused verification
         env:
           PYTHONPATH: src
