@@ -3262,7 +3262,10 @@ def run_phase5_tests() -> unittest.result.TestResult:
 
 
 if __name__ == "__main__":
-    run_phase5_tests()"""
+    run_phase5_tests()
+
+
+"""
 HYDRA™
 PHASE 6 — SECURITY GRAPH & ATTACK-PATH RECONSTRUCTION
 

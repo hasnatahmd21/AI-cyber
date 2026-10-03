@@ -1,0 +1,37 @@
+{
+  "schema": "ai-cyber.forensic-baseline.v2",
+  "repository": "hasnatahmd21/AI-cyber",
+  "purpose": "Immutable reconstruction baseline metadata; no implementation is declared canonical.",
+  "preservation_rule": "Legacy sources remain evidence until behavior, callers, contracts, and tests prove retirement is safe.",
+  "known_legacy_sources": [
+    "Assrf next .py",
+    "HYDRA_FINAL_CLIENT_HANDOVER_FIXED.py",
+    "HYDRA_MASTER_RECONSTRUCTED_v2.py",
+    "HYDRA_patched-3.py",
+    "IT_tech__MERGED_ALL_FIXES_APPLIED.py",
+    "New tech .py"
+  ],
+  "repair_branch": "repair/forensic-reconstruction",
+  "canonicalization_status": "not_started",
+  "required_gates": [
+    "syntax",
+    "top_level_duplicate_inventory",
+    "cross_file_dependency_inventory",
+    "phase_ownership",
+    "capability_inventory",
+    "canonical_contract_selection",
+    "unit_tests",
+    "integration_tests",
+    "regression_tests",
+    "end_to_end_tests",
+    "post_repair_forensic_rescan",
+    "git_diff_review",
+    "clean_worktree"
+  ],
+  "known_findings": [
+    "New tech .py contains concatenated phase/module material and a confirmed syntax corruption near line 3265.",
+    "Multiple legacy monoliths contain repeated implementations and phase markers.",
+    "Existing reconstruction automation must not select a canonical source solely by filename.",
+    "A minimal import test is insufficient evidence of system wiring."
+  ]
+}
