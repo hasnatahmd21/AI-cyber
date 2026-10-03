@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / "HYDRA_patched-3.py"
-OUT = ROOT / "src" / "ai_cyber_os"
+OUT = ROOT / "reconstruction_artifacts" / "ai_cyber_os"
 MAX_LINES = 7000
 
 PHASE_RE = re.compile(r"^\s*#*\s*(?:PHASE|Phase)\s+(\d{1,2})\b", re.MULTILINE)
@@ -123,7 +123,7 @@ def main() -> None:
 
     headers: list[tuple[int,int]] = []
     for m in PHASE_RE.finditer(source):
-        phase = int(m.group(1) or m.group(2))
+        phase = int(m.group(1))
         line = source.count("\n", 0, m.start()) + 1
         headers.append((line, phase))
     headers.sort()
