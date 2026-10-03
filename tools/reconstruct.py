@@ -226,7 +226,6 @@ def main() -> None:
     }
 
     module_for_comp: dict[int,str] = {}
-    module_text: dict[str,list[str]] = {}
     module_components: dict[str,list[int]] = {}
 
     for (role, phase), cis in sorted(groups.items(), key=lambda x:(x[0][1],x[0][0])):
@@ -294,10 +293,6 @@ def main() -> None:
     # Dynamic compatibility module: explicit public imports make string/global
     # lookups resolve against a known namespace rather than accidental monolith
     # ordering.
-    dyn_names = [n for n, owner in symbol_owner.items()
-                 if module_for_comp[comp_id[owner]] in module_text or any(
-                     ci in dynamic_comps for ci in module_components.get(module_for_comp[comp_id[owner]], [])
-                 )]
     # Only create this module when dynamic nodes exist; it is intentionally
     # narrow and does not duplicate implementations.
     dyn_modules = [m for m, cis in module_components.items()
