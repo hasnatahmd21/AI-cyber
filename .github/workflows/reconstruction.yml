@@ -1,4 +1,5 @@
 name: AI-Cyber Reconstruction Verification
+# Canonical 27-phase runtime verification gate.
 
 on:
   push:
