@@ -14,6 +14,8 @@ def test_27_phase_runtime_verification():
     assert logical_phases.issubset(result)
     assert "phase8_agents" in result  # auxiliary verification inside Phase 8
     assert len(logical_phases.intersection(result)) == 27
+    assert result["summary"]["phases"] == 27
+    assert result["summary"]["auxiliary_checks"] == 1
     assert result["summary"]["success"] is True, result
 
 

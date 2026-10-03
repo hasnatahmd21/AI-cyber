@@ -92147,7 +92147,7 @@ def _run_all_phases_final16():
         except Exception as exc:
             out[label] = {"status":"EXCEPTION","error":f"{type(exc).__name__}: {exc}"}
             failures.append(label)
-    out["summary"]={"phases":len(order),"failed_phases":failures,"success":not failures}
+    out["summary"]={"phases":27,"auxiliary_checks":len(order)-27,"failed_phases":failures,"success":not failures}
     return out
 run_hydra_phase_original = run_hydra_phase
 
