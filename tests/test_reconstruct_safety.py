@@ -12,7 +12,7 @@ def test_reconstruction_output_isolated_from_canonical_package():
 
 
 def test_phase_header_parsing_uses_existing_regex_group():
-    source = "# PHASE 12 — example\\nclass Demo: pass\\n"
+    source = "# PHASE 12 — example\nclass Demo: pass\n"
     matches = list(reconstruct.PHASE_RE.finditer(source))
     assert len(matches) == 1
     assert int(matches[0].group(1)) == 12
