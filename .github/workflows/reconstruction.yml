@@ -41,6 +41,8 @@ jobs:
         run: |
           python -c "from ai_cyber_os.hydra import run_final_hardening_verification; r=run_final_hardening_verification(); print([x for x in r['checks'] if x['status'] != 'PASS'])"
       - name: Run focused verification
+        env:
+          PYTHONPATH: src
         run: python -m pytest -q tests
       - name: Run complete 27-phase runtime verification
         env:
