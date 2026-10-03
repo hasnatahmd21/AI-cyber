@@ -320,14 +320,6 @@ def main() -> None:
         json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
 
-    # Package-level compatibility entry point.
-    compat = ROOT / "src" / "ai_cyber_os.py"
-    compat.write_text(
-        '"""Compatibility import surface for the reconstructed AI-Cyber package."""\n'
-        "from ai_cyber_os.reconstructed import *\n",
-        encoding="utf-8",
-    )
-
     print(json.dumps({
         "source": SOURCE.name,
         "nodes": len(nodes),
