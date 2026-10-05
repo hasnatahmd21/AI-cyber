@@ -45,7 +45,8 @@ def test_individual_phase_entrypoint_returns_success():
         check=False,
     )
     payload = _assert_successful_json(result)
-    assert payload["phase_result"]["phase"] == 1
+    assert payload["phase_result"]["component"] == "nexora_cyber_core"
+    assert payload["phase_result"]["verified"] is True
 
 
 def test_installed_console_entrypoint_runs():
