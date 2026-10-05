@@ -38,6 +38,33 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+
+
+def _result_successful(result: dict[str, Any]) -> bool:
+    """Evaluate a phase result without assuming every phase has a summary."""
+    if not isinstance(result, dict):
+        return False
+    if result.get("success") is False or result.get("verified") is False:
+        return False
+    if result.get("status") in {"FAIL", "FAILED", "EXCEPTION", "NO_RESULT", "ERROR"}:
+        return False
+    if result.get("failed", 0) or result.get("tests_failed", 0):
+        return False
+    if result.get("failures"):
+        return False
+    summary = result.get("summary")
+    if isinstance(summary, dict):
+        return _result_successful(summary)
+    results = result.get("results")
+    if isinstance(results, dict):
+        return all(
+            value in {"PASS", "VERIFIED", True}
+            if isinstance(value, (str, bool))
+            else _result_successful(value)
+            for value in results.values()
+        )
+    return True
+
 def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
@@ -58,7 +85,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.hardening:
                 payload["hardening_result"] = run_final_hardening_verification()
 
-        success = bool(phase_result.get("summary", {}).get("success", False))
+        success = _result_successful(phase_result)
         if args.hardening:
             success = success and bool(payload["hardening_result"].get("verified", False))
 
