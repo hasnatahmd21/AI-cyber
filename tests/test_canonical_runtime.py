@@ -81,3 +81,23 @@ def test_final_hardening_verification():
     result = run_final_hardening_verification()
     assert result["verified"] is True, result
     assert result["failed"] == 0, result
+
+
+def test_runtime_result_contract_fails_closed_on_false_boolean():
+    from ai_cyber_os.hydra import _phase_result_ok_final
+
+    assert _phase_result_ok_final(False) is False
+    assert _phase_result_ok_final(True) is True
+
+
+def test_integration_result_rejects_unknown_status():
+    import pytest
+    from ai_cyber_os.hydra import IntegrationResult, Phase20ValidationError
+
+    with pytest.raises(Phase20ValidationError):
+        IntegrationResult(
+            result_id="result-1",
+            tenant_id="tenant-a",
+            connector_id="connector-1",
+            status="NOT-A-REAL-STATUS",
+        )
