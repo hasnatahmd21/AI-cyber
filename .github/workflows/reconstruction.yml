@@ -33,7 +33,9 @@ jobs:
       - name: Run forensic inventory
         run: python tools/forensic_inventory.py --output forensic_inventory.json
       - name: Install test runner
-        run: python -m pip install --disable-pip-version-check -e . pytest
+        run: |
+          python -m pip install --disable-pip-version-check -e . pytest
+          python -m pip check
       - name: Run focused verification
         env:
           PYTHONPATH: src
@@ -46,6 +48,22 @@ jobs:
           import json
           from pathlib import Path
           data = json.loads(Path("cli_operational_result.json").read_text(encoding="utf-8"))
+          assert data["phase_result"]["summary"]["success"] is True, data
+          assert data["hardening_result"]["verified"] is True, data
+          assert data["hardening_result"]["failed"] == 0, data
+          PY
+      - name: Build and smoke-test distributable wheel
+        run: |
+          python -m pip install --disable-pip-version-check build
+          python -m build --wheel --outdir /tmp/ai-cyber-dist
+          python -m venv /tmp/ai-cyber-wheel-env
+          /tmp/ai-cyber-wheel-env/bin/python -m pip install --disable-pip-version-check /tmp/ai-cyber-dist/*.whl
+          /tmp/ai-cyber-wheel-env/bin/python -m pip check
+          /tmp/ai-cyber-wheel-env/bin/ai-cyber --phase all --hardening --json > wheel_cli_result.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("wheel_cli_result.json").read_text(encoding="utf-8"))
           assert data["phase_result"]["summary"]["success"] is True, data
           assert data["hardening_result"]["verified"] is True, data
           assert data["hardening_result"]["failed"] == 0, data
