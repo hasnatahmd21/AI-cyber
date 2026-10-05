@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
 
 
-def _assert_successful_json(result: subprocess.CompletedProcess[str]) -> None:
+def _assert_successful_json(result: subprocess.CompletedProcess[str]) -> dict:
     assert result.returncode == 0, result.stderr
-    assert '"phase_result"' in result.stdout
-    assert '"success": true' in result.stdout
+    assert result.stdout.lstrip().startswith("{")
+    assert result.stdout.rstrip().endswith("}")
+    payload = json.loads(result.stdout)
+    assert payload["phase_result"]["summary"]["success"] is True
+    return payload
 
 
 def test_module_entrypoint_runs():
@@ -18,8 +22,8 @@ def test_module_entrypoint_runs():
         text=True,
         check=False,
     )
-    _assert_successful_json(result)
-    assert result.stderr or result.stdout.startswith("{")
+    payload = _assert_successful_json(result)
+    assert "phase_result" in payload
 
 
 def test_installed_console_entrypoint_runs():
@@ -31,11 +35,9 @@ def test_installed_console_entrypoint_runs():
         text=True,
         check=False,
     )
-    _assert_successful_json(result)
-    assert '"hardening_result"' in result.stdout
-    assert '"verified": true' in result.stdout
-    assert '"failed": 0' in result.stdout
-    assert result.stdout.lstrip().startswith("{")
+    payload = _assert_successful_json(result)
+    assert payload["hardening_result"]["verified"] is True
+    assert payload["hardening_result"]["failed"] == 0
 
 
 def test_console_entrypoint_is_declared():
