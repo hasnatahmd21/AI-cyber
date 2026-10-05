@@ -30,7 +30,7 @@ def _assert_phase_result_healthy(value, path="result"):
             f"{path}: status={value.get('status')!r}"
         )
         assert value.get("failed", 0) in (0, False), f"{path}: failed={value.get('failed')!r}"
-        assert value.get("tests_failed", 0) in (0, False), (
+        assert value.get("tests_failed", 0) in (0, False, []), (
             f"{path}: tests_failed={value.get('tests_failed')!r}"
         )
         assert not value.get("failures"), f"{path}: failures={value.get('failures')!r}"
