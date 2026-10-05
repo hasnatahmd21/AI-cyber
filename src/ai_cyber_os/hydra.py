@@ -92364,6 +92364,67 @@ def run_final_hardening_verification() -> dict:
     return {"total":len(checks),"passed":sum(x["status"]=="PASS" for x in checks),"failed":sum(x["status"]=="FAIL" for x in checks),"verified":all(x["status"]=="PASS" for x in checks),"checks":checks}
 
 # ============================================================================
+# FINAL SEMANTIC CLOSURE — fail closed on invalid runtime states
+# ============================================================================
+# Applied after historical repair passes so exported behavior cannot silently
+# reinterpret invalid state as successful execution.
+def _phase_result_ok_final_strict(result):
+    if result is None:
+        return False
+    if isinstance(result, bool):
+        return result
+    if isinstance(result, str):
+        return result.strip().upper() in {"PASS", "PASSED", "VERIFIED", "SUCCESS"}
+    if isinstance(result, Mapping):
+        if result.get("success") is False or result.get("verified") is False:
+            return False
+        if result.get("status") in {"FAIL", "FAILED", "EXCEPTION", "NO_RESULT", "ERROR"}:
+            return False
+        if result.get("failed", 0) or result.get("tests_failed", 0) or result.get("failures"):
+            return False
+        nested = result.get("results")
+        if isinstance(nested, Mapping):
+            return all(_phase_result_ok_final_strict(v) for v in nested.values())
+        return True
+    if isinstance(result, (list, tuple, set)):
+        return all(_phase_result_ok_final_strict(v) for v in result)
+    return False
+_phase_result_ok_final = _phase_result_ok_final_strict
+
+# Invalid integration status must never be silently converted into SUCCESS.
+if "IntegrationResult" in globals():
+    _integration_result_init_semantic_original = IntegrationResult.__init__
+    def _integration_result_init_semantic(self, *args, **kwargs):
+        status = kwargs.get("status")
+        if status is not None and not isinstance(status, Enum):
+            try:
+                IntegrationResultStatus(status)
+            except (TypeError, ValueError) as exc:
+                raise Phase20ValidationError(f"Invalid integration result status: {status!r}") from exc
+        _integration_result_init_semantic_original(self, *args, **kwargs)
+    IntegrationResult.__init__ = _integration_result_init_semantic
+
+# Simulated response markers are safety-critical. Registry/marker failures
+# propagate instead of returning an ambiguous response that could look real.
+if "CyberResponseDispatcher" in globals() and "SimulatedResponseConnector" in globals():
+    _response_dispatch_semantic_original = CyberResponseDispatcher.dispatch
+    def _response_dispatch_semantic(self, request):
+        result = _response_dispatch_semantic_original(self, request)
+        connectors = self.connector_registry.find_capable(
+            tenant_id=request.tenant_id,
+            action_type=request.action_type,
+        )
+        if connectors and isinstance(connectors[0], SimulatedResponseConnector):
+            object.__setattr__(result, "executed", False)
+            object.__setattr__(result, "_simulated", True)
+            object.__setattr__(result, "external_request_id", None)
+            message = str(getattr(result, "message", "")).strip()
+            if not message.startswith("SIMULATED:"):
+                object.__setattr__(result, "message", ("SIMULATED: " + message).strip())
+        return result
+    CyberResponseDispatcher.dispatch = _response_dispatch_semantic
+
+# ============================================================================
 # FINAL RELEASE ENTRYPOINT
 # ============================================================================
 if __name__ == "__main__":
