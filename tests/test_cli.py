@@ -26,6 +26,20 @@ def test_module_entrypoint_runs():
     assert "phase_result" in payload
 
 
+
+def test_individual_phase_entrypoint_returns_success():
+    executable = shutil.which("ai-cyber")
+    assert executable is not None, "installed console entrypoint is missing"
+    result = subprocess.run(
+        [executable, "--phase", "phase1", "--json"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    payload = _assert_successful_json(result)
+    assert payload["phase_result"]["phase"] == 1
+
+
 def test_installed_console_entrypoint_runs():
     executable = shutil.which("ai-cyber")
     assert executable is not None, "installed console entrypoint is missing"
