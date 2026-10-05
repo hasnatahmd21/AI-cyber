@@ -19,6 +19,7 @@ def test_module_entrypoint_runs():
         check=False,
     )
     _assert_successful_json(result)
+    assert result.stderr or result.stdout.startswith("{")
 
 
 def test_installed_console_entrypoint_runs():
@@ -34,6 +35,7 @@ def test_installed_console_entrypoint_runs():
     assert '"hardening_result"' in result.stdout
     assert '"verified": true' in result.stdout
     assert '"failed": 0' in result.stdout
+    assert result.stdout.lstrip().startswith("{")
 
 
 def test_console_entrypoint_is_declared():
