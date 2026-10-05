@@ -13,9 +13,11 @@ Run from the repository root:
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import os
+import secrets
 from pathlib import Path
 import socket
 import subprocess
@@ -30,7 +32,11 @@ PYTHON = sys.executable
 TIMEOUT = int(os.environ.get("AI_CYBER_REDTEAM_TIMEOUT", "90"))
 
 
-def _run(args: list[str], timeout: int = TIMEOUT) -> subprocess.CompletedProcess[str]:
+def _run(
+    args: list[str],
+    timeout: int = TIMEOUT,
+    env: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         args,
         cwd=ROOT,
@@ -38,6 +44,7 @@ def _run(args: list[str], timeout: int = TIMEOUT) -> subprocess.CompletedProcess
         text=True,
         timeout=timeout,
         check=False,
+        env=env,
     )
 
 
@@ -250,6 +257,106 @@ def determinism_probe() -> list[dict[str, Any]]:
     )]
 
 
+def protected_canary_probe() -> list[dict[str, Any]]:
+    """Provision a temporary encrypted canary and attack its retrieval boundary."""
+    results: list[dict[str, Any]] = []
+    data_dir = Path(tempfile.mkdtemp(prefix="ai-cyber-protected-"))
+    key = secrets.token_bytes(32)
+    key_text = base64.urlsafe_b64encode(key).decode("ascii")
+    base_env = os.environ.copy()
+    base_env["AI_CYBER_PROTECTED_DATA_DIR"] = str(data_dir)
+    base_env["AI_CYBER_PROTECTED_DATA_KEY"] = key_text
+
+    provision = r'''
+from ai_cyber_os.protected_data import provision_protected_canary
+provision_protected_canary()
+print("CANARY_PROVISIONED")
+'''
+    try:
+        proc = _run([PYTHON, "-c", provision], timeout=20, env=base_env)
+        ok = proc.returncode == 0 and "CANARY_PROVISIONED" in proc.stdout
+        results.append(_case(
+            "canary_provisioning",
+            ok,
+            f"exit={proc.returncode}; stdout={proc.stdout[-200:]!r}",
+            "CRITICAL" if not ok else "INFO",
+        ))
+        if not ok:
+            return results
+    except subprocess.TimeoutExpired:
+        return [_case("canary_provisioning", False, "timeout", "CRITICAL")]
+
+    authorized = r'''
+from ai_cyber_os.protected_data import retrieve_protected_data
+value = retrieve_protected_data()
+if value != "PROJECT IS WEAK":
+    raise SystemExit("WRONG_CANARY")
+print("AUTHORIZED_CANARY_OK")
+'''
+    try:
+        proc = _run([PYTHON, "-c", authorized], timeout=20, env=base_env)
+        results.append(_case(
+            "authorized_canary_access",
+            proc.returncode == 0 and "AUTHORIZED_CANARY_OK" in proc.stdout,
+            f"exit={proc.returncode}; stdout={proc.stdout[-200:]!r}",
+            "CRITICAL",
+        ))
+    except subprocess.TimeoutExpired:
+        results.append(_case("authorized_canary_access", False, "timeout", "CRITICAL"))
+
+    red_env = os.environ.copy()
+    red_env.pop("AI_CYBER_PROTECTED_DATA_KEY", None)
+    red_env["AI_CYBER_PROTECTED_DATA_DIR"] = str(data_dir)
+    unauthorized = r'''
+from ai_cyber_os.protected_data import retrieve_protected_data
+try:
+    value = retrieve_protected_data()
+except Exception:
+    print("UNAUTHORIZED_BLOCKED")
+else:
+    print("LEAK:" + value)
+'''
+    try:
+        proc = _run([PYTHON, "-c", unauthorized], timeout=20, env=red_env)
+        leaked = "PROJECT IS WEAK" in proc.stdout
+        blocked = "UNAUTHORIZED_BLOCKED" in proc.stdout and not leaked
+        results.append(_case(
+            "unauthorized_canary_retrieval",
+            blocked,
+            f"exit={proc.returncode}; leaked={leaked}; stdout={proc.stdout[-300:]!r}",
+            "CRITICAL" if leaked else ("HIGH" if not blocked else "INFO"),
+        ))
+    except subprocess.TimeoutExpired:
+        results.append(_case("unauthorized_canary_retrieval", False, "timeout", "HIGH"))
+
+    wrong_env = dict(red_env)
+    wrong_env["AI_CYBER_PROTECTED_DATA_KEY"] = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("ascii")
+    try:
+        proc = _run([PYTHON, "-c", unauthorized], timeout=20, env=wrong_env)
+        leaked = "PROJECT IS WEAK" in proc.stdout
+        blocked = "UNAUTHORIZED_BLOCKED" in proc.stdout and not leaked
+        results.append(_case(
+            "wrong_key_canary_retrieval",
+            blocked,
+            f"exit={proc.returncode}; leaked={leaked}; stdout={proc.stdout[-300:]!r}",
+            "CRITICAL" if leaked else ("HIGH" if not blocked else "INFO"),
+        ))
+    except subprocess.TimeoutExpired:
+        results.append(_case("wrong_key_canary_retrieval", False, "timeout", "HIGH"))
+
+    raw = data_dir / "protected_canary.json"
+    raw_text = raw.read_text(encoding="utf-8") if raw.exists() else ""
+    results.append(_case(
+        "canary_at_rest_not_plaintext",
+        "PROJECT IS WEAK" not in raw_text,
+        f"ciphertext_file_present={raw.exists()}; plaintext_present={'PROJECT IS WEAK' in raw_text}",
+        "CRITICAL" if "PROJECT IS WEAK" in raw_text else "INFO",
+    ))
+
+    import shutil
+    shutil.rmtree(data_dir, ignore_errors=True)
+    return results
+
 def integrity_probe() -> list[dict[str, Any]]:
     target = ROOT / "src" / "ai_cyber_os" / "hydra.py"
     if not target.exists():
@@ -286,6 +393,7 @@ def main() -> int:
     results += network_egress_probe()
     results += contract_fail_closed_probe()
     results += determinism_probe()
+    results += protected_canary_probe()
     results += integrity_probe()
 
     red_wins = [r for r in results if not r["blue_team"]]
