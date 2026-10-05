@@ -1,66 +1,58 @@
-# AI-Cyber Reconstruction — Forensic Baseline
+# AI-Cyber Reconstruction — Current Handover Baseline
 
-## Observed repository state
+## Canonical runtime
 
-The repository currently has six Python source files and a minimal README.
-Direct source inspection found multiple multi-megabyte phase-generated
-monoliths.
+The supported runtime is now the package under `src/ai_cyber_os/`.
 
-| File | Approx. size | Lines | Classes | Functions |
-|---|---:|---:|---:|---:|
-| Assrf next .py | 103 KB | — | — | — |
-| HYDRA_FINAL_CLIENT_HANDOVER_FIXED.py | 2.19 MB | 87,496 | 1,150 | 2,706 |
-| HYDRA_MASTER_RECONSTRUCTED_v2.py | 1.13 MB | 42,887 | 404 | 1,024 |
-| HYDRA_patched-3.py | 2.44 MB | 92,378 | 1,160 | 2,987 |
-| IT_tech__MERGED_ALL_FIXES_APPLIED.py | 2.90 MB | 87,019 | 1,200 | 5,616 |
-| New tech .py | 1.13 MB | 43,175 | 404 | 1,082 |
+- Canonical implementation: `src/ai_cyber_os/hydra.py`
+- Compatibility surface: `src/ai_cyber_os/canonical.py`
+- Public CLI: `src/ai_cyber_os/__main__.py`
+- Packaging contract: `pyproject.toml`
+- Verification suite: `tests/`
+- Forensic tooling: `tools/`
+- CI gate: `.github/workflows/reconstruction.yml`
 
-## Critical evidence
+The root-level multi-megabyte HYDRA/NEXORA-Cyber files remain preserved as forensic evidence. They are not runtime dependencies of the canonical package.
 
-- IT_tech__MERGED_ALL_FIXES_APPLIED.py contains repeated core definitions
-  inside one file. Observed repetitions include Clock (43), EvidenceEmitter
-  (43), InvariantSeverity (43), ProvenanceRecorder (40), InvariantViolation
-  (40), TrustLabel (14), AuditSink (13), FindingKind (12), IdProvider (11),
-  Evidence (11), and several transition/trust primitives.
-- HYDRA_MASTER_RECONSTRUCTED_v2.py and New tech .py share a substantial
-  architecture lineage but are not identical; behavior must be compared.
-- HYDRA_FINAL_CLIENT_HANDOVER_FIXED.py and HYDRA_patched-3.py share many
-  domain primitives but are not assumed interchangeable.
-- Assrf next .py is much smaller and explicitly describes a self-contained
-  control-plane architecture. Its coherence is evidence to inspect, not
-  proof of canonicality.
+## Current verification status
 
-## Reconstruction rules
+The repair branch has verified the supported deterministic in-process runtime through:
 
-No file is deleted because it is large, old, patched, or duplicated.
-No canonical implementation is selected by filename alone. Every
-responsibility must be compared by behavior, consumers, state ownership,
-side effects, security properties, and verification evidence.
+1. Python compilation.
+2. Dependency installation and `pip check`.
+3. Forensic inventory.
+4. Focused regression and security-surface tests.
+5. Complete 27 logical HYDRA phase execution.
+6. Separate Phase-8 auxiliary agent verification.
+7. Individual public phase dispatch.
+8. Installed console entrypoint execution.
+9. JSON-only machine-readable CLI execution.
+10. Distributable wheel build and fresh-environment smoke execution.
+11. Final adversarial hardening verification.
+12. Baseline artifact checks.
 
-## Next stages
+The runtime summary treats Phase 8 agent checks as one auxiliary check, so the logical phase count remains exactly 27.
 
-1. Build symbol/dependency inventory.
-2. Cluster definitions by responsibility and behavior.
-3. Compare state/evidence/security primitives.
-4. Establish canonical contracts.
-5. Extract core without deleting legacy sources.
-6. Extract security and audit.
-7. Wire integration/lifecycle.
-8. Add regression/end-to-end tests.
-9. Re-run duplicate/dead-code analysis.
-10. Retire legacy only after verification.
+## Historical forensic findings
 
-## Decision record
+The repository originally contained several large, phase-generated monoliths with repeated symbols and overlapping implementations. Those files are intentionally preserved. They are not selected as runtime sources merely because their filenames contain `FINAL`, `RECONSTRUCTED`, `patched`, or `MERGED`.
 
-**DECISION:** dedicated repair branch + read-only forensic tooling first.
+This preservation rule prevents accidental loss of behavior while keeping one explicit canonical runtime entry point.
 
-**REASON:** the repository contains multiple large phase-generated
-monoliths and repeated security primitives; blind deletion risks loss.
+## Supported operational boundary
 
-**SOURCE IMPLEMENTATIONS:** all six Python files in the repository.
+The current handover surface is a deterministic, evidence-aware, in-process cybersecurity intelligence/verification runtime.
 
-**FUNCTIONALITY PRESERVED:** all existing source files remain untouched at
-this stage.
+The repository does **not** claim that the reconstructed code has:
 
-**TESTS:** forensic AST tests added; runtime system verification remains
-pending and will not be claimed prematurely.
+- live customer deployment,
+- real third-party EDR/SIEM/cloud credentials or integrations,
+- persistence durability across independent process restarts,
+- unrestricted network execution,
+- real-world offensive or defensive cyber execution.
+
+Those capabilities must only be enabled from verified implementation evidence and an explicitly approved integration design. They are not represented as working merely because a test passed.
+
+## Handover rule
+
+A client can install the package, execute the canonical CLI, run all 27 phases, inspect structured JSON results, and run final hardening verification. Any future live integration should be added as a separately verified capability rather than silently widening the current runtime boundary.
