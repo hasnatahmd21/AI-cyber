@@ -10188,19 +10188,20 @@ class CheckpointStore(ABC):
         checkpoint: ConnectorCheckpoint,
     ) -> None:
         raise NotImplementedError
-    # --- preserved from CheckpointStore (merged, not present in canonical host) ---
+    @abstractmethod
     def delete(
         self,
         connector_id: str,
         tenant_id: str,
     ) -> None:
-        ...
-    # --- preserved from CheckpointStore (merged, not present in canonical host) ---
+        raise NotImplementedError
+
+    @abstractmethod
     def save(
         self,
         checkpoint: ConnectorCheckpoint,
     ) -> None:
-        ...
+        raise NotImplementedError
 
 
 class InMemoryCheckpointStore(CheckpointStore):
@@ -11303,13 +11304,23 @@ class ConnectorPoller:
             )
 
         return result
-    # --- preserved from ConnectorPoller (merged, not present in canonical host) ---
     def poll(
         self,
         *,
         cursor: Optional[str] = None,
     ) -> ConnectorResult:
-        ...
+        """Compatibility polling entrypoint using the canonical read contract."""
+        result = self.connector.read(cursor=cursor)
+        if result.success:
+            self.checkpoint_store.put(
+                ConnectorCheckpoint(
+                    connector_id=self.connector.connector_id,
+                    tenant_id=self.connector.tenant_id,
+                    cursor=result.cursor,
+                    updated_at=utc_now_v3(),
+                )
+            )
+        return result
 
 
 # ============================================================
