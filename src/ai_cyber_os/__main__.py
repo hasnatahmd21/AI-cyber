@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
             if args.hardening:
                 payload["hardening_result"] = run_final_hardening_verification()
 
-        success = bool(phase_result.get("summary", {}).get("success", True))
+        success = bool(phase_result.get("summary", {}).get("success", False))
         if args.hardening:
             success = success and bool(payload["hardening_result"].get("verified", False))
 
