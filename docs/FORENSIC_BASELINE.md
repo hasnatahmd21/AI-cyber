@@ -131,8 +131,8 @@ No implementation is declared obsolete until callers, registrations, dynamic ref
 
 ## 6. Current verification statement
 
-**Not repaired yet.**
+**Canonical repair verification is complete for the currently supported in-process runtime surface.**
 
-The repository has been forensically characterized enough to identify the main reconstruction risks, but no claim of functional completion is being made.
+The repair branch now has a canonical `src/ai_cyber_os` package, an operational CLI, focused regression/security-surface tests, distributable-wheel smoke verification, complete 27-phase runtime verification, final hardening verification, and baseline-artifact checks. The latest repair-branch CI run completed successfully after the execution-surface guard was corrected to allow the runtime's socket simulation imports.
 
-The repair gate remains open until actual compilation, imports, unit tests, integration tests, regression tests and end-to-end execution provide evidence.
+This evidence establishes that the supported deterministic in-process runtime is installable, executable, and regression-checked. It does **not** establish live customer deployment, external integration, persistence durability across process restarts, or real-world offensive/defensive cyber execution; those remain outside the recovered implementation boundary.
