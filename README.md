@@ -44,3 +44,13 @@ canonical runtime is a deterministic, evidence-aware in-process execution
 surface; no live operational capability is claimed merely from passing tests.
 
 No legacy source is considered canonical solely because of its filename.
+
+## Controlled Red-Team vs Blue-Team test
+
+The repository includes a local-only adversarial runtime harness:
+
+```bash
+python tools/red_blue_adversarial_test.py
+```
+
+It runs the canonical runtime first, then probes CLI/input boundaries, fail-closed contracts, network-egress isolation, deterministic repeatability, and controlled source-integrity tampering. It does not target external systems or enable live cyber execution. The final output declares **RED TEAM** when a probe escapes the defensive contract and **BLUE TEAM** when every controlled probe is contained. A JSON report is written to `red_blue_test_report.json`.
