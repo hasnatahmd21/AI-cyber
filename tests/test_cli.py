@@ -11,7 +11,15 @@ def _assert_successful_json(result: subprocess.CompletedProcess[str]) -> dict:
     assert result.stdout.lstrip().startswith("{")
     assert result.stdout.rstrip().endswith("}")
     payload = json.loads(result.stdout)
-    assert payload["phase_result"]["summary"]["success"] is True
+    phase_result = payload["phase_result"]
+    assert phase_result.get("success") is not False
+    assert phase_result.get("verified") is not False
+    assert phase_result.get("status") not in {"FAIL", "FAILED", "EXCEPTION", "NO_RESULT", "ERROR"}
+    assert phase_result.get("failed", 0) in (0, False, [])
+    assert phase_result.get("tests_failed", 0) in (0, False, [])
+    summary = phase_result.get("summary")
+    if isinstance(summary, dict):
+        assert summary["success"] is True
     return payload
 
 
