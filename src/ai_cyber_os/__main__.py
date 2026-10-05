@@ -8,6 +8,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from contextlib import redirect_stdout
+from io import StringIO
 from typing import Any
 
 from .hydra import run_final_hardening_verification, run_hydra_phase
@@ -40,11 +42,21 @@ def main(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
     try:
-        phase_result: dict[str, Any] = run_hydra_phase(args.phase)
-        payload: dict[str, Any] = {"phase_result": phase_result}
-
-        if args.hardening:
-            payload["hardening_result"] = run_final_hardening_verification()
+        if args.json:
+            runtime_output = StringIO()
+            with redirect_stdout(runtime_output):
+                phase_result: dict[str, Any] = run_hydra_phase(args.phase)
+                payload: dict[str, Any] = {"phase_result": phase_result}
+                if args.hardening:
+                    payload["hardening_result"] = run_final_hardening_verification()
+            diagnostic_output = runtime_output.getvalue()
+            if diagnostic_output:
+                print(diagnostic_output, file=sys.stderr, end="")
+        else:
+            phase_result = run_hydra_phase(args.phase)
+            payload = {"phase_result": phase_result}
+            if args.hardening:
+                payload["hardening_result"] = run_final_hardening_verification()
 
         success = bool(phase_result.get("summary", {}).get("success", True))
         if args.hardening:
