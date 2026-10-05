@@ -40,7 +40,8 @@ jobs:
         run: python -m pytest -q tests
       - name: Run installed CLI operational check
         run: |
-          python -m ai_cyber_os --phase all --hardening --json > cli_operational_result.json
+          command -v ai-cyber
+          ai-cyber --phase all --hardening --json > cli_operational_result.json
           python - <<'PY'
           import json
           from pathlib import Path
