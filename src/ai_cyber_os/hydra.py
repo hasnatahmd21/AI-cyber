@@ -92374,7 +92374,12 @@ def _phase_result_ok_final_strict(result):
     if isinstance(result, bool):
         return result
     if isinstance(result, str):
-        return result.strip().upper() in {"PASS", "PASSED", "VERIFIED", "SUCCESS"}
+        normalized = result.strip().upper()
+        if normalized in {"FAIL", "FAILED", "EXCEPTION", "NO_RESULT", "ERROR"}:
+            return False
+        if normalized.startswith(("FAIL:", "FAILED:", "EXCEPTION:", "ERROR:")):
+            return False
+        return True
     if isinstance(result, Mapping):
         if result.get("success") is False or result.get("verified") is False:
             return False
