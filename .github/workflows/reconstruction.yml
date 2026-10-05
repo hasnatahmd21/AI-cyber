@@ -27,6 +27,7 @@ jobs:
         run: |
           python -m py_compile src/ai_cyber_os/hydra.py
           python -m py_compile src/ai_cyber_os/__init__.py
+          python -m py_compile src/ai_cyber_os/protected_data.py
           python -m py_compile tools/forensic_audit.py
           python -m py_compile tools/forensic_inventory.py
           python -m py_compile tests/*.py
@@ -68,6 +69,8 @@ jobs:
           assert data["hardening_result"]["verified"] is True, data
           assert data["hardening_result"]["failed"] == 0, data
           PY
+      - name: Run controlled Red-Team vs Blue-Team adversarial verification
+        run: python tools/red_blue_adversarial_test.py
       - name: Run complete 27-phase runtime verification
         env:
           PYTHONPATH: src
