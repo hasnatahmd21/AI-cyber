@@ -62,3 +62,10 @@ def test_handler_home_and_invalid_api(monkeypatch):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_ui_does_not_claim_unverified_subsystems():
+    assert "DATABASE<br><span class=\"ok\">ONLINE" not in ui.HTML
+    assert "EVENT BUS<br><span class=\"ok\">ONLINE" not in ui.HTML
+    assert "GOVERNANCE<br><span class=\"ok\">ONLINE" not in ui.HTML
+    assert 'names=phases.map(n=>"HYDRA PHASE "+String(n).padStart(2,"0"))' in ui.HTML
