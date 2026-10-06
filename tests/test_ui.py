@@ -70,7 +70,7 @@ def test_ui_does_not_claim_unverified_subsystems():
     assert "const P=[...Array(27)].map((_,i)=>i+1)" in ui.TEMPLATE
 
 
-def _post_to_test_server(payload):
+def _post_to_test_server(payload, path="/api/run"):
     from http.client import HTTPConnection
     from threading import Thread
 
@@ -82,7 +82,7 @@ def _post_to_test_server(payload):
     try:
         conn.request(
             "POST",
-            "/api/run",
+            path,
             body=json.dumps(payload),
             headers={"Content-Type": "application/json"},
         )
@@ -175,7 +175,7 @@ def test_operational_report_endpoint(monkeypatch):
 
 
 def test_test_center_rejects_unknown_kind():
-    status, body = _post_to_test_server({"kind": "not-a-test"})
+    status, body = _post_to_test_server({"kind": "not-a-test"}, "/api/test")
     assert status == 400
     assert body["success"] is False
     assert "invalid test kind" in body["error"]
