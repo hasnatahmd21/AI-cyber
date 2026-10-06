@@ -151,3 +151,38 @@ def test_handler_rejects_non_string_phase(phase_value):
     assert status == 400
     assert body["success"] is False
     assert body["error"] == "ValueError: phase must be a string"
+
+
+def test_operational_report_endpoint(monkeypatch):
+    from http.client import HTTPConnection
+    from threading import Thread
+
+    monkeypatch.setattr(ui, "load_report", lambda: {"kind": "test", "success": True})
+    server = ui.ThreadingHTTPServer(("127.0.0.1", 0), ui.Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        conn.request("GET", "/api/report")
+        response = conn.getresponse()
+        body = json.loads(response.read())
+        assert response.status == 200
+        assert body["report"]["kind"] == "test"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_test_center_rejects_unknown_kind():
+    status, body = _post_to_test_server({"kind": "not-a-test"})
+    assert status == 400
+    assert body["success"] is False
+    assert "invalid test kind" in body["error"]
+
+
+def test_ui_has_operational_test_center():
+    assert "OPERATIONAL TEST CENTER" in ui.TEMPLATE
+    assert "RUN LOCAL RED-TEAM" in ui.TEMPLATE
+    assert "RUN REGRESSION TESTS" in ui.TEMPLATE
+    assert "/api/test" in ui.TEMPLATE
