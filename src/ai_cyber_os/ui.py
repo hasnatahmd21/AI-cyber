@@ -25,15 +25,92 @@ HTML = r"""<!doctype html>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AI-CYBER OS — HYDRA Command Center</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#03070d;color:#c9d8e8;font:13px ui-monospace,SFMono-Regular,Consolas,monospace;overflow-x:hidden}
-body:before{content:"";position:fixed;inset:0;pointer-events:none;background:linear-gradient(rgba(0,180,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(0,180,255,.025) 1px,transparent 1px);background-size:32px 32px}
-header{height:76px;border-bottom:1px solid #123a5a;background:#06101b;display:flex;align-items:center;padding:0 24px;gap:28px;position:sticky;top:0;z-index:5;box-shadow:0 0 28px #001426}
-.brand{display:flex;align-items:center;gap:12px;min-width:270px}.logo{font-size:34px;color:#20bfff;text-shadow:0 0 18px #008cff}.brand b{font-size:22px;letter-spacing:3px;color:#eef8ff}.brand small{display:block;color:#159ed6;letter-spacing:2px;margin-top:3px}
-.top{display:flex;gap:12px;align-items:center;flex:1}.pill{border:1px solid #15537b;background:#071a29;border-radius:8px;padding:10px 15px}.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#16e59a;box-shadow:0 0 10px #16e59a;margin-right:7px}.right{margin-left:auto;text-align:right;color:#8096aa}
-.layout{display:grid;grid-template-columns:190px 1fr;min-height:calc(100vh - 76px)}
-nav{border-right:1px solid #123149;background:#050c15;padding:18px 10px}nav button{width:100%;text-align:left;background:none;border:1px solid transparent;color:#89a6bd;padding:12px;border-radius:7px;margin-bottom:5px;font:inherit;cursor:pointer}nav button:hover,nav button.active{background:#09243a;color:#55cfff;border-color:#12689a;box-shadow:inset 3px 0 #16baff}
-main{padding:18px;max-width:1500px;width:100%;margin:auto}.hero{border:1px solid #10517b;border-radius:10px;padding:22px;background:radial-gradient(circle at 12% 50%,#063457 0,#071522 32%,#06101a 70%);position:relative;overflow:hidden}.hero:after{content:"◈";position:absolute;right:8%;top:-35px;font-size:190px;color:#0a5680;opacity:.12}.hero h1{font-size:34px;letter-spacing:6px;color:#39c7ff;margin:0 0 6px;text-shadow:0 0 18px #0077aa}.hero p{margin:0;color:#8ca8bd}.grid{display:grid;grid-template-columns:1.8fr 1fr .85fr;gap:12px;margin-top:12px}.card{border:1px solid #123c59;border-radius:9px;background:#07111b;box-shadow:0 0 20px rgba(0,80,130,.08);overflow:hidden}.title{padding:11px 14px;border-bottom:1px solid #12334b;color:#4acbff;letter-spacing:1px;font-weight:bold}.body{padding:12px}.statusgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}.status{padding:8px;border-left:3px solid #14d89b;background:#081821}.ok{color:#19e49b}.bad{color:#ff5368}.warn{color:#f3c65e}.phases{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.phase{padding:9px;background:#081a29;border:1px solid #124b70;border-radius:6px;cursor:pointer}.phase:hover{border-color:#24c5ff;background:#0b2639}.num{color:#20c5ff;font-size:16px}.phase span{display:block;color:#819caf;font-size:11px;margin-top:4px}.run{padding:12px;border:1px solid #14547c;background:#081a2a;border-radius:7px;margin-bottom:8px;color:#d9f3ff;cursor:pointer;text-align:left;width:100%;font:inherit}.run:hover{border-color:#22c7ff;box-shadow:0 0 14px #063d5c}.activity{height:310px;overflow:auto}.event{padding:7px 4px;border-bottom:1px solid #0e2535}.time{color:#47728f}.term{height:260px;background:#02060a;color:#68d9ff;padding:13px;overflow:auto;white-space:pre-wrap;font-size:12px}.metric{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #102a3c}.metric:last-child{border:0}.bar{height:5px;background:#0b2435;margin-top:5px}.bar i{display:block;height:100%;width:100%;background:#12e29b;box-shadow:0 0 8px #12e29b}.footer{text-align:center;color:#47677e;padding:14px}.badge{float:right;border:1px solid #11b985;color:#19e49b;border-radius:12px;padding:3px 8px;font-size:10px}
-@media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.grid>.wide{grid-column:1/-1}}@media(max-width:700px){header{padding:0 10px}.brand{min-width:auto}.brand small,.top .pill:nth-child(2){display:none}.layout{grid-template-columns:1fr}nav{display:flex;overflow:auto;border-right:0;border-bottom:1px solid #123149}nav button{min-width:120px}.grid{grid-template-columns:1fr}.phases{grid-template-columns:repeat(2,1fr)}main{padding:10px}}
+:root{
+ --bg:#02050a;--panel:#06111a;--panel2:#081722;--line:#12384b;
+ --cyan:#19d9ff;--cyan2:#00a8ff;--green:#19f5a2;--red:#ff416d;
+ --text:#d9f7ff;--muted:#6e91a4;--purple:#8b5cff;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{margin:0;background:
+ radial-gradient(circle at 78% 12%,rgba(0,170,255,.10),transparent 28%),
+ radial-gradient(circle at 12% 85%,rgba(0,255,170,.055),transparent 24%),
+ #02050a;color:var(--text);font:13px ui-monospace,SFMono-Regular,Consolas,monospace;overflow-x:hidden}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;z-index:20;
+ background:linear-gradient(rgba(0,255,255,.028) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,255,.028) 1px,transparent 1px);
+ background-size:34px 34px;mask-image:linear-gradient(to bottom,#000,transparent 92%)}
+body:after{content:"";position:fixed;left:0;right:0;height:2px;top:-2px;background:rgba(25,217,255,.28);
+ box-shadow:0 0 18px 3px rgba(25,217,255,.18);pointer-events:none;z-index:30;animation:scan 7s linear infinite}
+@keyframes scan{to{top:100vh}}
+@keyframes pulse{0%,100%{opacity:.72;box-shadow:0 0 6px currentColor}50%{opacity:1;box-shadow:0 0 18px currentColor}}
+@keyframes glow{0%,100%{text-shadow:0 0 8px rgba(25,217,255,.5)}50%{text-shadow:0 0 24px rgba(25,217,255,.9)}}
+@keyframes boot{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+header{height:78px;border-bottom:1px solid #14506b;background:rgba(3,10,17,.94);backdrop-filter:blur(12px);
+ display:flex;align-items:center;padding:0 24px;gap:24px;position:sticky;top:0;z-index:10;
+ box-shadow:0 0 35px rgba(0,160,255,.12),inset 0 -1px rgba(25,217,255,.15)}
+.brand{display:flex;align-items:center;gap:12px;min-width:285px}
+.logo{font-size:35px;color:var(--cyan);text-shadow:0 0 10px var(--cyan),0 0 32px #0077ff;animation:glow 2.8s ease-in-out infinite}
+.brand b{font-size:22px;letter-spacing:4px;color:#f1fcff}
+.brand small{display:block;color:#18a9d4;letter-spacing:2px;margin-top:4px}
+.top{display:flex;gap:10px;align-items:center;flex:1}
+.pill{border:1px solid #15516b;background:linear-gradient(135deg,rgba(8,31,45,.95),rgba(4,15,24,.95));
+ border-radius:5px;padding:9px 13px;box-shadow:inset 0 0 16px rgba(0,190,255,.04)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);color:var(--green);
+ box-shadow:0 0 10px var(--green);margin-right:7px;animation:pulse 1.8s infinite}
+.right{margin-left:auto;text-align:right;color:#7594a6}
+.layout{display:grid;grid-template-columns:205px 1fr;min-height:calc(100vh - 78px)}
+nav{border-right:1px solid #103448;background:rgba(3,10,16,.82);padding:18px 11px;position:relative}
+nav:after{content:"SECURE LOCAL NODE";display:block;color:#31596c;font-size:9px;letter-spacing:2px;padding:18px 10px}
+nav button{width:100%;text-align:left;background:transparent;border:1px solid transparent;color:#7699ab;padding:12px;border-radius:4px;margin-bottom:6px;font:inherit;cursor:pointer;transition:.18s}
+nav button:hover,nav button.active{background:linear-gradient(90deg,rgba(0,177,255,.13),transparent);color:#62e2ff;border-color:#126080;
+ box-shadow:inset 3px 0 var(--cyan),0 0 16px rgba(0,190,255,.07);transform:translateX(2px)}
+main{padding:20px;max-width:1600px;width:100%;margin:auto;animation:boot .45s ease}
+.hero{border:1px solid #126080;border-radius:7px;padding:25px;
+ background:linear-gradient(115deg,rgba(4,42,62,.95),rgba(5,17,27,.94) 48%,rgba(8,14,25,.98));
+ position:relative;overflow:hidden;box-shadow:0 0 35px rgba(0,150,255,.10),inset 0 0 45px rgba(0,200,255,.035)}
+.hero:before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 7px,rgba(25,217,255,.025) 8px);pointer-events:none}
+.hero:after{content:"◈  HYDRA";position:absolute;right:3%;top:14px;font-size:92px;letter-spacing:10px;color:#0b6683;opacity:.12;transform:rotate(-8deg)}
+.hero h1{font-size:36px;letter-spacing:7px;color:#42ddff;margin:0 0 6px;text-shadow:0 0 12px #008dcc,0 0 35px rgba(0,160,255,.45)}
+.hero p{margin:0;color:#87adbd}
+.grid{display:grid;grid-template-columns:1.8fr 1fr .9fr;gap:13px;margin-top:13px}
+.card{border:1px solid #123e53;border-radius:6px;background:linear-gradient(145deg,rgba(7,19,29,.96),rgba(3,10,17,.96));
+ box-shadow:0 8px 28px rgba(0,0,0,.28),0 0 18px rgba(0,150,255,.045);overflow:hidden;position:relative;transition:.2s}
+.card:hover{border-color:#17607d;box-shadow:0 0 25px rgba(0,190,255,.09)}
+.title{padding:11px 14px;border-bottom:1px solid #12384b;color:#3edcff;letter-spacing:1.5px;font-weight:bold;
+ background:linear-gradient(90deg,rgba(0,180,255,.07),transparent)}
+.body{padding:12px}
+.statusgrid{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.status{padding:9px;border-left:2px solid var(--green);background:rgba(8,31,36,.72);box-shadow:inset 0 0 14px rgba(0,255,170,.025)}
+.ok{color:var(--green);text-shadow:0 0 7px rgba(25,245,162,.35)}
+.bad{color:var(--red);text-shadow:0 0 7px rgba(255,65,109,.35)}
+.warn{color:#ffd35a}
+.phases{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}
+.phase{padding:10px;background:linear-gradient(135deg,#071c2a,#06121c);border:1px solid #124660;border-radius:4px;
+ cursor:pointer;transition:.16s;position:relative;overflow:hidden}
+.phase:before{content:"";position:absolute;left:-100%;top:0;width:60%;height:100%;background:linear-gradient(90deg,transparent,rgba(30,220,255,.09),transparent);transition:.35s}
+.phase:hover:before{left:150%}
+.phase:hover{border-color:#25d7ff;background:#092536;transform:translateY(-1px);box-shadow:0 0 14px rgba(0,190,255,.13)}
+.num{color:#20d7ff;font-size:16px;text-shadow:0 0 8px rgba(0,200,255,.6)}
+.phase span{display:block;color:#6f94a6;font-size:10px;margin-top:5px}
+.run{padding:12px;border:1px solid #145777;background:linear-gradient(90deg,#071c2b,#06131e);border-radius:4px;margin-bottom:8px;
+ color:#d9f8ff;cursor:pointer;text-align:left;width:100%;font:inherit;transition:.18s}
+.run:hover{border-color:#2bdcff;color:white;box-shadow:0 0 18px rgba(0,210,255,.16),inset 0 0 12px rgba(0,180,255,.06);transform:translateX(2px)}
+.run:active{transform:translateX(3px);box-shadow:0 0 28px rgba(0,220,255,.25)}
+.activity{height:310px;overflow:auto}
+.activity::-webkit-scrollbar,.term::-webkit-scrollbar{width:5px}.activity::-webkit-scrollbar-thumb,.term::-webkit-scrollbar-thumb{background:#15536b}
+.event{padding:8px 4px;border-bottom:1px solid #0e2938;animation:boot .2s ease}
+.time{color:#467b91}
+.term{height:260px;background:#010509;color:#69e4ff;padding:14px;overflow:auto;white-space:pre-wrap;font-size:12px;
+ border-top:1px solid #0a2c3d;box-shadow:inset 0 0 28px rgba(0,170,255,.05);text-shadow:0 0 5px rgba(0,210,255,.4)}
+.metric{display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid #102d3e}
+.metric:last-child{border:0}
+.bar{height:5px;background:#0b2435;margin-top:5px}.bar i{display:block;height:100%;width:100%;background:var(--green);box-shadow:0 0 9px var(--green)}
+.footer{text-align:center;color:#456b7d;padding:14px;border-top:1px solid #0b2636}
+.badge{float:right;border:1px solid #11b985;color:var(--green);border-radius:3px;padding:3px 8px;font-size:9px;letter-spacing:1px;box-shadow:0 0 10px rgba(25,245,162,.08)}
+select{font:inherit!important;border-radius:4px!important;outline:none}
+select:focus{border-color:var(--cyan)!important;box-shadow:0 0 12px rgba(25,217,255,.15)}
+@media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.grid>.wide{grid-column:1/-1}}
+@media(max-width:700px){header{padding:0 10px}.brand{min-width:auto}.brand small,.top .pill:nth-child(2){display:none}.layout{grid-template-columns:1fr}nav{display:flex;overflow:auto;border-right:0;border-bottom:1px solid #123149}nav button{min-width:120px}.grid{grid-template-columns:1fr}.phases{grid-template-columns:repeat(2,1fr)}main{padding:10px}}
 </style></head>
 <body>
 <header><div class="brand"><div class="logo">◈</div><div><b>AI-CYBER OS</b><small>DETECT · ANALYZE · DEFEND · EVOLVE</small></div></div>
