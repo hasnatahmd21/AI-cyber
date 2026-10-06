@@ -8,12 +8,14 @@ from __future__ import annotations
 import argparse
 import json
 import threading
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 from .hydra import run_final_hardening_verification, run_hydra_phase
+from .operations import load_report, run_regression, save_report
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -82,13 +84,24 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
             failed_phases=failed_phases,
         )
 
-    return {
+    result = {
         "phase": phase,
         "phase_result": phase_result,
         "hardening_result": hardening_result,
         "success": success,
         "state": _snapshot(),
     }
+    save_report("hydra", result)
+    return result
+
+
+def _run_redteam() -> dict[str, Any]:
+    from .redteam import run
+    return save_report("red-team", run())
+
+
+def _run_regression() -> dict[str, Any]:
+    return save_report("regression", run_regression(Path(__file__).resolve().parents[2]))
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -120,18 +133,48 @@ class Handler(BaseHTTPRequestHandler):
                 success=True,
                 phases=27,
                 network_scope="localhost-only",
+                latest_report=load_report(),
             )
             self._send(200, state)
+            return
+
+        if path == "/api/report":
+            self._send(200, {"success": True, "report": load_report()})
             return
 
         self._send(404, {"success": False, "error": "not found"})
 
     def do_POST(self) -> None:
-        if urlparse(self.path).path != "/api/run":
+        path = urlparse(self.path).path
+        if path not in {"/api/run", "/api/test"}:
             self._send(404, {"success": False, "error": "not found"})
             return
 
         try:
+            if path == "/api/test":
+                length = int(self.headers.get("Content-Length", "0"))
+                if length > 4096:
+                    raise ValueError("request too large")
+                body = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError("JSON object required")
+                unknown = set(body) - {"kind"}
+                if unknown:
+                    raise ValueError("unknown request fields: " + ", ".join(sorted(str(x) for x in unknown)))
+                kind = body.get("kind")
+                if kind == "full":
+                    result = _execute("all", False)
+                elif kind == "hardening":
+                    result = _execute("all", True)
+                elif kind == "regression":
+                    result = _run_regression()
+                elif kind == "red-team":
+                    result = _run_redteam()
+                else:
+                    raise ValueError("invalid test kind")
+                self._send(200 if result.get("success", False) else 422, result)
+                return
+
             length = int(self.headers.get("Content-Length", "0"))
             if length > 16_384:
                 raise ValueError("request too large")
@@ -175,14 +218,18 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Local AI-Cyber HYDRA operations UI")
     parser.add_argument("--host", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
+    parser.add_argument("--no-browser", action="store_true", help="Do not open the UI automatically.")
     args = parser.parse_args(argv)
 
     if args.host not in {"127.0.0.1", "localhost", "::1"}:
         parser.error("UI is intentionally local-only")
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
-    print(f"AI-CYBER UI: http://{args.host}:{args.port}")
+    url = f"http://{args.host}:{args.port}"
+    print(f"AI-CYBER UI: {url}")
     print("Scope: localhost-only; execution delegates to canonical HYDRA runtime.")
+    if not args.no_browser:
+        threading.Timer(0.35, lambda: webbrowser.open(url)).start()
 
     try:
         server.serve_forever()
