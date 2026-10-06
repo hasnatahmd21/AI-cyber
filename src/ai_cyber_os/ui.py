@@ -16,9 +16,11 @@ from urllib.parse import urlparse
 
 from .hydra import run_final_hardening_verification, run_hydra_phase
 from .operations import load_report, run_regression, save_report
+from .knowledge import DEFAULT_DB, ingest_file, search as knowledge_search, status as knowledge_status
 
 HOST = "127.0.0.1"
 PORT = 8765
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 VALID_PHASES = {"all", *{f"phase{i}" for i in range(1, 28)}}
 TEMPLATE = Path(__file__).with_name("ui_template.html").read_text(encoding="utf-8")
 
@@ -142,15 +144,59 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, {"success": True, "report": load_report()})
             return
 
+        if path == "/api/knowledge/status":
+            self._send(200, knowledge_status(db_path=DEFAULT_DB))
+            return
+
         self._send(404, {"success": False, "error": "not found"})
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path not in {"/api/run", "/api/test"}:
+        if path not in {"/api/run", "/api/test", "/api/knowledge"}:
             self._send(404, {"success": False, "error": "not found"})
             return
 
         try:
+            if path == "/api/knowledge":
+                length = int(self.headers.get("Content-Length", "0"))
+                if length > 8192:
+                    raise ValueError("request too large")
+                body = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError("JSON object required")
+                action = body.get("action")
+                if action == "search":
+                    allowed = {"action", "query", "dataset", "limit"}
+                    unknown = set(body) - allowed
+                    if unknown:
+                        raise ValueError("unknown request fields: " + ", ".join(sorted(str(x) for x in unknown)))
+                    query = body.get("query")
+                    if not isinstance(query, str):
+                        raise ValueError("query must be a string")
+                    result = {"success": True, "results": knowledge_search(query, db_path=DEFAULT_DB, dataset=body.get("dataset"), limit=body.get("limit", 10))}
+                elif action == "ingest":
+                    allowed = {"action", "path", "dataset", "source", "license", "version"}
+                    unknown = set(body) - allowed
+                    if unknown:
+                        raise ValueError("unknown request fields: " + ", ".join(sorted(str(x) for x in unknown)))
+                    raw_path = body.get("path")
+                    if not isinstance(raw_path, str) or not raw_path:
+                        raise ValueError("path must be a non-empty string")
+                    candidate = (PROJECT_ROOT / raw_path).resolve()
+                    try:
+                        candidate.relative_to(PROJECT_ROOT.resolve())
+                    except ValueError as exc:
+                        raise ValueError("dataset path must stay inside project") from exc
+                    result = ingest_file(candidate, db_path=DEFAULT_DB, dataset=body.get("dataset"),
+                                         source=body.get("source"), license=body.get("license", ""),
+                                         version=body.get("version", ""))
+                elif action == "status":
+                    result = knowledge_status(db_path=DEFAULT_DB)
+                else:
+                    raise ValueError("invalid knowledge action")
+                self._send(200 if result.get("success", True) else 422, result)
+                return
+
             if path == "/api/test":
                 length = int(self.headers.get("Content-Length", "0"))
                 if length > 4096:
