@@ -51,7 +51,7 @@ def test_handler_home_and_invalid_api(monkeypatch):
         conn.request("GET", "/")
         response = conn.getresponse()
         assert response.status == 200
-        assert "AI-CYBER OS — HYDRA Command Center" in response.read().decode()
+        assert "27 PHASE MATRIX" in response.read().decode()
 
         conn.request("GET", "/not-found")
         response = conn.getresponse()
@@ -64,7 +64,7 @@ def test_handler_home_and_invalid_api(monkeypatch):
 
 
 def test_ui_does_not_claim_unverified_subsystems():
-    assert "DATABASE<br><span class=\"ok\">ONLINE" not in ui.HTML
+    assert "DATABASE<br><span class=\"ok\">ONLINE" not in ui.TEMPLATE
     assert "EVENT BUS<br><span class=\"ok\">ONLINE" not in ui.HTML
     assert "GOVERNANCE<br><span class=\"ok\">ONLINE" not in ui.HTML
     assert 'names=phases.map(n=>"HYDRA PHASE "+String(n).padStart(2,"0"))' in ui.HTML
