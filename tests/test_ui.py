@@ -52,7 +52,7 @@ def test_handler_home_and_invalid_api(monkeypatch):
         conn.request("GET", "/")
         response = conn.getresponse()
         assert response.status == 200
-        assert "AI-CYBER / HYDRA OPERATIONS" in response.read().decode()
+        assert "AI-CYBER OS — HYDRA Command Center" in response.read().decode()
 
         conn.request("GET", "/not-found")
         response = conn.getresponse()
