@@ -76,10 +76,22 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
     result["phase_result"] = phase_result
     if hardening:
         result["hardening_result"] = run_final_hardening_verification()
-    summary = phase_result.get("summary", {}) if isinstance(phase_result, dict) else {}
-    result["success"] = summary.get("success") is True
+    if isinstance(phase_result, dict):
+        summary = phase_result.get("summary", {})
+        if isinstance(summary, dict) and "success" in summary:
+            # "all" returns a canonical aggregate summary.
+            result["success"] = summary.get("success") is True
+        else:
+            # Individual canonical phases return their own verification result.
+            result["success"] = phase_result.get("verified") is True
+    else:
+        result["success"] = False
     if hardening:
-        result["success"] = result["success"] and result["hardening_result"].get("verified") is True
+        result["success"] = (
+            result["success"]
+            and isinstance(result.get("hardening_result"), dict)
+            and result["hardening_result"].get("verified") is True
+        )
     return result
 
 
