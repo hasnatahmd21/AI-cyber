@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-from urllib.request import Request, urlopen
 
 import pytest
 
@@ -69,3 +68,86 @@ def test_ui_does_not_claim_unverified_subsystems():
     assert "EVENT BUS<br><span class=\"ok\">ONLINE" not in ui.HTML
     assert "GOVERNANCE<br><span class=\"ok\">ONLINE" not in ui.HTML
     assert 'names=phases.map(n=>"HYDRA PHASE "+String(n).padStart(2,"0"))' in ui.HTML
+
+
+def _post_to_test_server(payload):
+    from http.client import HTTPConnection
+    from threading import Thread
+
+    server = ui.ThreadingHTTPServer(("127.0.0.1", 0), ui.Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+
+    try:
+        conn.request(
+            "POST",
+            "/api/run",
+            body=json.dumps(payload),
+            headers={"Content-Type": "application/json"},
+        )
+        response = conn.getresponse()
+        body = json.loads(response.read())
+        return response.status, body
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_handler_rejects_unknown_security_fields():
+    status, body = _post_to_test_server({
+        "phase": "phase1",
+        "hardening": False,
+        "admin": True,
+        "approved": True,
+        "bypass": True,
+    })
+
+    assert status == 400
+    assert body["success"] is False
+    assert "unknown request fields" in body["error"]
+
+
+@pytest.mark.parametrize(
+    "hardening_value",
+    [
+        {"enabled": True},
+        "true",
+        1,
+        0,
+        [],
+        None,
+    ],
+)
+def test_handler_rejects_non_boolean_hardening(hardening_value):
+    status, body = _post_to_test_server({
+        "phase": "phase1",
+        "hardening": hardening_value,
+    })
+
+    assert status == 400
+    assert body["success"] is False
+    assert body["error"] == "ValueError: hardening must be a boolean"
+
+
+@pytest.mark.parametrize(
+    "phase_value",
+    [
+        1,
+        True,
+        False,
+        [],
+        {},
+        None,
+    ],
+)
+def test_handler_rejects_non_string_phase(phase_value):
+    status, body = _post_to_test_server({
+        "phase": phase_value,
+        "hardening": False,
+    })
+
+    assert status == 400
+    assert body["success"] is False
+    assert body["error"] == "ValueError: phase must be a string"
