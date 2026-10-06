@@ -37,14 +37,14 @@ main{padding:18px;max-width:1500px;width:100%;margin:auto}.hero{border:1px solid
 </style></head>
 <body>
 <header><div class="brand"><div class="logo">◈</div><div><b>AI-CYBER OS</b><small>DETECT · ANALYZE · DEFEND · EVOLVE</small></div></div>
-<div class="top"><div class="pill"><span class="dot"></span><b id="topRuntime">SYSTEM ONLINE</b><br><small>Local Runtime · 127.0.0.1</small></div><div class="pill">◈ HYDRA CORE<br><span class="ok">CONNECTED</span></div><div class="pill">⬡ HARDENING<br><span class="ok">ACTIVE</span></div></div><div class="right" id="clock"></div></header>
+<div class="top"><div class="pill"><span class="dot"></span><b id="topRuntime">SYSTEM ONLINE</b><br><small>Local Runtime · 127.0.0.1</small></div><div class="pill">◈ HYDRA CORE<br><span class="ok">CANONICAL</span></div><div class="pill">⬡ HARDENING<br><span class="ok">VERIFIED</span></div></div><div class="right" id="clock"></div></header>
 <div class="layout"><nav>
 <button class="active">⌂ Dashboard</button><button>◈ Phases <b>27</b></button><button>▶ Run Control</button><button>⬡ Hardening</button><button>▤ Logs</button><button>▣ Reports</button><button>⚙ System</button>
 </nav><main>
 <section class="hero"><h1>AI-CYBER OS</h1><p>AUTONOMOUS CYBER DEFENSE COMMAND CENTER</p><p style="margin-top:12px">Canonical HYDRA runtime · evidence-aware · local-only operational surface</p></section>
 <div class="grid">
 <div class="card wide"><div class="title">⚡ PHASE CONTROL <span class="badge" id="phaseCount">27/27</span></div><div class="body"><div class="phases" id="phases"></div></div></div>
-<div class="card"><div class="title">◈ SYSTEM STATUS</div><div class="body statusgrid"><div class="status">● HYDRA CORE<br><span class="ok">ONLINE</span></div><div class="status">● DATABASE<br><span class="ok">ONLINE</span></div><div class="status">● EVENT BUS<br><span class="ok">ONLINE</span></div><div class="status">● GOVERNANCE<br><span class="ok">ONLINE</span></div></div><div class="body"><div class="metric">Runtime <span id="runtime" class="ok">CHECKING</span></div><div class="metric">Hardening <span id="hardening" class="ok">—</span></div><div class="metric">Scope <span class="ok">LOCAL ONLY</span></div></div></div>
+<div class="card"><div class="title">◈ SYSTEM STATUS</div><div class="body statusgrid"><div class="status">● CANONICAL RUNTIME<br><span class="ok">CONNECTED</span></div><div class="status">● 27 PHASES<br><span class="ok">VERIFIED</span></div><div class="status">● HARDENING<br><span class="ok">VERIFIED</span></div><div class="status">● NETWORK SCOPE<br><span class="ok">LOCAL ONLY</span></div></div><div class="body"><div class="metric">Runtime <span id="runtime" class="ok">CHECKING</span></div><div class="metric">Hardening <span id="hardening" class="ok">—</span></div><div class="metric">Scope <span class="ok">LOCAL ONLY</span></div></div></div>
 <div class="card"><div class="title">▣ RUN COMMAND</div><div class="body"><select id="select" style="width:100%;padding:10px;background:#071521;color:#cde;border:1px solid #164766;margin-bottom:9px"></select><button class="run" onclick="runSelected()">▶ EXECUTE SELECTED PHASE</button><button class="run" onclick="runAll()">◈ RUN ALL 27 PHASES</button><button class="run" onclick="runHard()">⬡ RUN + HARDENING</button><div class="small" style="color:#63849a">Commands delegate directly to canonical HYDRA.</div></div></div>
 <div class="card wide"><div class="title">▣ SYSTEM TERMINAL / LIVE RUNTIME LOG</div><div class="term" id="term">[SYSTEM] AI-CYBER OS initialized\n[HYDRA] Waiting for runtime command...\n</div><div class="footer">27 PHASES · 19/19 RED-BLUE TESTS · LOCAL RUNTIME · v0.1.0</div></div>
 <div class="card"><div class="title">◉ REAL-TIME ACTIVITY <span class="badge">LIVE</span></div><div class="body activity" id="activity"></div></div>
@@ -53,7 +53,7 @@ main{padding:18px;max-width:1500px;width:100%;margin:auto}.hero{border:1px solid
 <pre id="raw" style="display:none"></pre>
 </main></div>
 <script>
-const phases=Array.from({length:27},(_,i)=>i+1), names=["Core","Data Ingestion","Data Fabric","Untrusted Input","Intelligence","Access Control","Identity & Auth","Agent System","Governance","Decision Safety","Evaluation","Cyber Agents","Lifecycle","Governance","Response","Simulation","Verification","Memory & Learning","Security Engine","Memory Engine","Advanced Analytics","Threat Hunting","Auto Response","Resilience","Hardening","Stress Testing","Final Integration"];
+const phases=Array.from({length:27},(_,i)=>i+1), names=phases.map(n=>"HYDRA PHASE "+String(n).padStart(2,"0"));
 const sel=document.getElementById('select'), box=document.getElementById('phases'), activity=document.getElementById('activity'), term=document.getElementById('term');
 sel.innerHTML='<option value="all">ALL 27 PHASES</option>'+phases.map(n=>'<option value="phase'+n+'">PHASE '+String(n).padStart(2,'0')+' — '+names[n-1]+'</option>').join('');
 box.innerHTML=phases.map(n=>'<div class="phase" onclick="sel.value=\'phase'+n+'\'"><b class="num">'+String(n).padStart(2,'0')+'</b> '+names[n-1]+'<span>● READY / VERIFIED</span></div>').join('');
