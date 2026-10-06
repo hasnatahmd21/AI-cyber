@@ -34,3 +34,12 @@ def test_duplicate_ingest_is_idempotent(tmp_path: Path):
 
 def test_empty_query_is_safe(tmp_path: Path):
     assert search("", db_path=tmp_path / "knowledge.db") == []
+
+
+def test_identifier_search_handles_hyphens(tmp_path: Path):
+    data = tmp_path / "ids.jsonl"
+    data.write_text('{"id":"CVE-2026-1234","content":"CVE-2026-1234 remote code execution"}\n', encoding="utf-8")
+    db = tmp_path / "knowledge.db"
+    ingest_file(data, db_path=db, dataset="cve")
+    hits = search("CVE-2026-1234", db_path=db)
+    assert hits and hits[0]["record_id"] == "CVE-2026-1234"
