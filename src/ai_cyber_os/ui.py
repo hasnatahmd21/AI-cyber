@@ -116,8 +116,6 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/status":
             state = _snapshot()
-            # This endpoint reports UI/runtime state only. It deliberately does
-            # not claim hardening verification before an actual hardening run.
             state.update(
                 success=True,
                 phases=27,
@@ -142,10 +140,23 @@ class Handler(BaseHTTPRequestHandler):
             if not isinstance(body, dict):
                 raise ValueError("JSON object required")
 
-            result = _execute(
-                str(body.get("phase", "all")),
-                bool(body.get("hardening", False)),
-            )
+            allowed_fields = {"phase", "hardening"}
+            unknown_fields = set(body) - allowed_fields
+            if unknown_fields:
+                raise ValueError(
+                    "unknown request fields: "
+                    + ", ".join(sorted(str(field) for field in unknown_fields))
+                )
+
+            phase = body.get("phase", "all")
+            hardening = body.get("hardening", False)
+
+            if not isinstance(phase, str):
+                raise ValueError("phase must be a string")
+            if not isinstance(hardening, bool):
+                raise ValueError("hardening must be a boolean")
+
+            result = _execute(phase, hardening)
             self._send(200 if result["success"] else 422, result)
         except Exception as exc:
             self._send(
