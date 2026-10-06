@@ -67,7 +67,7 @@ def test_ui_does_not_claim_unverified_subsystems():
     assert "DATABASE<br><span class=\"ok\">ONLINE" not in ui.TEMPLATE
     assert "EVENT BUS<br><span class=\"ok\">ONLINE" not in ui.TEMPLATE
     assert "GOVERNANCE<br><span class=\"ok\">ONLINE" not in ui.TEMPLATE
-    assert 'names=phases.map(n=>"HYDRA PHASE "+String(n).padStart(2,"0"))' in ui.TEMPLATE
+    assert "const P=[...Array(27)].map((_,i)=>i+1)" in ui.TEMPLATE
 
 
 def _post_to_test_server(payload):
