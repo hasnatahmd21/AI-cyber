@@ -187,6 +187,9 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
     query = re.sub(r"[^\w\-.: ]+", " ", query, flags=re.UNICODE).strip()
     if not query:
         return []
+    # Quote each token so CVE/ATT&CK identifiers remain literal FTS terms.
+    fts_query = " AND ".join(chr(34) + token.replace(chr(34), " ") + chr(34)
+                             for token in query.split())
     limit = max(1, min(int(limit), 50))
     db = open_store(db_path)
     try:
@@ -196,7 +199,7 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
                    FROM knowledge_fts f JOIN knowledge_records k ON k.record_id=f.record_id
                    WHERE knowledge_fts MATCH ? AND k.dataset=?
                    ORDER BY score LIMIT ?""",
-                (query, dataset, limit),
+                (fts_query, dataset, limit),
             ).fetchall()
         else:
             rows = db.execute(
@@ -204,7 +207,7 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
                    FROM knowledge_fts f JOIN knowledge_records k ON k.record_id=f.record_id
                    WHERE knowledge_fts MATCH ?
                    ORDER BY score LIMIT ?""",
-                (query, limit),
+                (fts_query, limit),
             ).fetchall()
         return [dict(row) for row in rows]
     finally:
