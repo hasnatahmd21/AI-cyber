@@ -54,3 +54,17 @@ python tools/red_blue_adversarial_test.py
 ```
 
 It runs the canonical runtime first, then probes CLI/input boundaries, fail-closed contracts, network-egress isolation, deterministic repeatability, and controlled source-integrity tampering. It does not target external systems or enable live cyber execution. The final output declares **RED TEAM** when a probe escapes the defensive contract and **BLUE TEAM** when every controlled probe is contained. A JSON report is written to `red_blue_test_report.json`.
+## Local operational UI
+
+A localhost-only operational control surface is available without duplicating
+HYDRA logic:
+
+```bash
+ai-cyber-ui
+# open http://127.0.0.1:8765
+```
+
+It exposes live runtime status, the 27 phase selectors, selected-phase
+execution, and full runtime + hardening execution. The UI binds only to
+localhost and delegates execution to the canonical HYDRA runtime. It does not
+enable external/live cyber execution.
