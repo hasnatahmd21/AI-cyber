@@ -112,20 +112,16 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, HTML, "text/html")
             return
         if path == "/api/status":
-            try:
-                result = _execute("all", True)
-                summary = result["phase_result"].get("summary", {})
-                hardening = result.get("hardening_result", {})
-                self._send(200, {
-                    "success": result["success"],
-                    "phases": summary.get("phases"),
-                    "auxiliary_checks": summary.get("auxiliary_checks"),
-                    "hardening_verified": hardening.get("verified") is True,
-                    "hardening_failed": hardening.get("failed"),
-                    "network_scope": "localhost-only",
-                })
-            except Exception as exc:
-                self._send(500, {"success": False, "error": f"{type(exc).__name__}: {exc}"})
+            # Health/status must be lightweight. Do not execute the full 27-phase
+            # suite from a readiness probe or browser refresh; actual verification
+            # is performed explicitly through POST /api/run.
+            self._send(200, {
+                "success": True,
+                "runtime": "online",
+                "verification": "run POST /api/run to execute canonical HYDRA",
+                "phases": 27,
+                "network_scope": "localhost-only",
+            })
             return
         self._send(404, {"error": "not found"})
 
