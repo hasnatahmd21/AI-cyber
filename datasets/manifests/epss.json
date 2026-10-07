@@ -1,0 +1,55 @@
+{
+  "acquisition_timestamp": "2026-10-07T11:42:16Z",
+  "artifact_type": "scores_csv_gz",
+  "artifacts": [
+    {
+      "artifact_type": "scores_csv_gz",
+      "byte_size": 2693911,
+      "count_kind": "epss",
+      "path": "datasets/raw/epss/epss_scores_2026-10-06.csv.gz",
+      "record_count": 383485,
+      "role": "data",
+      "sha256": "434117677b97f625fe683e93bab87d5239f844ee20585807818a06de74fe26a3",
+      "source_uri": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+      "stats": {
+        "model_version": "v2026.06.15",
+        "score_date": "2026-10-06T12:00:23Z"
+      }
+    }
+  ],
+  "byte_size": 2693911,
+  "dataset": "epss",
+  "execution_status": "acquired",
+  "ingestion_status": "pending",
+  "license": "FIRST EPSS usage terms (free use, attribution to FIRST/EPSS required)",
+  "license_basis": "declared by script from EPSS usage statement; verify at URL",
+  "license_files": [],
+  "license_url": "https://www.first.org/epss/",
+  "license_verified": false,
+  "local_path": "datasets/raw/epss/epss_scores_2026-10-06.csv.gz",
+  "manifest_format": 1,
+  "provenance": {
+    "header_meta": {
+      "model_version": "v2026.06.15",
+      "score_date": "2026-10-06T12:00:23Z"
+    },
+    "snapshot_date": "2026-10-06",
+    "used_url": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz"
+  },
+  "record_count": 383485,
+  "schema": {
+    "columns": [
+      "cve",
+      "epss",
+      "percentile"
+    ],
+    "format": "csv.gz"
+  },
+  "sha256": "434117677b97f625fe683e93bab87d5239f844ee20585807818a06de74fe26a3",
+  "sha256_scheme": "sha256",
+  "source": "FIRST EPSS",
+  "source_uri": "https://epss.empiricalsecurity.com/epss_scores-current.csv.gz",
+  "validation_status": "validated",
+  "version": "v2026.06.15",
+  "version_basis": "model_version header; snapshot=score_date"
+}
