@@ -94,6 +94,7 @@ def build_batch(
     *,
     project_root: str | Path,
     metadata_by_dataset: dict[str, dict[str, Any]],
+    metadata_by_file: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
     """Discover supported files and build deterministic manifests.
 
@@ -114,7 +115,10 @@ def build_batch(
             raise ValueError(f"duplicate dataset path: {relative}")
         seen_paths.add(relative)
         dataset = Path(path).stem
-        metadata = metadata_by_dataset.get(dataset)
+        file_key = relative
+        metadata = (metadata_by_file or {}).get(file_key)
+        if metadata is None:
+            metadata = metadata_by_dataset.get(dataset)
         if metadata is None:
             raise ValueError(f"missing metadata for dataset file: {dataset}")
         identity = str(metadata.get("dataset", "")).strip()
