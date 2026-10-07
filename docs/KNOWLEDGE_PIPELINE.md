@@ -67,3 +67,23 @@ The official CPE dictionary is maintained under NIST/NVD responsibility.
 These references describe upstream formats; they do not make a local dataset
 validated. The manifest validation_status remains the authoritative local
 provenance label.
+
+## Operator workflow
+
+For a new JSONL/CSV/JSON dataset:
+
+1. Place the dataset under the appropriate `datasets/` directory.
+2. Generate its manifest with `tools/make_manifest.py`.
+3. Inspect the manifest before ingestion.
+4. Ingest the manifest with checksum verification enabled.
+5. Run the RAG evaluation cases.
+6. Run the complete HYDRA regression suite before release.
+
+The UI exposes the same operations locally, but all dataset paths are confined
+to the project root. RAG responses intentionally contain `answer: null` until
+a future model layer is given permission to generate a conclusion; this prevents
+retrieval evidence from being mistaken for a verified security conclusion.
+
+Large or restricted datasets should remain outside Git history. Commit the
+manifest and provenance metadata, then make the dataset available to the local
+runtime through the approved storage mechanism.
