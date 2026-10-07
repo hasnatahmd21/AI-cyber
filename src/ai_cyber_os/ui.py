@@ -100,6 +100,7 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
                 status="PASS" if hardening_success else "FAIL",
                 source="hardening",
                 evidence=hardening_result,
+                keep_active=True,
             )
             success = success and hardening_success
 
