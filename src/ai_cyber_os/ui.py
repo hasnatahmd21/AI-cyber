@@ -175,7 +175,7 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("query must be a string")
                     result = {"success": True, "results": knowledge_search(query, db_path=DEFAULT_DB, dataset=body.get("dataset"), limit=body.get("limit", 10))}
                 elif action == "ingest":
-                    allowed = {"action", "path", "dataset", "source", "license", "version"}
+                    allowed = {"action", "path", "dataset", "source", "license", "version", "source_uri", "validation_status"}
                     unknown = set(body) - allowed
                     if unknown:
                         raise ValueError("unknown request fields: " + ", ".join(sorted(str(x) for x in unknown)))
@@ -189,7 +189,8 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("dataset path must stay inside project") from exc
                     result = ingest_file(candidate, db_path=DEFAULT_DB, dataset=body.get("dataset"),
                                          source=body.get("source"), license=body.get("license", ""),
-                                         version=body.get("version", ""))
+                                         version=body.get("version", ""), source_uri=body.get("source_uri", ""),
+                                         validation_status=body.get("validation_status", "unverified"))
                 elif action == "status":
                     result = knowledge_status(db_path=DEFAULT_DB)
                 else:
