@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 DEFAULT_DB = Path.home() / ".ai-cyber" / "knowledge.db"
 SUPPORTED_SUFFIXES = {".jsonl", ".ndjson", ".json", ".csv", ".txt", ".md"}
 
@@ -26,7 +26,9 @@ CREATE TABLE IF NOT EXISTS knowledge_records (
     record_id TEXT PRIMARY KEY,
     dataset TEXT NOT NULL,
     source TEXT NOT NULL,
+    source_uri TEXT,
     license TEXT,
+    validation_status TEXT NOT NULL DEFAULT 'unverified',
     version TEXT,
     title TEXT,
     content TEXT NOT NULL,
@@ -68,10 +70,19 @@ def open_store(path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
     db = sqlite3.connect(str(path))
     db.row_factory = sqlite3.Row
     db.executescript(_SCHEMA)
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(knowledge_records)")}
+    if "source_uri" not in columns:
+        db.execute("ALTER TABLE knowledge_records ADD COLUMN source_uri TEXT")
+    if "validation_status" not in columns:
+        db.execute(
+            "ALTER TABLE knowledge_records ADD COLUMN validation_status TEXT NOT NULL DEFAULT 'unverified'"
+        )
+    db.commit()
     return db
 
 def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
-               version: str = "") -> dict[str, Any]:
+               version: str = "", source_uri: str = "",
+               validation_status: str = "unverified") -> dict[str, Any]:
     if isinstance(raw, dict):
         title = _text(raw.get("title") or raw.get("name") or raw.get("id"))
         explicit_content = raw.get("content") or raw.get("text") or raw.get("description")
@@ -79,6 +90,8 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
         record_source = _text(raw.get("source") or source)
         record_license = _text(raw.get("license") or license)
         record_version = _text(raw.get("version") or version)
+        record_uri = _text(raw.get("source_uri") or source_uri)
+        record_validation = _text(raw.get("validation_status") or validation_status)
         metadata = {str(k): v for k, v in raw.items()
                     if k not in {"content", "text", "description", "title", "name"}}
     else:
@@ -88,6 +101,8 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
         record_license = license
         record_version = version
         metadata = {}
+        record_uri = source_uri
+        record_validation = validation_status
     content = content.strip()
     if not content:
         raise ValueError("record content is empty")
@@ -97,7 +112,9 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
         "record_id": record_id,
         "dataset": dataset,
         "source": record_source,
+        "source_uri": record_uri,
         "license": record_license,
+        "validation_status": record_validation,
         "version": record_version,
         "title": title[:500],
         "content": content,
@@ -127,25 +144,24 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
                     raw = json.loads(line)
                 except json.JSONDecodeError as exc:
                     raise ValueError(f"invalid JSON on line {line_no}: {exc}") from exc
-                yield _normalize(raw, dataset=ds, source=src, license=license, version=version)
+                yield _normalize(raw, dataset=ds, source=src, license=license, version=version, source_uri=source_uri, validation_status=validation_status)
     elif suffix == ".json":
         raw = json.loads(p.read_text(encoding="utf-8"))
         items = raw if isinstance(raw, list) else [raw]
         for item in items:
-            yield _normalize(item, dataset=ds, source=src, license=license, version=version)
+            yield _normalize(item, dataset=ds, source=src, license=license, version=version, source_uri=source_uri, validation_status=validation_status)
     elif suffix == ".csv":
         with p.open(encoding="utf-8", newline="") as handle:
             for row in csv.DictReader(handle):
-                yield _normalize(row, dataset=ds, source=src, license=license, version=version)
+                yield _normalize(row, dataset=ds, source=src, license=license, version=version, source_uri=source_uri, validation_status=validation_status)
     else:
-        yield _normalize(p.read_text(encoding="utf-8"), dataset=ds, source=src,
-                         license=license, version=version)
+        yield _normalize(p.read_text(encoding="utf-8"), dataset=ds, source=src, license=license, version=version, source_uri=source_uri, validation_status=validation_status)
 
 def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                 dataset: str | None = None, source: str | None = None,
-                license: str = "", version: str = "") -> dict[str, Any]:
-    records = list(iter_records(path, dataset=dataset, source=source,
-                                license=license, version=version))
+                license: str = "", version: str = "", source_uri: str = "",
+                validation_status: str = "unverified") -> dict[str, Any]:
+    records = list(iter_records(path, dataset=dataset, source=source, license=license, version=version, source_uri=source_uri, validation_status=validation_status))
     db = open_store(db_path)
     inserted = 0
     updated = 0
@@ -166,9 +182,9 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                 inserted += 1
             db.execute(
                 """INSERT OR REPLACE INTO knowledge_records
-                (record_id,dataset,source,license,version,title,content,content_sha256,
+                (record_id,dataset,source,source_uri,license,version,validation_status,title,content,content_sha256,
                  metadata_json,schema_version,ingested_at)
-                VALUES (:record_id,:dataset,:source,:license,:version,:title,:content,
+                VALUES (:record_id,:dataset,:source,:source_uri,:license,:version,:validation_status,:title,:content,
                         :content_sha256,:metadata_json,:schema_version,:ingested_at)""",
                 record,
             )
