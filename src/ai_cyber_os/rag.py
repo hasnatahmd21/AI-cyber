@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from .knowledge import DEFAULT_DB, search
+from .intelligence import correlate
 
 
 def retrieve(
@@ -30,6 +31,7 @@ def build_context(
     dataset: str | None = None,
 ) -> dict[str, Any]:
     records = retrieve(query, db_path=db_path, limit=limit, dataset=dataset)
+    correlation = correlate(query, db_path=str(db_path), limit=limit, dataset=dataset)
     evidence = []
     for record in records:
         evidence.append(
@@ -45,6 +47,7 @@ def build_context(
                 "validation_status": record.get("validation_status") or "unverified",
                 "content_sha256": record["content_sha256"],
                 "score": record.get("score"),
+                "identifiers": correlation["results"][i].get("identifiers", {}) if i < len(correlation["results"]) else {},
             }
         )
     return {
@@ -52,4 +55,6 @@ def build_context(
         "evidence": evidence,
         "count": len(evidence),
         "evidence_only": True,
+        "identifiers": correlation["identifiers"],
+        "related": correlation["related"],
     }
