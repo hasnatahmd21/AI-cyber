@@ -31,6 +31,11 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Run final adversarial hardening verification after the phase run.",
     )
     parser.add_argument(
+        "--extended-all",
+        action="store_true",
+        help="Run the extended intelligence evaluation in addition to core HYDRA.",
+    )
+    parser.add_argument(
         "--json",
         action="store_true",
         help="Emit machine-readable JSON only.",
