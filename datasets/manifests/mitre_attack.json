@@ -1,0 +1,165 @@
+{
+  "acquisition_timestamp": "2026-10-07T11:42:39Z",
+  "artifact_type": "stix_2_1_bundle",
+  "artifacts": [
+    {
+      "artifact_type": "stix_2_1_bundle",
+      "byte_size": 53835637,
+      "count_kind": "stix_bundle",
+      "path": "datasets/raw/mitre_attack/enterprise-attack_v19.2_6cda5ad8462c.json",
+      "record_count": 26086,
+      "role": "data",
+      "sha256": "dc1639caa5501d720e280cf1cbd8fbe009884a0c9b3e6e9ed9d0c25166c3d8f4",
+      "source_uri": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/6cda5ad8462c79e14fbb872f4e09059b18e0cfc4/enterprise-attack/enterprise-attack.json",
+      "stats": {
+        "collection_name": "Enterprise ATT&CK",
+        "collection_version": "19.2",
+        "object_types": {
+          "attack-pattern": 858,
+          "campaign": 56,
+          "course-of-action": 268,
+          "identity": 1,
+          "intrusion-set": 191,
+          "malware": 733,
+          "marking-definition": 1,
+          "relationship": 21262,
+          "tool": 95,
+          "x-mitre-analytic": 1758,
+          "x-mitre-collection": 1,
+          "x-mitre-data-component": 109,
+          "x-mitre-data-source": 38,
+          "x-mitre-detection-strategy": 699,
+          "x-mitre-matrix": 1,
+          "x-mitre-tactic": 15
+        },
+        "spec_versions": [
+          "2.1"
+        ]
+      }
+    },
+    {
+      "artifact_type": "stix_2_1_bundle",
+      "byte_size": 5750325,
+      "count_kind": "stix_bundle",
+      "path": "datasets/raw/mitre_attack/mobile-attack_v19.2_6cda5ad8462c.json",
+      "record_count": 2635,
+      "role": "data",
+      "sha256": "acfa5ca2d93484476f79bf38590e2b55bb675fc0ce85e76bffa0af2c82dada64",
+      "source_uri": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/6cda5ad8462c79e14fbb872f4e09059b18e0cfc4/mobile-attack/mobile-attack.json",
+      "stats": {
+        "collection_name": "Mobile ATT&CK",
+        "collection_version": "19.2",
+        "object_types": {
+          "attack-pattern": 190,
+          "campaign": 3,
+          "course-of-action": 15,
+          "identity": 1,
+          "intrusion-set": 22,
+          "malware": 125,
+          "marking-definition": 1,
+          "relationship": 1889,
+          "tool": 2,
+          "x-mitre-analytic": 211,
+          "x-mitre-collection": 1,
+          "x-mitre-data-component": 29,
+          "x-mitre-data-source": 6,
+          "x-mitre-detection-strategy": 124,
+          "x-mitre-matrix": 2,
+          "x-mitre-tactic": 14
+        },
+        "spec_versions": [
+          "2.1"
+        ]
+      }
+    },
+    {
+      "artifact_type": "stix_2_1_bundle",
+      "byte_size": 4057891,
+      "count_kind": "stix_bundle",
+      "path": "datasets/raw/mitre_attack/ics-attack_v19.2_6cda5ad8462c.json",
+      "record_count": 2173,
+      "role": "data",
+      "sha256": "08b83d2cea6b6d6752468ef0e62e2ab2a53c9443ef72c439ecccb07ab9e89da9",
+      "source_uri": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/6cda5ad8462c79e14fbb872f4e09059b18e0cfc4/ics-attack/ics-attack.json",
+      "stats": {
+        "collection_name": "ICS ATT&CK",
+        "collection_version": "19.2",
+        "object_types": {
+          "attack-pattern": 118,
+          "campaign": 9,
+          "course-of-action": 52,
+          "identity": 1,
+          "intrusion-set": 16,
+          "malware": 30,
+          "marking-definition": 1,
+          "relationship": 1667,
+          "x-mitre-analytic": 97,
+          "x-mitre-asset": 18,
+          "x-mitre-collection": 1,
+          "x-mitre-data-component": 36,
+          "x-mitre-data-source": 17,
+          "x-mitre-detection-strategy": 97,
+          "x-mitre-matrix": 1,
+          "x-mitre-tactic": 12
+        },
+        "spec_versions": [
+          "2.1"
+        ]
+      }
+    },
+    {
+      "artifact_type": "license_text",
+      "byte_size": 1354,
+      "count_kind": null,
+      "path": "datasets/raw/mitre_attack/LICENSE.attack-stix-data.txt",
+      "record_count": null,
+      "role": "license",
+      "sha256": "738144f7fb054722a4ef9d3367c51710341dc12fc574c6ac3a41daaaecd8bf5e",
+      "source_uri": "https://github.com/mitre-attack/attack-stix-data/blob/6cda5ad8462c79e14fbb872f4e09059b18e0cfc4/LICENSE.txt",
+      "stats": {}
+    }
+  ],
+  "byte_size": 63643853,
+  "dataset": "mitre_attack",
+  "execution_status": "acquired",
+  "ingestion_status": "pending",
+  "license": "MITRE ATT&CK Terms of Use (royalty-free, copyright notice required)",
+  "license_basis": "declared by script; verify at URL",
+  "license_files": [
+    "datasets/raw/mitre_attack/LICENSE.attack-stix-data.txt"
+  ],
+  "license_url": "https://attack.mitre.org/resources/terms-of-use/",
+  "license_verified": false,
+  "local_path": "datasets/raw/mitre_attack",
+  "manifest_format": 1,
+  "provenance": {
+    "collection_versions": {
+      "enterprise-attack": "19.2",
+      "ics-attack": "19.2",
+      "mobile-attack": "19.2"
+    },
+    "github": {
+      "commit_sha": "6cda5ad8462c79e14fbb872f4e09059b18e0cfc4",
+      "ref": "v19.2",
+      "ref_kind": "release_tag",
+      "repo": "mitre-attack/attack-stix-data"
+    },
+    "repo_license_detected": "Other (see license file)"
+  },
+  "record_count": 30894,
+  "schema": {
+    "domains": [
+      "enterprise",
+      "mobile",
+      "ics"
+    ],
+    "format": "STIX 2.1 bundle JSON"
+  },
+  "sha256": "afa8cb900a1e87563a460177f353e6c7c4a2680e0a5941d2fba2f0d0e73fcdb1",
+  "sha256_scheme": "sha256-of-sorted-'sha  path'-lines",
+  "source": "MITRE ATT&CK STIX 2.1 (mitre-attack/attack-stix-data)",
+  "source_uri": "https://github.com/mitre-attack/attack-stix-data",
+  "validation_status": "validated",
+  "version": "v19.2",
+  "version_basis": "upstream release_tag; domain collection versions in provenance"
+}
