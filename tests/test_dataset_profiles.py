@@ -1,7 +1,7 @@
 from ai_cyber_os.dataset_profiles import TARGET_DATASETS, profile, validate_profile_metadata
 
 def test_target_dataset_families_are_explicit():
-    assert len(TARGET_DATASETS) == 9
+    assert len(TARGET_DATASETS) == 13
     for name in TARGET_DATASETS:
         metadata = profile(name)
         validate_profile_metadata(metadata)
