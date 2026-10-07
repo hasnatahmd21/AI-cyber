@@ -313,6 +313,8 @@ class Handler(BaseHTTPRequestHandler):
                     result = knowledge_search(
                         query, db_path=DEFAULT_DB, dataset=body.get("dataset"), limit=body.get("limit", 10)
                     )
+                    if isinstance(result, list):
+                        result = {"success": True, "query": query, "results": result}
                 elif action == "ingest":
                     allowed = {"action", "path", "manifest", "kind", "dataset", "source", "license", "version", "source_uri", "validation_status"}
                     unknown = set(body) - allowed
