@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-from ai_cyber_os.threat_intel import parse_nvd, parse_cisa_kev, parse_attack_stix, ingest_source
+from ai_cyber_os.threat_intel import parse_nvd, parse_cisa_kev, parse_attack_stix, parse_cpe, ingest_source
 
 
 def test_nvd_normalization(tmp_path: Path):
@@ -58,3 +58,9 @@ def test_source_ingestion_populates_relations(tmp_path: Path):
     from ai_cyber_os.intelligence import correlate
     evidence = correlate("CVE-2026-4242", db_path=str(db))
     assert evidence["related"]["CVE-2026-4242"][0]["record_id"] == "CVE-2026-4242"
+
+def test_cpe_normalization(tmp_path: Path):
+    path = tmp_path / "cpe.json"
+    path.write_text(json.dumps({"products": [{"cpeName": [{"cpe23Uri": "cpe:2.3:a:example:product:1.0:*:*:*:*:*:*:*"}]}]}), encoding="utf-8")
+    rows = parse_cpe(path)
+    assert rows[0]["record_id"].startswith("cpe:2.3:")
