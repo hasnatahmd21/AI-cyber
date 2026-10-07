@@ -69,7 +69,7 @@ def test_provenance_status_is_persisted(tmp_path: Path):
     assert hit["license"] == "CC0"
     assert hit["version"] == "2026-10"
     assert hit["validation_status"] == "validated"
-    assert status(db_path=db)["schema_version"] == 2
+    assert status(db_path=db)["schema_version"] == 3
 
 
 
