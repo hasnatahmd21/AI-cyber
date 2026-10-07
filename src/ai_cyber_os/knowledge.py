@@ -126,7 +126,8 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
 
 def iter_records(path: str | Path, *, dataset: str | None = None,
                  source: str | None = None, license: str = "",
-                 version: str = "") -> Iterable[dict[str, Any]]:
+                 version: str = "", source_uri: str = "",
+                 validation_status: str = "unverified") -> Iterable[dict[str, Any]]:
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(p)
@@ -196,7 +197,8 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
     finally:
         db.close()
     return {"success": True, "records_seen": len(records), "inserted": inserted,
-            "updated": updated, "duplicates": duplicates, "dataset": dataset or Path(path).stem}
+            "updated": updated, "duplicates": duplicates, "dataset": dataset or Path(path).stem,
+            "validation_status": validation_status}
 
 def search(query: str, *, db_path: str | Path = DEFAULT_DB,
            limit: int = 10, dataset: str | None = None) -> list[dict[str, Any]]:
