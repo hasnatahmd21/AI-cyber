@@ -35,7 +35,7 @@ button,input,select{font:inherit}button{cursor:pointer}
 <button onclick="go('phases')">◇ 27 PHASES <b>04</b></button>
 <button onclick="go('knowledge')">⌬ KNOWLEDGE <b>05</b></button>
 <button onclick="go('hardening')">⬡ HARDENING <b>06</b></button>
-<button onclick="go('console')">▣ CONSOLE <b>07</b></button>
+<button onclick="go('command')">⌘ COMMAND <b>07</b></button><button onclick="go('console')">▣ LIVE LOG <b>08</b></button>
 </div>
 <div class="node">● LOCAL NODE ONLINE<small>Canonical backend<br>127.0.0.1:8765</small></div>
 </aside>
@@ -44,7 +44,7 @@ button,input,select{font:inherit}button{cursor:pointer}
 <section class="hero" id="overview">
 <h1><span class="cyan">AI-CYBER</span> // COMMAND CENTER</h1>
 <p>Dark neural operational surface. The 3D fabric is visualization; execution, evidence, verification and status come from the canonical AI-CYBER backend.</p>
-<div class="btns"><button class="btn" onclick="run('all',false)">▶ RUN 27 PHASES</button><button class="btn" onclick="run('all',true)">⬡ RUN + HARDENING</button><button class="btn" onclick="sync()">↻ SYNC REAL STATE</button></div>
+<div class="btns"><button class="btn" onclick="run('all',false)">▶ RUN 27 PHASES</button><button class="btn" onclick="run('all',true)">⬡ RUN + HARDENING</button><button class="btn" onclick="sync()">↻ SYNC REAL STATE</button><button class="btn" onclick="go('command')">⌘ COMMAND</button></div>
 </section>
 <div class="dashboard">
 <section class="panel" id="scenePanel">
@@ -55,7 +55,7 @@ button,input,select{font:inherit}button{cursor:pointer}
 </div>
 </section>
 <section class="panel situation" id="situation">
-<div class="head">◈ OVERALL SITUATION <span id="sitState">WAITING</span></div>
+<div class="head">◈ OVERALL SITUATION // LIVE TELEMETRY <span id="sitState">WAITING</span></div>
 <div class="body">
 <div class="situationGrid">
 <div class="stat"><small>RUNTIME</small><b id="srun">STANDBY</b></div>
@@ -65,7 +65,8 @@ button,input,select{font:inherit}button{cursor:pointer}
 <div class="stat"><small>DATASET FAMILIES</small><b id="sdatasets">0</b></div>
 <div class="stat"><small>SCOPE</small><b>LOCAL ONLY</b></div>
 </div>
-<div class="events" id="events">[SITUATION] No execution has been requested yet.</div>
+<div class="events" id="events">[SITUATION] No execution has been requested yet.
+[TELEMETRY] This panel updates from real backend/test events only.</div>
 </div>
 </section>
 
@@ -93,10 +94,19 @@ button,input,select{font:inherit}button{cursor:pointer}
 <div class="body"><div class="matrix" id="controls"><div class="control">Canonical hardening controls will populate from the real verification result.</div></div></div>
 </section>
 
+<section class="panel" id="command">
+<div class="head">⌘ CONTROLLED COMMAND CONSOLE <span id="cmdState">READY</span></div>
+<div class="body">
+<div class="searchRow"><input id="commandInput" autocomplete="off" placeholder="run phase 7 · run all · run all and hardening · search CVE-... · status"><button class="btn" onclick="sendCommand()">▶ EXECUTE</button></div>
+<div style="margin-top:7px;color:#3d5b64">Allow-listed operations only. No shell, Python execution, or arbitrary host commands are exposed.</div>
+</div>
+</section>
+
 <section class="panel" id="console">
 <div class="head">▣ LIVE EXECUTION CONSOLE <span id="cstate">READY</span></div>
 <div class="console" id="term">[BOOT] AI-CYBER OS neural interface initialized.
 [TRUTH] UI is connected to the canonical local backend.
+[LIVE] Situation telemetry is polled from /api/events.
 [WAIT] No synthetic attack telemetry is displayed.
 </div>
 </section>
@@ -110,6 +120,8 @@ const PHASES=Array.from({length:27},(_,i)=>i+1);
 const NAMES=["OS SECURITY DEPTH","NETWORK FABRIC","THREAT INTEL INGEST","CVE / EPSS SCORING","ATT&CK MAPPING","SIGMA DETECTION","SURICATA RULES","ZEEK INTEL","AI TRIAGE CORE","AUTONOMOUS RESPONSE","FORENSIC RECON","RESILIENCE FABRIC","DECEPTION GRID","FINAL HARDENING","EVIDENCE FABRIC","DATASET INTEGRITY","MANIFEST VALIDATION","RELATION GRAPH","RAG RETRIEVAL","PROVENANCE","THREAT CORRELATION","MALWARE INTELLIGENCE","NETWORK INTELLIGENCE","RED-TEAM VALIDATION","REGRESSION GATE","RUNTIME GOVERNANCE","FINAL VERIFICATION"];
 const C=["#00eaff","#ff22d6","#39ff88"];
 let selected=1,lastState=null;
+let liveEventId=0;
+
 const bar=document.getElementById("phasebar");
 bar.innerHTML=PHASES.map(n=>'<button id="p'+n+'" onclick="selectPhase('+n+')">'+String(n).padStart(2,"0")+'</button>').join("");
 function go(id){document.getElementById(id).scrollIntoView({behavior:"smooth",block:"start"})}
@@ -140,9 +152,19 @@ document.getElementById("live").classList.toggle("bad",s.last_success===false);
 mark(s);
 if(h&&Array.isArray(h.checks)){document.getElementById("controls").innerHTML=h.checks.map(c=>'<div class="control '+(c.status==="PASS"?"pass":"fail")+'"><b>'+esc(c.name)+'</b><em>'+esc(c.status)+'</em></div>').join("");document.getElementById("hstate").textContent=h.verified?"VERIFIED":"FAILED"}
 if(s.last_result){const pr=s.last_result.phase_result||s.last_result;document.getElementById("detailResult").textContent=JSON.stringify(pr,null,2)}
-const ev=s.events||[];document.getElementById("events").textContent=ev.length?ev.map(e=>"["+e.timestamp+"] "+e.phase+" :: "+(e.success?"SUCCESS":"FAILED")+(e.hardening?" :: HARDENING":"")).join("\n"):"[SITUATION] No execution has been requested yet.";
+const ev=s.events||[];if(!liveEventId){document.getElementById("events").textContent=ev.length?ev.map(e=>"["+e.timestamp+"] "+e.phase+" :: "+(e.success?"SUCCESS":"FAILED")+(e.hardening?" :: HARDENING":"")).join("\n"):"[SITUATION] No execution has been requested yet.";}
 }
-async function sync(){try{const r=await fetch("/api/situation");const s=await r.json();applyState(s);log("Backend situation synchronized.",true);if(s.report)document.getElementById("detailResult").textContent=JSON.stringify(s.report,null,2)}catch(e){log("Situation sync failed: "+e,false)}}
+async function sync(){try{const r=await fetch("/api/situation");const s=await r.json();applyState(s);if(s.report)document.getElementById("detailResult").textContent=JSON.stringify(s.report,null,2)}catch(e){log("Situation sync failed: "+e,false)}}
+function renderTelemetry(items,runState){
+if(!items.length)return;
+const box=document.getElementById("events");
+const lines=items.map(e=>{const ev=e.evidence?" | evidence="+JSON.stringify(e.evidence):"";return "["+e.timestamp+"] "+e.status+" :: "+(e.operation||"runtime")+" :: "+(e.phase||"-")+" :: "+e.message+ev});
+box.textContent=lines.join("\n");box.scrollTop=box.scrollHeight;
+if(runState){const active=!!runState.active;document.getElementById("sitState").textContent=active?"LIVE / EXECUTING":(runState.status||"IDLE");document.getElementById("srun").textContent=active?"EXECUTING":(runState.status||"IDLE");document.getElementById("live").textContent=active?"LIVE TELEMETRY":"SYSTEM ONLINE";document.getElementById("live").classList.toggle("bad",runState.status==="FAIL"||runState.status==="ERROR");}
+}
+async function pollEvents(){try{const r=await fetch("/api/events?since="+liveEventId,{cache:"no-store"});const x=await r.json();if(x.events&&x.events.length){liveEventId=x.next_id||liveEventId;renderTelemetry(x.events,x.run);}}catch(e){}}
+async function sendCommand(){const input=document.getElementById("commandInput");const command=input.value.trim();if(!command)return;document.getElementById("cmdState").textContent="EXECUTING";log("COMMAND > "+command);try{const r=await fetch("/api/command",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({command})});const x=await r.json();document.getElementById("cmdState").textContent=x.success?"COMPLETE":"REJECTED";log((x.success?"✓ ":"✕ ")+command,x.success);if(x.result&&x.result.state)applyState(x.result.state);if(x.result&&x.result.phase_result)document.getElementById("detailResult").textContent=JSON.stringify(x.result.phase_result,null,2);}catch(e){document.getElementById("cmdState").textContent="ERROR";log("Command failed: "+e,false)}}
+document.addEventListener("keydown",e=>{if(e.key==="Enter"&&document.activeElement===document.getElementById("commandInput"))sendCommand()});
 async function run(phase,hardening){document.getElementById("phaseState").textContent="EXECUTING";document.getElementById("live").textContent="EXECUTING";if(/^phase\d+$/.test(phase)){const n=+phase.slice(5);document.getElementById("p"+n).classList.add("running");selectPhase(n)}log("Executing "+phase+(hardening?" + hardening":""));try{const r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({phase,hardening})});const x=await r.json();applyState(x.state||{});document.getElementById("detailResult").textContent=JSON.stringify(x.phase_result||x,null,2);document.getElementById("phaseState").textContent=x.success?"VERIFIED":"FAILED";log((x.success?"✓ ":"✕ ")+phase+" completed",x.success);return x}catch(e){document.getElementById("phaseState").textContent="ERROR";log("Execution failed: "+e,false)}}
 async function kstatus(){try{const r=await fetch("/api/knowledge/status");const x=await r.json();document.getElementById("kstate").textContent=x.ready?"READY":"ERROR";document.getElementById("kout").innerHTML='<div class="result"><b>'+esc(x.records||0)+' records</b><small>'+esc((x.datasets||[]).length)+' dataset families · '+esc(x.relations||0)+' relations · schema '+esc(x.schema_version||"?")+'</small></div>'+(x.datasets||[]).map(d=>'<div class="result">'+esc(d.dataset)+' <b>'+esc(d.records)+'</b></div>').join("")}catch(e){document.getElementById("kstate").textContent="ERROR";log("Knowledge status failed: "+e,false)}}
 async function ksearch(){const q=document.getElementById("kq").value.trim();if(!q)return;document.getElementById("kstate").textContent="SEARCHING";try{const r=await fetch("/api/knowledge",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action:"search",query:q,limit:10})});const x=await r.json();document.getElementById("kout").innerHTML='<div class="result"><b>EVIDENCE ONLY</b><small>'+esc(x.query||q)+'</small></div>'+(x.results||[]).map(v=>'<div class="result"><b>'+esc(v.title||v.record_id)+'</b><small>'+esc(v.dataset||"")+" · "+esc(v.version||"")+" · "+esc(v.validation_status||"unverified")+' · SHA256 '+esc(v.content_sha256||"")+'</small></div>').join("");document.getElementById("kstate").textContent=x.success?"FOUND":"ERROR";log("Knowledge evidence search completed.",x.success)}catch(e){document.getElementById("kstate").textContent="ERROR";log("Knowledge search failed: "+e,false)}}
@@ -167,6 +189,6 @@ canvas.addEventListener("pointermove",e=>{const dx=e.clientX-lastX,dy=e.clientY-
 canvas.addEventListener("pointerup",e=>{if(drag){const n=drag.userData.n;selectPhase(n);selectedPhase()}drag=null});
 canvas.addEventListener("wheel",e=>{CMR.position.z=Math.max(3,Math.min(25,CMR.position.z+e.deltaY*.012))},{passive:true});
 function frame(t){requestAnimationFrame(frame);CMR.rotation.set(pitch,yaw,0);orb.rotation.x=t*.00015;orb.rotation.y=t*.00022;rings.forEach((r,i)=>r.rotation.z+=.0007*(i%2?1:-1));panels.forEach((p,i)=>{if(!drag||drag!==p)p.position.y=p.userData.base.y+Math.sin(t*.001+i)*.18;p.scale.setScalar(p.userData.n===selected?1.25:1)});const a=pg.attributes.position.array;for(let i=0;i<N;i++){a[i*3+2]+=.018;if(a[i*3+2]>35)a[i*3+2]=-35}pg.attributes.position.needsUpdate=true;R.render(S,CMR)}requestAnimationFrame(frame)}
-init3D();selectPhase(1);sync();kstatus();
+init3D();selectPhase(1);sync();kstatus();pollEvents();setInterval(pollEvents,500);
 </script>
 </body></html>
