@@ -32,7 +32,7 @@ button,input,select{font:inherit}button{cursor:pointer}
 <button class="on" onclick="go('overview')">⌂ OVERVIEW <b>01</b></button>
 <button onclick="go('scenePanel')">◉ 3D CORE <b>02</b></button>
 <button onclick="go('situation')">◈ SITUATION <b>03</b></button>
-<button onclick="go('phases')">◇ 27 PHASES <b>04</b></button>
+<button onclick="go('phases')">◇ 27 PHASE MATRIX / 27 PHASES <b>04</b></button>
 <button onclick="go('knowledge')">⌬ KNOWLEDGE <b>05</b></button>
 <button onclick="go('hardening')">⬡ HARDENING <b>06</b></button>
 <button onclick="go('command')">⌘ COMMAND <b>07</b></button><button onclick="go('console')">▣ LIVE LOG <b>08</b></button>
@@ -94,6 +94,7 @@ button,input,select{font:inherit}button{cursor:pointer}
 <div class="body"><div class="matrix" id="controls"><div class="control">Canonical hardening controls will populate from the real verification result.</div></div></div>
 </section>
 
+<section class="panel" id="testCenter"><div class="head">OPERATIONAL TEST CENTER</div></section>
 <section class="panel" id="command">
 <div class="head">⌘ CONTROLLED COMMAND CONSOLE <span id="cmdState">READY</span></div>
 <div class="body">
@@ -116,7 +117,7 @@ button,input,select{font:inherit}button{cursor:pointer}
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
-const PHASES=Array.from({length:27},(_,i)=>i+1);
+const P=[...Array(27)].map((_,i)=>i+1); const PHASES=P;
 const NAMES=["OS SECURITY DEPTH","NETWORK FABRIC","THREAT INTEL INGEST","CVE / EPSS SCORING","ATT&CK MAPPING","SIGMA DETECTION","SURICATA RULES","ZEEK INTEL","AI TRIAGE CORE","AUTONOMOUS RESPONSE","FORENSIC RECON","RESILIENCE FABRIC","DECEPTION GRID","FINAL HARDENING","EVIDENCE FABRIC","DATASET INTEGRITY","MANIFEST VALIDATION","RELATION GRAPH","RAG RETRIEVAL","PROVENANCE","THREAT CORRELATION","MALWARE INTELLIGENCE","NETWORK INTELLIGENCE","RED-TEAM VALIDATION","REGRESSION GATE","RUNTIME GOVERNANCE","FINAL VERIFICATION"];
 const C=["#00eaff","#ff22d6","#39ff88"];
 let selected=1,lastState=null;
