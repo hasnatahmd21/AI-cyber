@@ -1,0 +1,12 @@
+{
+  "dataset": "example",
+  "category": "threat_intel",
+  "source": "REPLACE_WITH_OFFICIAL_SOURCE",
+  "license": "REPLACE_WITH_LICENSE",
+  "version": "REPLACE_WITH_VERSION",
+  "acquired_at": "REPLACE_WITH_ISO8601",
+  "sha256": "REPLACE_WITH_SHA256",
+  "format": "jsonl",
+  "record_count": null,
+  "validation_status": "unverified"
+}
