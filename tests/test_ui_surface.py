@@ -1,9 +1,12 @@
 from ai_cyber_os import telemetry
 from ai_cyber_os import ui
+import inspect
 
 
 def test_ui_exposes_live_operational_routes():
-    assert "/api/situation" in ui.Handler.__dict__.get("do_GET").__doc__ if ui.Handler.__dict__.get("do_GET").__doc__ else True
+    assert "/api/situation" in inspect.getsource(ui.Handler.do_GET)
+    assert "/api/events" in inspect.getsource(ui.Handler.do_GET)
+    assert "/api/command" in inspect.getsource(ui.Handler.do_POST)
     assert "/api/events" in ui.TEMPLATE
     assert "/api/command" in ui.TEMPLATE
     assert "NEURAL PHASE FABRIC" in ui.TEMPLATE
