@@ -277,11 +277,11 @@ def cwe_family() -> list[dict]:
     root.mkdir(parents=True, exist_ok=True)
     # The official page publishes the current version; the stable public XML
     # endpoint below is the MITRE CWE catalog distribution.
-    uri = "https://cwe.mitre.org/data/xml/cwec_v4.20.xml.zip"
-    p = get(uri, root / "cwec_v4.20.xml.zip")
+    uri = "https://cwe.mitre.org/data/xml/cwec_latest.xml.zip"
+    p = get(uri, root / "cwec_latest.xml.zip")
     return [artifact_record(
         family="cwe", path=p, source="MITRE CWE", source_uri=uri,
-        version="4.20", license_text="MITRE CWE Terms of Use",
+        version="latest-authoritative", license_text="MITRE CWE Terms of Use",
         format_name="zip-xml",
     )]
 
@@ -289,11 +289,11 @@ def cwe_family() -> list[dict]:
 def capec_family() -> list[dict]:
     root = RAW / "capec"
     root.mkdir(parents=True, exist_ok=True)
-    uri = "https://capec.mitre.org/data/archive/3.9.zip"
-    p = get(uri, root / "capec-3.9.zip")
+    uri = "https://capec.mitre.org/data/archive/capec_latest.zip"
+    p = get(uri, root / "capec_latest.zip")
     return [artifact_record(
         family="capec", path=p, source="MITRE CAPEC", source_uri=uri,
-        version="3.9", license_text="MITRE CAPEC Terms of Use",
+        version="latest-authoritative", license_text="MITRE CAPEC Terms of Use",
         format_name="zip-xml",
     )]
 
