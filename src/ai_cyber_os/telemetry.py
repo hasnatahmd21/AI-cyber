@@ -67,7 +67,8 @@ def emit(
         elif status in {"PASS", "FAIL", "BLOCKED", "COMPLETE", "ERROR", "IDLE"} and event_type in {
             "operation_completed", "operation_error"
         }:
-            _RUN["active"] = False
+            if not keep_active:
+                _RUN["active"] = False
             _RUN["status"] = status
         elif status in {"RUNNING", "STARTED"}:
             _RUN["status"] = status
@@ -125,6 +126,7 @@ def complete(
         phase=phase,
         status=status,
         evidence=evidence,
+        keep_active=keep_active,
     )
 
 
