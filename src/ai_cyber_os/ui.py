@@ -18,6 +18,7 @@ from .hydra import run_final_hardening_verification, run_hydra_phase
 from .operations import load_report, run_regression, save_report
 from .knowledge import DEFAULT_DB, ingest_file, search as knowledge_search, status as knowledge_status
 from .rag import build_context
+from .runtime_intelligence import analyze as intelligence_analyze
 from .dataset_pipeline import ingest_manifest, inspect_dataset
 from .threat_intel import ingest_source, PARSERS
 
@@ -176,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
                     query = body.get("query")
                     if not isinstance(query, str):
                         raise ValueError("query must be a string")
-                    result = {"success": True, "context": build_context(query, db_path=DEFAULT_DB, dataset=body.get("dataset"), limit=body.get("limit", 10))}
+                    result = intelligence_analyze(query, db_path=DEFAULT_DB, dataset=body.get("dataset"), limit=body.get("limit", 10))
                 elif action == "ingest":
                     allowed = {"action", "path", "manifest", "kind", "dataset", "source", "license", "version", "source_uri", "validation_status"}
                     unknown = set(body) - allowed
