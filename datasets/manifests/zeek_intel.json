@@ -1,0 +1,364 @@
+{
+  "acquisition_timestamp": "2026-10-07T11:43:05Z",
+  "artifact_type": "zeek_framework_script",
+  "artifacts": [
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 271,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/base/frameworks/intel/__load__.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "522d4ea00ec070fcdcb71258201cca5bdc22bf77bf2e4cefd11a86724040786e",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/base/frameworks/intel/__load__.zeek",
+      "stats": {
+        "lines": 15
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 4435,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/base/frameworks/intel/cluster.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "0ffd181721b9e923d8a120882252f84e105cea7e6ad4cf7cb2f74714e145a669",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/base/frameworks/intel/cluster.zeek",
+      "stats": {
+        "lines": 143
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 2106,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/base/frameworks/intel/files.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "f05a27a3605c3ae61b48b9965f0818df1dc0da22d3bab22f96e7007041996034",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/base/frameworks/intel/files.zeek",
+      "stats": {
+        "lines": 70
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 3125,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/base/frameworks/intel/input.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "f5cc0f766992c82db3686d72d6f39012231f7c2a6941c8c3d53342ec84c5c9c1",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/base/frameworks/intel/input.zeek",
+      "stats": {
+        "lines": 82
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 22227,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/base/frameworks/intel/main.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "695a7cb9e00966632ad856f536d9d597f4c154d35f4a42c7c0b6d6345cdba7b3",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/base/frameworks/intel/main.zeek",
+      "stats": {
+        "lines": 733
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 293,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/do_expire.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "d032611b63eb6d6ca6dff1aca184fccdea48bb0f9cb22f0905a4f61fec918786",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/do_expire.zeek",
+      "stats": {
+        "lines": 15
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 1895,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/do_notice.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "2cd8bae419c6e819fa9a7416bef146ab715c6299798498a068b07f57dd57a340",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/do_notice.zeek",
+      "stats": {
+        "lines": 73
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 376,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/removal.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "60d43f0b67e997e40047f08dbea909aa74bd50d9f34a6d68b712227b4e8f4ed7",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/removal.zeek",
+      "stats": {
+        "lines": 24
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 224,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/__load__.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "80e205def0936824750fcf75dc1266f1da7867b1b33c1abb51a94bc96b903e08",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/__load__.zeek",
+      "stats": {
+        "lines": 13
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 348,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/conn-established.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "cf17ccbba666095256eaf3c4a68a84a59294888201da95474785a83838a7b80e",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/conn-established.zeek",
+      "stats": {
+        "lines": 13
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 357,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/dns.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "c88443b3bd79c14c1463d41d38337d637365a13eec39d8f72ab67ca841141024",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/dns.zeek",
+      "stats": {
+        "lines": 11
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 346,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/file-hashes.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "bc27a044a4d45239dd2b2692735926a71a8c4581e35e8de1953fa312742b4812",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/file-hashes.zeek",
+      "stats": {
+        "lines": 12
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 1016,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/file-names.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "f92f9ca0649424d560f69a53fef728abb8230f13bdbd0dc712e3fdf1b26ce625",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/file-names.zeek",
+      "stats": {
+        "lines": 31
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 2163,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/http-headers.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "652d8a8bc7305c5853d8f42231b46d82cfdf1265e24648c6362d9d34b4bbdd74",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/http-headers.zeek",
+      "stats": {
+        "lines": 74
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 417,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/http-url.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "02cd44535bef4d03a72ab5d4f11a2030645ca687123789029649097143aec03d",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/http-url.zeek",
+      "stats": {
+        "lines": 13
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 1902,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/manage-event-groups.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "5496852d405aaa3392697b94a72ce58dce22a64630294e11e4e1b2f84d2ce724",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/manage-event-groups.zeek",
+      "stats": {
+        "lines": 75
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 323,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/pubkey-hashes.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "fd00c0775265f3471105d785c5eb9755e7b7d844070895c09a3abd86400321d5",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/pubkey-hashes.zeek",
+      "stats": {
+        "lines": 13
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 754,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/smb-filenames.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "ca4e206b41eff2a19547059431dbb1d1e85c8eeffe4adb1c6d1aacd1d849878c",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/smb-filenames.zeek",
+      "stats": {
+        "lines": 24
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 698,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/smtp-url-extraction.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "36dcf5cb5fa095092412dd1c1fcdef5c675f45deb4f952a9d34bb160218bf86f",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/smtp-url-extraction.zeek",
+      "stats": {
+        "lines": 29
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 2690,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/smtp.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "9436a2b388f80306ed604faa8243c702979d89ba3c3216036448f2458d2dcc53",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/smtp.zeek",
+      "stats": {
+        "lines": 105
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 886,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/ssl.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "e644520aa01cdb3e1482d0f771e81b11bc35016f280a8192d32bd7a49840595a",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/ssl.zeek",
+      "stats": {
+        "lines": 27
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 617,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/where-locations.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "035f387dbb60b538e764c6be5a279ff7c2c37939d343bc1a6f993f8e5ac9d4b4",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/where-locations.zeek",
+      "stats": {
+        "lines": 32
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 1743,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/seen/x509.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "b1f4e8927b234d36f23852393ab6093101e00eb77cd104e24e577617d014bea6",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/seen/x509.zeek",
+      "stats": {
+        "lines": 58
+      }
+    },
+    {
+      "artifact_type": "zeek_framework_script",
+      "byte_size": 509,
+      "count_kind": "zeek",
+      "path": "datasets/raw/zeek_intel/framework/scripts/policy/frameworks/intel/whitelist.zeek",
+      "record_count": 1,
+      "role": "data",
+      "sha256": "03b958dfc83ce29f31f8d3a33daf2c80e4c0beb9459d141a0726ec0decd07b19",
+      "source_uri": "https://raw.githubusercontent.com/zeek/zeek/970787a9f10896ff65c4758444d87bcf53eba4b7/scripts/policy/frameworks/intel/whitelist.zeek",
+      "stats": {
+        "lines": 30
+      }
+    },
+    {
+      "artifact_type": "license_text",
+      "byte_size": 1838,
+      "count_kind": null,
+      "path": "datasets/raw/zeek_intel/LICENSE.zeek.txt",
+      "record_count": null,
+      "role": "license",
+      "sha256": "1f984adb6b5cd93d5035c2a87c2df5f38922649fbea90c7bd79ff321d17333aa",
+      "source_uri": "https://github.com/zeek/zeek/blob/970787a9f10896ff65c4758444d87bcf53eba4b7/COPYING",
+      "stats": {}
+    }
+  ],
+  "byte_size": 49721,
+  "dataset": "zeek_intel",
+  "execution_status": "acquired",
+  "ingestion_status": "pending",
+  "license": "Other (see license file)",
+  "license_basis": "GitHub license API for zeek/zeek@970787a9f108",
+  "license_files": [
+    "datasets/raw/zeek_intel/LICENSE.zeek.txt"
+  ],
+  "license_url": "https://github.com/zeek/zeek/blob/970787a9f10896ff65c4758444d87bcf53eba4b7/COPYING",
+  "license_verified": true,
+  "local_path": "datasets/raw/zeek_intel",
+  "manifest_format": 1,
+  "provenance": {
+    "github": {
+      "commit_sha": "970787a9f10896ff65c4758444d87bcf53eba4b7",
+      "ref": "v9.0.0",
+      "ref_kind": "release_tag",
+      "repo": "zeek/zeek"
+    },
+    "note": "Contains Zeek's own intel framework/schema only. No third-party indicator feed is included; none is claimed as Zeek-owned.",
+    "third_party_feeds": []
+  },
+  "record_count": 24,
+  "schema": {
+    "format": "Zeek script files",
+    "record_count_meaning": "number of .zeek framework scripts"
+  },
+  "sha256": "2290ecf93b8275aa4025287a76ad97df0f323b5d15e3d035cfc088cb7b8560da",
+  "sha256_scheme": "sha256-of-sorted-'sha  path'-lines",
+  "source": "Zeek Intelligence Framework (zeek/zeek) - framework/schema only",
+  "source_uri": "https://github.com/zeek/zeek",
+  "validation_status": "validated",
+  "version": "v9.0.0",
+  "version_basis": "zeek/zeek release_tag"
+}
