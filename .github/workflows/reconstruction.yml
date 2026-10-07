@@ -75,6 +75,16 @@ jobs:
           assert data["hardening_result"]["verified"] is True, data
           assert data["hardening_result"]["failed"] == 0, data
           PY
+      - name: Run extended intelligence CLI
+        run: |
+          ai-cyber --extended-all --json > extended_intelligence_result.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path("extended_intelligence_result.json").read_text(encoding="utf-8"))
+          assert data["phase_result"]["summary"]["success"] is True, data
+          PY
+
       - name: Build and smoke-test distributable wheel
         run: |
           python -m pip install --disable-pip-version-check build
