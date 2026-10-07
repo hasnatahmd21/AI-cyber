@@ -43,3 +43,30 @@ def test_identifier_search_handles_hyphens(tmp_path: Path):
     ingest_file(data, db_path=db, dataset="cve")
     hits = search("CVE-2026-1234", db_path=db)
     assert hits and hits[0]["record_id"] == "CVE-2026-1234"
+
+
+
+def test_provenance_status_is_persisted(tmp_path: Path):
+    data = tmp_path / "intel.jsonl"
+    data.write_text(
+        '{"id":"I-1","content":"verified threat evidence"}\n',
+        encoding="utf-8",
+    )
+    db = tmp_path / "knowledge.db"
+    ingest_file(
+        data,
+        db_path=db,
+        dataset="intel",
+        source="fixture",
+        source_uri="https://example.invalid/source",
+        license="CC0",
+        version="2026-10",
+        validation_status="validated",
+    )
+    hit = search("verified threat evidence", db_path=db)[0]
+    assert hit["source"] == "fixture"
+    assert hit["source_uri"] == "https://example.invalid/source"
+    assert hit["license"] == "CC0"
+    assert hit["version"] == "2026-10"
+    assert hit["validation_status"] == "validated"
+    assert status(db_path=db)["schema_version"] == 2
