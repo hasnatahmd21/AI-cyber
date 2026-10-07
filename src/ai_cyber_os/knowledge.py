@@ -224,7 +224,7 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
             )
             db.execute("DELETE FROM knowledge_relations WHERE record_id=?", (record["record_id"],))
             for relation_type, target_id in _extract_relations(
-                f'{record["title"]} {record["content"]}'
+                f'{record["record_id"]} {record["title"]} {record["content"]}'
             ):
                 db.execute(
                     "INSERT OR IGNORE INTO knowledge_relations(record_id,relation_type,target_id) VALUES (?,?,?)",
