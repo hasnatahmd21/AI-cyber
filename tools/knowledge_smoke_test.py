@@ -18,7 +18,7 @@ def main() -> int:
         manifests = root / "datasets" / "manifests"
         manifests.mkdir(parents=True)
         payload = (
-            '{"id":"CVE-2099-0001","title":"Smoke CVE","description":'
+            '{"id":"CVE-2026-2000","title":"Smoke CVE","description":'
             '"remote code execution; CWE-78; ATT&CK T1059.001"}\n'
         )
         dataset.write_text(payload, encoding="utf-8")
@@ -41,8 +41,8 @@ def main() -> int:
         assert inspected["ready"] is True, inspected
         ingested = ingest_manifest(manifest, db_path=db)
         assert ingested["inserted"] == 1, ingested
-        result = correlate("CVE-2099-0001", db_path=str(db))
-        assert result["related"]["CVE-2099-0001"], result
+        result = correlate("CVE-2026-2000", db_path=str(db))
+        assert result["related"]["CVE-2026-2000"], result
         print(json.dumps({
             "success": True,
             "records": ingested["records_seen"],
