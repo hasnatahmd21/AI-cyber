@@ -38,6 +38,14 @@ def _safe_relative(path: Path, root: Path) -> str:
 
 
 def _record_count(path: Path, metadata: dict[str, Any]) -> int:
+    if path.suffix.lower() in {".jsonl", ".ndjson"}:
+        for line_no, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"invalid JSON at line {line_no}: {exc}") from exc
     return sum(
         1
         for _ in iter_records(
