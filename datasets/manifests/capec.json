@@ -1,0 +1,70 @@
+{
+  "acquisition_timestamp": "2026-10-07T11:42:25Z",
+  "artifact_type": "xml_catalog",
+  "artifacts": [
+    {
+      "artifact_type": "xml_catalog",
+      "byte_size": 3849998,
+      "count_kind": "xml_capec",
+      "path": "datasets/raw/capec/capec_v3.9.xml",
+      "record_count": 706,
+      "role": "data",
+      "sha256": "70279a2dff0cb0ad79e546adb07828335a704ad5210e047e09e986172fc9e34d",
+      "source_uri": "https://capec.mitre.org/data/xml/capec_latest.xml",
+      "stats": {
+        "counts": {
+          "Attack_Pattern": 615,
+          "Category": 78,
+          "View": 13
+        },
+        "root": {
+          "Date": "2023-01-24",
+          "Name": "CAPEC",
+          "Version": "3.9",
+          "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation": "http://capec.mitre.org/capec-3 http://capec.mitre.org/data/xsd/ap_schema_v3.5.xsd"
+        }
+      }
+    }
+  ],
+  "byte_size": 3849998,
+  "dataset": "capec",
+  "execution_status": "acquired",
+  "ingestion_status": "pending",
+  "license": "MITRE CAPEC Terms of Use (free use with copyright notice)",
+  "license_basis": "declared by script; verify at URL",
+  "license_files": [],
+  "license_url": "https://capec.mitre.org/about/termsofuse.html",
+  "license_verified": false,
+  "local_path": "datasets/raw/capec/capec_v3.9.xml",
+  "manifest_format": 1,
+  "provenance": {
+    "catalog_root": {
+      "Date": "2023-01-24",
+      "Name": "CAPEC",
+      "Version": "3.9",
+      "{http://www.w3.org/2001/XMLSchema-instance}schemaLocation": "http://capec.mitre.org/capec-3 http://capec.mitre.org/data/xsd/ap_schema_v3.5.xsd"
+    },
+    "element_counts": {
+      "Attack_Pattern": 615,
+      "Category": 78,
+      "View": 13
+    },
+    "used_url": "https://capec.mitre.org/data/xml/capec_latest.xml"
+  },
+  "record_count": 706,
+  "schema": {
+    "elements": [
+      "Attack_Pattern",
+      "Category",
+      "View"
+    ],
+    "format": "xml"
+  },
+  "sha256": "70279a2dff0cb0ad79e546adb07828335a704ad5210e047e09e986172fc9e34d",
+  "sha256_scheme": "sha256",
+  "source": "MITRE CAPEC (official)",
+  "source_uri": "https://capec.mitre.org/data/xml/capec_latest.xml",
+  "validation_status": "validated",
+  "version": "3.9",
+  "version_basis": "Version attribute of catalog root element"
+}
