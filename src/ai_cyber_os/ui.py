@@ -31,6 +31,14 @@ VALID_PHASES = {"all", *{f"phase{i}" for i in range(1, 28)}}
 TEMPLATE = Path(__file__).with_name("ui_template.html").read_text(encoding="utf-8")
 
 STATE_LOCK = threading.Lock()
+def _assert_inside_project(path: Path, label: str = "path") -> Path:
+    try:
+        path.relative_to(PROJECT_ROOT.resolve())
+    except ValueError as exc:
+        raise ValueError(f"{label} must remain inside project") from exc
+    return path
+
+
 STATE: dict[str, Any] = {
     "runtime": "online",
     "last_phase": None,
@@ -314,7 +322,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(raw_path, str) or not raw_path:
                         raise ValueError("path must be a non-empty string")
                     candidate = (PROJECT_ROOT / raw_path).resolve()
-                    candidate.relative_to(PROJECT_ROOT.resolve())
+                    _assert_inside_project(candidate, "path")
                     result = ingest_file(
                         candidate,
                         db_path=DEFAULT_DB,
@@ -330,7 +338,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not isinstance(raw_manifest, str) or not raw_manifest:
                         raise ValueError("manifest must be a non-empty string")
                     manifest_path = (PROJECT_ROOT / raw_manifest).resolve()
-                    manifest_path.relative_to(PROJECT_ROOT.resolve())
+                    _assert_inside_project(manifest_path, "manifest")
                     result = ingest_manifest(manifest_path, db_path=DEFAULT_DB)
                 elif action == "inspect-manifest":
                     raw_manifest = body.get("manifest")
