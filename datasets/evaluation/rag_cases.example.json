@@ -1,0 +1,8 @@
+[
+  {
+    "id": "cve-fixture-1",
+    "query": "CVE-2026-2000",
+    "expected_record_ids": ["CVE-2026-2000"],
+    "limit": 8
+  }
+]
