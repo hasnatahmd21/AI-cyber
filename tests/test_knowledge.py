@@ -91,3 +91,27 @@ def test_rag_context_is_evidence_only(tmp_path: Path):
     assert "content_sha256" in context["evidence"][0]
     assert "identifiers" in context
     assert "related" in context
+
+
+def test_gzip_jsonl_ingestion(tmp_path: Path):
+    import gzip
+    data = tmp_path / "feed.jsonl.gz"
+    with gzip.open(data, "wt", encoding="utf-8") as handle:
+        handle.write('{"id":"GZ-1","content":"compressed CVE evidence"}\\n')
+    db = tmp_path / "knowledge.db"
+    result = ingest_file(data, db_path=db, dataset="compressed")
+    assert result["success"] is True
+    assert result["inserted"] == 1
+    assert search("compressed CVE evidence", db_path=db)[0]["record_id"] == "GZ-1"
+
+
+def test_zip_json_ingestion(tmp_path: Path):
+    import zipfile
+    data = tmp_path / "feed.zip"
+    with zipfile.ZipFile(data, "w") as archive:
+        archive.writestr("feed.json", '[{"id":"ZIP-1","content":"archived evidence"}]')
+    db = tmp_path / "knowledge.db"
+    result = ingest_file(data, db_path=db, dataset="archive")
+    assert result["success"] is True
+    assert result["inserted"] == 1
+    assert search("archived evidence", db_path=db)[0]["record_id"] == "ZIP-1"
