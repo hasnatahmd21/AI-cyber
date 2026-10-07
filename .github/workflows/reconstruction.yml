@@ -48,6 +48,16 @@ jobs:
           PYTHONPATH: src
         run: python -m pytest -q tests
 
+      - name: Validate real dataset readiness tooling
+        run: |
+          python tools/real_dataset_readiness.py . --json-out /tmp/dataset-readiness.json || true
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path("/tmp/dataset-readiness.json").read_text())
+          assert "files" in data and "bytes" in data
+          PY
+
       - name: Run intelligence integration evaluation
         env:
           PYTHONPATH: src
