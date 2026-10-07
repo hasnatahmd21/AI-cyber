@@ -1,0 +1,64 @@
+{
+  "acquisition_timestamp": "2026-10-07T11:42:49Z",
+  "artifact_type": "sigma_rules_release_asset",
+  "artifacts": [
+    {
+      "artifact_type": "sigma_rules_release_asset",
+      "byte_size": 3172748,
+      "count_kind": "sigma",
+      "path": "datasets/raw/sigma/sigma_all_rules_r2026-07-01.zip",
+      "record_count": 3302,
+      "role": "data",
+      "sha256": "5725c91b5813587ad6a4b0b8e0233fa44348b1595f818d8b7fd39d6033385085",
+      "source_uri": "https://github.com/SigmaHQ/sigma/releases/download/r2026-07-01/sigma_all_rules.zip",
+      "stats": {
+        "parse_error_examples": [],
+        "parse_errors": 0,
+        "yaml_files": 3302
+      }
+    }
+  ],
+  "byte_size": 3172748,
+  "dataset": "sigma",
+  "execution_status": "acquired",
+  "ingestion_status": "pending",
+  "license": "Detection Rule License (DRL) 1.1 (rules); tooling under repo LICENSE",
+  "license_basis": "declared by script from SigmaHQ README; verify at URL",
+  "license_files": [],
+  "license_url": "https://github.com/SigmaHQ/Detection-Rule-License",
+  "license_verified": false,
+  "local_path": "datasets/raw/sigma/sigma_all_rules_r2026-07-01.zip",
+  "manifest_format": 1,
+  "provenance": {
+    "artifact_kind": "release_asset",
+    "github": {
+      "commit_sha": "552f3fee420ef232a8e5790c4fae591847e32347",
+      "ref": "r2026-07-01",
+      "ref_kind": "release_tag",
+      "repo": "SigmaHQ/sigma"
+    },
+    "note": "rules preserved unmodified inside upstream archive"
+  },
+  "record_count": 3302,
+  "schema": {
+    "format": "YAML rules inside archive",
+    "key_fields": [
+      "id",
+      "title",
+      "description",
+      "logsource",
+      "detection",
+      "tags",
+      "references",
+      "status",
+      "author"
+    ]
+  },
+  "sha256": "5725c91b5813587ad6a4b0b8e0233fa44348b1595f818d8b7fd39d6033385085",
+  "sha256_scheme": "sha256",
+  "source": "SigmaHQ/sigma",
+  "source_uri": "https://github.com/SigmaHQ/sigma",
+  "validation_status": "validated",
+  "version": "r2026-07-01",
+  "version_basis": "upstream release_tag"
+}
