@@ -459,6 +459,7 @@ def push() -> None:
         env["GITHUB_TOKEN"] = token
         env["GIT_ASKPASS"] = str(askpass)
         env["GIT_TERMINAL_PROMPT"] = "0"
+        run("git", "remote", "set-url", "origin", f"https://x-access-token@github.com/{REPO}.git", cwd=CHECKOUT)
         run("git", "push", "origin", BRANCH, cwd=CHECKOUT, env=env)
     finally:
         try:
