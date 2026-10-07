@@ -19,7 +19,7 @@ IMPORTANT:
   third-party mirror for NVD/CPE/KEV/EPSS/ATT&CK/Sigma/MBC/D3FEND.
 
 Kaggle:
-  Set GH_TOKEN in the Kaggle environment/secret. Do not hard-code the token.
+  In Kaggle, the GitHub token is stored in the Kaggle Secret named exactly "cyber repo". The runner reads that secret and maps it internally to GITHUB_TOKEN/GH_TOKEN. Do not hard-code or print the token.
   Optional:
     AI_CYBER_BRANCH=repair/forensic-reconstruction
     AI_CYBER_REPO=hasnatahmd21/AI-cyber
@@ -146,10 +146,25 @@ def get(url: str, target: Path, *, retries: int = 3) -> Path:
     raise RuntimeError(f"download failed: {url}") from last
 
 
+def github_token() -> str:
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token and token.strip():
+        return token.strip()
+    try:
+        from kaggle_secrets import UserSecretsClient
+        token = UserSecretsClient().get_secret("cyber repo")
+    except Exception as exc:
+        raise RuntimeError(
+            'GitHub token unavailable. In Kaggle create/attach the Secret named exactly "cyber repo".'
+        ) from exc
+    if not token or not token.strip():
+        raise RuntimeError('Kaggle Secret "cyber repo" is empty.')
+    return token.strip()
+
+
 def git_clone() -> None:
     if CHECKOUT.exists():
         shutil.rmtree(CHECKOUT)
-    # Public clone: keep the write token out of URLs, logs, and process listings.
     url = f"https://github.com/{REPO}.git"
     run("git", "clone", "--branch", BRANCH, "--single-branch", url, str(CHECKOUT))
     run("git", "config", "user.name", "AI-CYBER Dataset Runner", cwd=CHECKOUT)
@@ -206,9 +221,9 @@ def cpe_family() -> list[dict]:
     # consume each chunk without losing source fidelity.
     for name, label in (
         ("nvdcpe-2.0.tar.gz", "NVD-CPE-Dictionary-2.0"),
-        ("nvdcpe-match-2.0.tar.gz", "NVD-CPE-Match-2.0"),
+        ("nvdcpematch-2.0.tar.gz", "NVD-CPE-Match-2.0"),
     ):
-        uri = f"https://nvd.nist.gov/feeds/json/cpe/2.0/{name}"
+        uri = f"https://nvd.nist.gov/feeds/json/{'cpe' if name.startswith('nvdcpe-') else 'cpematch'}/2.0/{name}"
         p = get(uri, root / name)
         out.append(artifact_record(
             family="cpe", path=p, source="NVD", source_uri=uri,
@@ -402,6 +417,8 @@ def cvss_family(nvd_records: list[dict]) -> list[dict]:
 
 
 def acquire_family(name: str) -> list[dict]:
+    if name == "cvss":
+        return []
     if name == "nvd_cve":
         return nvd_family()
     if name == "cpe":
@@ -430,9 +447,7 @@ def acquire_family(name: str) -> list[dict]:
 
 
 def push() -> None:
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if not token:
-        raise SystemExit("GH_TOKEN/GITHUB_TOKEN is required for PUSH_DATASETS=1")
+    token = github_token()
     # Large regular-Git objects are blocked by GitHub at 100 MiB. Track them in
     # LFS before staging, but fail closed if LFS is unavailable.
     large = [p for p in DATASETS.rglob("*") if p.is_file() and p.stat().st_size >= LFS_THRESHOLD]
@@ -491,7 +506,10 @@ def main() -> int:
             if family == "nvd_cve":
                 nvd_records = records
             all_records.extend(records)
-            print(f"OK: {family}: {len(records)} artifact(s)")
+            if family == "cvss":
+                print("OK: cvss: deferred to NVD-derived extraction")
+            else:
+                print(f"OK: {family}: {len(records)} artifact(s)")
         except Exception as exc:
             errors.append({"dataset": family, "error": repr(exc)})
             print(f"FAILED: {family}: {exc}")
