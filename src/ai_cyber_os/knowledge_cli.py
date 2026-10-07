@@ -19,6 +19,8 @@ def main(argv: list[str] | None = None) -> int:
     ing.add_argument("--source")
     ing.add_argument("--license", default="")
     ing.add_argument("--version", default="")
+    ing.add_argument("--source-uri", default="")
+    ing.add_argument("--validation-status", default="unverified")
 
     q = sub.add_parser("search")
     q.add_argument("query")
@@ -30,7 +32,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "ingest":
         result = ingest_file(args.path, db_path=args.db, dataset=args.dataset,
-                             source=args.source, license=args.license, version=args.version)
+                             source=args.source, license=args.license, version=args.version,
+                             source_uri=args.source_uri, validation_status=args.validation_status)
     elif args.command == "search":
         result = {"success": True, "results": search(args.query, db_path=args.db,
                                                        dataset=args.dataset, limit=args.limit)}
