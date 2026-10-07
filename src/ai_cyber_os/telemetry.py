@@ -113,7 +113,7 @@ def complete(
 ) -> dict[str, Any]:
     status = "PASS" if success else "FAIL"
     with _LOCK:
-        _RUN.update({"active": False, "phase": phase, "status": status, "updated_at": _now()})
+        _RUN.update({"phase": phase, "status": status, "updated_at": _now()})
     return emit(
         "operation_completed",
         message or f"{operation} {'completed' if success else 'failed'}",
