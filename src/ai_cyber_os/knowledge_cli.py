@@ -8,6 +8,7 @@ from pathlib import Path
 from .knowledge import DEFAULT_DB, ingest_file, search, status
 from .dataset_pipeline import ingest_manifest, inspect_dataset
 from .intelligence import correlate
+from .threat_intel import ingest_source, PARSERS
 from .rag import build_context
 
 
@@ -43,13 +44,27 @@ def main(argv: list[str] | None = None) -> int:
     corr.add_argument("query")
     corr.add_argument("--dataset")
     corr.add_argument("--limit", type=int, default=10)
+    src = sub.add_parser("ingest-source")
+    src.add_argument("kind", choices=sorted(PARSERS))
+    src.add_argument("path")
+    src.add_argument("--dataset")
+    src.add_argument("--source")
+    src.add_argument("--version", default="")
+    src.add_argument("--source-uri", default="")
+    src.add_argument("--license", default="")
+    src.add_argument("--validation-status", default="unverified")
+
     ctx = sub.add_parser("context")
     ctx.add_argument("query")
     ctx.add_argument("--dataset")
     ctx.add_argument("--limit", type=int, default=8)
     args = p.parse_args(argv)
 
-    if args.command == "ingest-manifest":
+    if args.command == "ingest-source":
+        result = ingest_source(args.kind, args.path, db_path=args.db, dataset=args.dataset,
+                               source=args.source, version=args.version, source_uri=args.source_uri,
+                               license=args.license, validation_status=args.validation_status)
+    elif args.command == "ingest-manifest":
         result = ingest_manifest(args.path, db_path=args.db, require_checksum=not args.no_checksum)
     elif args.command == "inspect-manifest":
         result = inspect_dataset(args.path)
