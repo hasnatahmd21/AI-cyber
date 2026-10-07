@@ -70,3 +70,22 @@ def test_provenance_status_is_persisted(tmp_path: Path):
     assert hit["version"] == "2026-10"
     assert hit["validation_status"] == "validated"
     assert status(db_path=db)["schema_version"] == 2
+
+
+
+def test_rag_context_is_evidence_only(tmp_path: Path):
+    from ai_cyber_os.rag import build_context
+
+    data = tmp_path / "rag.jsonl"
+    data.write_text(
+        '{"id":"R-1","content":"known exploitation evidence","source":"fixture"}\n',
+        encoding="utf-8",
+    )
+    db = tmp_path / "knowledge.db"
+    ingest_file(data, db_path=db, dataset="threats")
+    context = build_context("known exploitation", db_path=db)
+    assert context["evidence_only"] is True
+    assert context["count"] == 1
+    assert context["evidence"][0]["record_id"] == "R-1"
+    assert context["evidence"][0]["source"] == "fixture"
+    assert "content_sha256" in context["evidence"][0]
