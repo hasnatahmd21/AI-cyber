@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from .knowledge import DEFAULT_DB, ingest_file, search, status
+from .rag import build_context
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -28,6 +29,10 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--limit", type=int, default=10)
 
     sub.add_parser("status")
+    ctx = sub.add_parser("context")
+    ctx.add_argument("query")
+    ctx.add_argument("--dataset")
+    ctx.add_argument("--limit", type=int, default=8)
     args = p.parse_args(argv)
 
     if args.command == "ingest":
@@ -37,6 +42,8 @@ def main(argv: list[str] | None = None) -> int:
     elif args.command == "search":
         result = {"success": True, "results": search(args.query, db_path=args.db,
                                                        dataset=args.dataset, limit=args.limit)}
+    elif args.command == "context":
+        result = build_context(args.query, db_path=args.db, dataset=args.dataset, limit=args.limit)
     else:
         result = status(db_path=args.db)
     print(json.dumps(result, indent=2, ensure_ascii=False, default=str))
