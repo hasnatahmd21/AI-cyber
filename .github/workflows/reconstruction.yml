@@ -41,6 +41,12 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m pytest -q tests
+
+      - name: Run knowledge pipeline smoke test
+        env:
+          PYTHONPATH: src
+        run: python tools/knowledge_smoke_test.py
+
       - name: Run installed CLI operational check
         run: |
           command -v ai-cyber
