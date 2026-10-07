@@ -161,14 +161,23 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
 def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                 dataset: str | None = None, source: str | None = None,
                 license: str = "", version: str = "", source_uri: str = "",
-                validation_status: str = "unverified") -> dict[str, Any]:
-    records = list(iter_records(path, dataset=dataset, source=source, license=license, version=version, source_uri=source_uri, validation_status=validation_status))
-    db = open_store(db_path)
+                validation_status: str = "") -> dict[str, Any]:
+    records_seen = 0
     inserted = 0
     updated = 0
     duplicates = 0
+    db = open_store(db_path)
     try:
-        for record in records:
+        for record in iter_records(
+            path,
+            dataset=dataset,
+            source=source,
+            license=license,
+            version=version,
+            source_uri=source_uri,
+            validation_status=validation_status,
+        ):
+            records_seen += 1
             old = db.execute(
                 "SELECT record_id, content_sha256 FROM knowledge_records WHERE record_id=?",
                 (record["record_id"],),
@@ -193,12 +202,20 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                 "INSERT INTO knowledge_fts(record_id,dataset,title,content) VALUES (?,?,?,?)",
                 (record["record_id"], record["dataset"], record["title"], record["content"]),
             )
+            if records_seen % 1000 == 0:
+                db.commit()
         db.commit()
     finally:
         db.close()
-    return {"success": True, "records_seen": len(records), "inserted": inserted,
-            "updated": updated, "duplicates": duplicates, "dataset": dataset or Path(path).stem,
-            "validation_status": validation_status}
+    return {
+        "success": True,
+        "records_seen": records_seen,
+        "inserted": inserted,
+        "updated": updated,
+        "duplicates": duplicates,
+        "dataset": dataset or Path(path).stem,
+        "validation_status": validation_status or "unverified",
+    }
 
 def search(query: str, *, db_path: str | Path = DEFAULT_DB,
            limit: int = 10, dataset: str | None = None) -> list[dict[str, Any]]:
