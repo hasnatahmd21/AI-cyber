@@ -12,7 +12,7 @@ from contextlib import redirect_stdout
 from io import StringIO
 from typing import Any
 
-from .hydra import run_final_hardening_verification, run_hydra_phase
+from .hydra import run_final_hardening_verification\nfrom .intelligence_hydra import run_hydra_phase, run_all_extended
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -72,7 +72,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.json:
             runtime_output = StringIO()
             with redirect_stdout(runtime_output):
-                phase_result: dict[str, Any] = run_hydra_phase(args.phase)
+                phase_result: dict[str, Any] = run_all_extended() if args.extended_all else run_hydra_phase(args.phase)
                 payload: dict[str, Any] = {"phase_result": phase_result}
                 if args.hardening:
                     payload["hardening_result"] = run_final_hardening_verification()
@@ -80,12 +80,12 @@ def main(argv: list[str] | None = None) -> int:
             if diagnostic_output:
                 print(diagnostic_output, file=sys.stderr, end="")
         else:
-            phase_result = run_hydra_phase(args.phase)
+            phase_result = run_all_extended() if args.extended_all else run_hydra_phase(args.phase)
             payload = {"phase_result": phase_result}
             if args.hardening:
                 payload["hardening_result"] = run_final_hardening_verification()
 
-        success = _result_successful(phase_result)
+        success = _result_successful(phase_result)\n        if args.extended_all:\n            success = bool(phase_result.get("summary", {}).get("success", False))
         if args.hardening:
             success = success and bool(payload["hardening_result"].get("verified", False))
 
