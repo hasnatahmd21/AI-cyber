@@ -28,7 +28,7 @@ def main() -> int:
     args = p.parse_args()
 
     data = args.dataset_path.resolve()
-    root = args.output.resolve().parents[1]
+    root = args.output.resolve().parents[2]
     try:
         local_path = data.relative_to(root).as_posix()
     except ValueError as exc:
