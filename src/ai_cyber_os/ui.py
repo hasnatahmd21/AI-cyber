@@ -17,7 +17,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .hydra import run_final_hardening_verification, run_hydra_phase
 from .operations import load_report, run_regression, save_report
-from .knowledge import DEFAULT_DB, ingest_file, status as knowledge_status
+from .knowledge import DEFAULT_DB, ingest_file, search as knowledge_search, status as knowledge_status
 from .runtime_intelligence import analyze as intelligence_analyze
 from .dataset_pipeline import ingest_manifest, inspect_dataset
 from .threat_intel import ingest_source, PARSERS
