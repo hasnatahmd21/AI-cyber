@@ -110,10 +110,13 @@ def complete(
     phase: str | None = None,
     message: str | None = None,
     evidence: Any = None,
+    keep_active: bool = False,
 ) -> dict[str, Any]:
     status = "PASS" if success else "FAIL"
     with _LOCK:
         _RUN.update({"phase": phase, "status": status, "updated_at": _now()})
+        if not keep_active:
+            _RUN["active"] = False
     return emit(
         "operation_completed",
         message or f"{operation} {'completed' if success else 'failed'}",
