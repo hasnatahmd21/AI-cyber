@@ -17,6 +17,9 @@ from urllib.parse import urlparse
 from .hydra import run_final_hardening_verification, run_hydra_phase
 from .operations import load_report, run_regression, save_report
 from .knowledge import DEFAULT_DB, ingest_file, search as knowledge_search, status as knowledge_status
+from .rag import build_context
+from .dataset_pipeline import ingest_manifest, inspect_dataset
+from .threat_intel import ingest_source, PARSERS
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -173,9 +176,9 @@ class Handler(BaseHTTPRequestHandler):
                     query = body.get("query")
                     if not isinstance(query, str):
                         raise ValueError("query must be a string")
-                    result = {"success": True, "results": knowledge_search(query, db_path=DEFAULT_DB, dataset=body.get("dataset"), limit=body.get("limit", 10))}
+                    result = {"success": True, "context": build_context(query, db_path=DEFAULT_DB, dataset=body.get("dataset"), limit=body.get("limit", 10))}
                 elif action == "ingest":
-                    allowed = {"action", "path", "dataset", "source", "license", "version", "source_uri", "validation_status"}
+                    allowed = {"action", "path", "manifest", "kind", "dataset", "source", "license", "version", "source_uri", "validation_status"}
                     unknown = set(body) - allowed
                     if unknown:
                         raise ValueError("unknown request fields: " + ", ".join(sorted(str(x) for x in unknown)))
@@ -191,6 +194,39 @@ class Handler(BaseHTTPRequestHandler):
                                          source=body.get("source"), license=body.get("license", ""),
                                          version=body.get("version", ""), source_uri=body.get("source_uri", ""),
                                          validation_status=body.get("validation_status", "unverified"))
+                elif action == "ingest-manifest":
+                    raw_manifest = body.get("manifest")
+                    if not isinstance(raw_manifest, str) or not raw_manifest:
+                        raise ValueError("manifest must be a non-empty string")
+                    manifest_path = (PROJECT_ROOT / raw_manifest).resolve()
+                    try:
+                        manifest_path.relative_to(PROJECT_ROOT.resolve())
+                    except ValueError as exc:
+                        raise ValueError("manifest path must stay inside project") from exc
+                    result = ingest_manifest(manifest_path, db_path=DEFAULT_DB)
+                elif action == "inspect-manifest":
+                    raw_manifest = body.get("manifest")
+                    if not isinstance(raw_manifest, str) or not raw_manifest:
+                        raise ValueError("manifest must be a non-empty string")
+                    manifest_path = (PROJECT_ROOT / raw_manifest).resolve()
+                    result = inspect_dataset(manifest_path)
+                elif action == "ingest-source":
+                    kind = body.get("kind")
+                    raw_path = body.get("path")
+                    if kind not in PARSERS:
+                        raise ValueError("unsupported threat-intel source")
+                    if not isinstance(raw_path, str) or not raw_path:
+                        raise ValueError("path must be a non-empty string")
+                    candidate = (PROJECT_ROOT / raw_path).resolve()
+                    try:
+                        candidate.relative_to(PROJECT_ROOT.resolve())
+                    except ValueError as exc:
+                        raise ValueError("dataset path must stay inside project") from exc
+                    result = ingest_source(kind, candidate, db_path=DEFAULT_DB,
+                                           dataset=body.get("dataset"), source=body.get("source"),
+                                           version=body.get("version", ""), source_uri=body.get("source_uri", ""),
+                                           license=body.get("license", ""),
+                                           validation_status=body.get("validation_status", "unverified"))
                 elif action == "status":
                     result = knowledge_status(db_path=DEFAULT_DB)
                 else:
