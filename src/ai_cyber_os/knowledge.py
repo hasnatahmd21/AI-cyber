@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 DEFAULT_DB = Path.home() / ".ai-cyber" / "knowledge.db"
 SUPPORTED_SUFFIXES = {".jsonl", ".ndjson", ".json", ".csv", ".txt", ".md"}
 
@@ -39,6 +39,15 @@ CREATE TABLE IF NOT EXISTS knowledge_records (
 );
 CREATE INDEX IF NOT EXISTS idx_knowledge_dataset ON knowledge_records(dataset);
 CREATE INDEX IF NOT EXISTS idx_knowledge_hash ON knowledge_records(content_sha256);
+CREATE TABLE IF NOT EXISTS knowledge_relations (
+    record_id TEXT NOT NULL,
+    relation_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    PRIMARY KEY (record_id, relation_type, target_id),
+    FOREIGN KEY (record_id) REFERENCES knowledge_records(record_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_relations_target
+    ON knowledge_relations(relation_type, target_id);
 CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
     record_id UNINDEXED,
     dataset UNINDEXED,
@@ -47,6 +56,21 @@ CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
     tokenize='unicode61'
 );
 """
+
+
+_IDENTIFIER_PATTERNS = {
+    "cve": re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.I),
+    "cwe": re.compile(r"\bCWE-\d+\b", re.I),
+    "attack": re.compile(r"\bT\d{4}(?:\.\d{3})?\b", re.I),
+    "cpe": re.compile(r"\bcpe:2\.3:[^\s"']+", re.I),
+}
+
+def _extract_relations(text: str) -> list[tuple[str, str]]:
+    found: set[tuple[str, str]] = set()
+    for relation_type, pattern in _IDENTIFIER_PATTERNS.items():
+        for value in pattern.findall(text):
+            found.add((relation_type, value.upper()))
+    return sorted(found)
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -198,6 +222,14 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                         :content_sha256,:metadata_json,:schema_version,:ingested_at)""",
                 record,
             )
+            db.execute("DELETE FROM knowledge_relations WHERE record_id=?", (record["record_id"],))
+            for relation_type, target_id in _extract_relations(
+                f'{record["title"]} {record["content"]}'
+            ):
+                db.execute(
+                    "INSERT OR IGNORE INTO knowledge_relations(record_id,relation_type,target_id) VALUES (?,?,?)",
+                    (record["record_id"], relation_type, target_id),
+                )
             db.execute(
                 "INSERT INTO knowledge_fts(record_id,dataset,title,content) VALUES (?,?,?,?)",
                 (record["record_id"], record["dataset"], record["title"], record["content"]),
@@ -255,7 +287,8 @@ def status(*, db_path: str | Path = DEFAULT_DB) -> dict[str, Any]:
         datasets = db.execute(
             "SELECT dataset, COUNT(*) AS records FROM knowledge_records GROUP BY dataset ORDER BY dataset"
         ).fetchall()
-        return {"ready": True, "records": total,
+        relations = db.execute("SELECT COUNT(*) FROM knowledge_relations").fetchone()[0]
+        return {"ready": True, "records": total, "relations": relations,
                 "datasets": [{"dataset": r["dataset"], "records": r["records"]} for r in datasets],
                 "schema_version": SCHEMA_VERSION, "db": str(db_path)}
     finally:
