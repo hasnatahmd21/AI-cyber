@@ -24,3 +24,48 @@ No live feed, API credential, freshness claim, or external execution is introduc
 ## Target families
 
 NVD/CVE, CVSS, CWE, CPE, CISA KEV, MITRE ATT&CK, Suricata, Zeek, and malware feature/metadata datasets.
+
+
+## Dataset family metadata
+
+Use `src/ai_cyber_os/dataset_profiles.py` for the supported families:
+NVD/CVE, CVSS, CWE, CPE, CISA KEV, MITRE ATT&CK, Suricata, Zeek, and malware.
+
+Profiles intentionally do not invent version, license, URI, or validation claims.
+Populate those fields from the exact artifact's authoritative provenance before
+generating a manifest.
+
+For files whose names do not match the dataset family (for example a vendor export
+with a generated filename), the batch factory accepts an exact relative-path
+mapping through the metadata JSON's `_files` object. `_datasets` may hold
+family/name keyed defaults.
+
+Example metadata shape:
+
+    {
+      "_datasets": {
+        "nvd_cve": {
+          "dataset": "nvd_cve",
+          "version": "<artifact version>",
+          "source": "<authoritative source>",
+          "source_uri": "<authoritative URI>",
+          "license": "<artifact license/provenance>",
+          "schema": {"type": "object"},
+          "validation_status": "verified-local"
+        }
+      },
+      "_files": {
+        "datasets/nvd/nvdcve-export.jsonl": {
+          "dataset": "nvd_cve",
+          "version": "<artifact version>",
+          "source": "<authoritative source>",
+          "source_uri": "<authoritative URI>",
+          "license": "<artifact license/provenance>",
+          "schema": {"type": "object"},
+          "validation_status": "verified-local"
+        }
+      }
+    }
+
+The factory computes local SHA-256 and observed record count itself; operators do
+not supply those values manually.
