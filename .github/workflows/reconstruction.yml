@@ -32,6 +32,8 @@ jobs:
           python -m py_compile src/ai_cyber_os/hydra.py
           python -m py_compile src/ai_cyber_os/__init__.py
           python -m py_compile src/ai_cyber_os/protected_data.py
+          python -m py_compile src/ai_cyber_os/rag.py src/ai_cyber_os/runtime_intelligence.py
+          python -m py_compile src/ai_cyber_os/threat_intel.py src/ai_cyber_os/network_intel.py src/ai_cyber_os/malware_intel.py
           python -m py_compile tools/forensic_audit.py
           python -m py_compile tools/forensic_inventory.py
           python -m py_compile tests/*.py
