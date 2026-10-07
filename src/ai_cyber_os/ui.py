@@ -302,7 +302,7 @@ class Handler(BaseHTTPRequestHandler):
                     query = body.get("query")
                     if not isinstance(query, str):
                         raise ValueError("query must be a string")
-                    result = intelligence_analyze(
+                    result = knowledge_search(
                         query, db_path=DEFAULT_DB, dataset=body.get("dataset"), limit=body.get("limit", 10)
                     )
                 elif action == "ingest":
