@@ -1,0 +1,74 @@
+{
+  "acquisition_timestamp": "2026-10-07T11:42:56Z",
+  "artifact_type": "suricata_rules_tar_gz",
+  "artifacts": [
+    {
+      "artifact_type": "suricata_rules_tar_gz",
+      "byte_size": 5652963,
+      "count_kind": "suricata",
+      "path": "datasets/raw/suricata/emerging.rules_2026-10-07_4d7e2e05f47b.tar.gz",
+      "record_count": 72088,
+      "role": "data",
+      "sha256": "4d7e2e05f47b755580631e12d86c4d87dfbfc0586e3e1cbdad55b70e86bc0e88",
+      "source_uri": "https://rules.emergingthreats.net/open/suricata/emerging.rules.tar.gz",
+      "stats": {
+        "active_rules": 52588,
+        "disabled_rules": 19500,
+        "duplicate_sid_lines": 0,
+        "rule_files": 52
+      }
+    },
+    {
+      "artifact_type": "license_text",
+      "byte_size": 2243,
+      "count_kind": null,
+      "path": "datasets/raw/suricata/LICENSE.emerging-threats.txt",
+      "record_count": null,
+      "role": "license",
+      "sha256": "03ecce62500a3fbc131dc41b99b3e69632101542e3fc9a303698ef8578c4d4b3",
+      "source_uri": null,
+      "stats": {}
+    }
+  ],
+  "byte_size": 5652963,
+  "dataset": "suricata",
+  "execution_status": "acquired",
+  "ingestion_status": "pending",
+  "license": "BSD-style (Emerging Threats Open; verbatim text in license file)",
+  "license_basis": "LICENSE file shipped inside the upstream archive",
+  "license_files": [
+    "datasets/raw/suricata/LICENSE.emerging-threats.txt"
+  ],
+  "license_url": "https://rules.emergingthreats.net/open/",
+  "license_verified": true,
+  "local_path": "datasets/raw/suricata/emerging.rules_2026-10-07_4d7e2e05f47b.tar.gz",
+  "manifest_format": 1,
+  "provenance": {
+    "candidate_urls": [
+      "https://rules.emergingthreats.net/open/suricata/emerging.rules.tar.gz",
+      "https://rules.emergingthreats.net/open/suricata-7.0.3/emerging.rules.tar.gz",
+      "https://rules.emergingthreats.net/open/suricata-6.0.0/emerging.rules.tar.gz"
+    ],
+    "rules_unmodified": true,
+    "used_url": "https://rules.emergingthreats.net/open/suricata/emerging.rules.tar.gz"
+  },
+  "record_count": 72088,
+  "schema": {
+    "format": ".rules text inside tar.gz",
+    "key_fields": [
+      "sid",
+      "rev",
+      "msg",
+      "classtype",
+      "metadata",
+      "reference"
+    ]
+  },
+  "sha256": "4d7e2e05f47b755580631e12d86c4d87dfbfc0586e3e1cbdad55b70e86bc0e88",
+  "sha256_scheme": "sha256",
+  "source": "Emerging Threats Open Suricata ruleset",
+  "source_uri": "https://rules.emergingthreats.net/open/suricata/emerging.rules.tar.gz",
+  "validation_status": "validated",
+  "version": "snapshot-2026-10-07",
+  "version_basis": "upstream publishes no version in archive; date snapshot + sha in filename"
+}
