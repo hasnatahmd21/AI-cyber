@@ -55,6 +55,7 @@ def parse_nvd(path: str | Path, *, dataset: str = "cve", source: str = "NVD",
             "weaknesses": cve.get("weaknesses", []),
             "configurations": cve.get("configurations", []),
         }
+        content["content"] = json.dumps(content, ensure_ascii=False, sort_keys=True, default=str)
         out.append(_normalize(content, dataset=dataset, source=source, version=version,
                               source_uri=source_uri, license=license,
                               validation_status=validation_status))
@@ -99,6 +100,7 @@ def parse_attack_stix(path: str | Path, *, dataset: str = "mitre-attack",
             "external_references": obj.get("external_references", []),
             "kill_chain_phases": obj.get("kill_chain_phases", []),
         }
+        content["content"] = json.dumps(content, ensure_ascii=False, sort_keys=True, default=str)
         out.append(_normalize(content, dataset=dataset, source=source, version=version,
                               source_uri=source_uri, license=license,
                               validation_status=validation_status))
