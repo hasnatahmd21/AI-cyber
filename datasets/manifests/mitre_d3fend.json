@@ -1,0 +1,60 @@
+{
+  "acquisition_timestamp": "2026-10-07T11:42:29Z",
+  "artifact_type": "ontology_jsonld",
+  "artifacts": [
+    {
+      "artifact_type": "ontology_jsonld",
+      "byte_size": 4833645,
+      "count_kind": "d3fend",
+      "path": "datasets/raw/mitre_d3fend/d3fend_1.6.0.json",
+      "record_count": 7688,
+      "role": "data",
+      "sha256": "e1546d432c6aa64d45b62dd9e9484b0774ae84de7ff3605ff9dd4e20278957bf",
+      "source_uri": "https://d3fend.mitre.org/ontologies/d3fend.json",
+      "stats": {
+        "ontology_version": "1.6.0"
+      }
+    },
+    {
+      "artifact_type": "license_text",
+      "byte_size": 1078,
+      "count_kind": null,
+      "path": "datasets/raw/mitre_d3fend/LICENSE.d3fend-ontology.txt",
+      "record_count": null,
+      "role": "license",
+      "sha256": "a799333707a5a1c4c863ab137af4cdd659b081de07058f715ebdde001db68731",
+      "source_uri": "https://github.com/d3fend/d3fend-ontology/blob/c102eefe2a158dfb73a61c6637c4df175ec8680a/LICENSE.md",
+      "stats": {}
+    }
+  ],
+  "byte_size": 4833645,
+  "dataset": "mitre_d3fend",
+  "execution_status": "acquired",
+  "ingestion_status": "pending",
+  "license": "MIT",
+  "license_basis": "GitHub license API for d3fend/d3fend-ontology@c102eefe2a15",
+  "license_files": [
+    "datasets/raw/mitre_d3fend/LICENSE.d3fend-ontology.txt"
+  ],
+  "license_url": "https://github.com/d3fend/d3fend-ontology/blob/c102eefe2a158dfb73a61c6637c4df175ec8680a/LICENSE.md",
+  "license_verified": true,
+  "local_path": "datasets/raw/mitre_d3fend/d3fend_1.6.0.json",
+  "manifest_format": 1,
+  "provenance": {
+    "license_note": "license of d3fend/d3fend-ontology repo",
+    "ontology_version": "1.6.0",
+    "used_url": "https://d3fend.mitre.org/ontologies/d3fend.json"
+  },
+  "record_count": 7688,
+  "schema": {
+    "format": "json-ld",
+    "records": "@graph[]"
+  },
+  "sha256": "e1546d432c6aa64d45b62dd9e9484b0774ae84de7ff3605ff9dd4e20278957bf",
+  "sha256_scheme": "sha256",
+  "source": "MITRE D3FEND (official)",
+  "source_uri": "https://d3fend.mitre.org/ontologies/d3fend.json",
+  "validation_status": "validated",
+  "version": "1.6.0",
+  "version_basis": "owl:versionInfo/versionIRI in ontology node (unknown if absent)"
+}
