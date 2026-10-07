@@ -38,6 +38,20 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         raise ValueError("manifest schema must be an object, list, or string")
     return data
 
+
+def _project_root(manifest_path: str | Path) -> Path:
+    """Resolve the repository/project root from a manifest path.
+
+    Manifests live under <project>/datasets/manifests, while fixture tests may
+    place them under any <project>/datasets/... tree. Fail closed if the path
+    does not contain a datasets directory.
+    """
+    p = Path(manifest_path).resolve()
+    for parent in (p.parent, *p.parents):
+        if parent.name == "datasets":
+            return parent.parent.resolve()
+    raise ValueError("manifest path must be inside a datasets directory")
+
 def _artifact_inspection(manifest_path: str | Path, manifest: dict[str, Any]) -> dict[str, Any]:
     root = _project_root(manifest_path)
     artifacts = []
