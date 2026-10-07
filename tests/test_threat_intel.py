@@ -20,6 +20,7 @@ def test_nvd_normalization(tmp_path: Path):
     assert rows[0]["record_id"] == "CVE-2026-4242"
     assert rows[0]["validation_status"] == "source-checked"
     assert "CVE-2026-4242" in rows[0]["content"]
+    assert "9.8" in rows[0]["content"]
 
 
 def test_cisa_kev_normalization(tmp_path: Path):
