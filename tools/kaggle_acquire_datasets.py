@@ -75,7 +75,7 @@ STAMP = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
 def run(*args: str, cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
-    print("+", " ".join(args))
+    print("+", " ".join(args), flush=True)
     return subprocess.run(args, cwd=cwd, text=True, check=check, env=env)
 
 
@@ -92,9 +92,9 @@ def download(url: str, target: Path) -> Path:
     tmp = target.with_suffix(target.suffix + ".part")
     if tmp.exists():
         tmp.unlink()
-    print(f"DOWNLOAD {url}")
+    print(f"DOWNLOAD {url}", flush=True)
     req = urllib.request.Request(url, headers={"User-Agent": "AI-CYBER-dataset-runner/1.0"})
-    with urllib.request.urlopen(req, timeout=120) as r, tmp.open("wb") as out:
+    with urllib.request.urlopen(req, timeout=300) as r, tmp.open("wb") as out:
         shutil.copyfileobj(r, out, length=1024 * 1024)
     tmp.replace(target)
     if target.stat().st_size == 0:
@@ -142,7 +142,7 @@ def get(url: str, target: Path, *, retries: int = 3) -> Path:
             return download(url, target)
         except Exception as exc:
             last = exc
-            print(f"download attempt {attempt}/{retries} failed: {exc}")
+            print(f"download attempt {attempt}/{retries} failed: {exc}", flush=True)
     raise RuntimeError(f"download failed: {url}") from last
 
 
@@ -175,11 +175,22 @@ def ensure_lfs() -> bool:
     if shutil.which("git-lfs"):
         run("git", "lfs", "install", "--local", cwd=CHECKOUT)
         return True
+
+    # Kaggle images do not always ship with git-lfs. Install it when apt is
+    # available; otherwise fail closed rather than pushing >100 MiB files into
+    # normal Git.
     try:
-        run("git", "lfs", "version", cwd=CHECKOUT)
-        return True
-    except Exception:
+        run("apt-get", "update", "-qq")
+        run("apt-get", "install", "-y", "-qq", "git-lfs")
+    except Exception as exc:
+        print(f"git-lfs installation failed: {exc}")
         return False
+
+    if not shutil.which("git-lfs"):
+        return False
+
+    run("git", "lfs", "install", "--local", cwd=CHECKOUT)
+    return True
 
 
 def nvd_family() -> list[dict]:
