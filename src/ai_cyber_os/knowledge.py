@@ -62,7 +62,7 @@ _IDENTIFIER_PATTERNS = {
     "cve": re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.I),
     "cwe": re.compile(r"\bCWE-\d+\b", re.I),
     "attack": re.compile(r"\bT\d{4}(?:\.\d{3})?\b", re.I),
-    "cpe": re.compile(r"\bcpe:2\.3:[^\s"']+", re.I),
+    "cpe": re.compile(r"\bcpe:2\.3:\S+", re.I),
 }
 
 def _extract_relations(text: str) -> list[tuple[str, str]]:
