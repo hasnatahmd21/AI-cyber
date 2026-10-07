@@ -6,7 +6,7 @@ from http.client import HTTPConnection
 from threading import Thread
 from typing import Any
 
-from . import ui
+from . import ui, telemetry
 
 
 def _call(server, method: str, path: str, body: Any = None, raw: bool = False):
@@ -49,14 +49,33 @@ def run() -> dict[str, Any]:
     results = []
     try:
         for name, method, path, body, raw, expected in attacks:
+            telemetry.emit(
+                "attack_started",
+                f"Red-team scenario {name} started",
+                operation="red-team",
+                status="RUNNING",
+                source="red-team",
+                details={"method": method, "path": path},
+            )
             status, response = _call(server, method, path, body, raw)
-            results.append({
+            blocked = status in expected
+            result = {
                 "name": name,
                 "status": status,
                 "expected": sorted(expected),
-                "blocked": status in expected,
+                "blocked": blocked,
                 "response": response[:1000],
-            })
+            }
+            results.append(result)
+            telemetry.emit(
+                "attack_observed",
+                f"Red-team scenario {name} returned HTTP {status}",
+                operation="red-team",
+                status="BLOCKED" if blocked else "FAIL",
+                source="red-team",
+                evidence={"expected_status": sorted(expected), "actual_status": status, "blocked": blocked},
+                details={"method": method, "path": path},
+            )
         status, response = _call(server, "GET", "/api/status")
         try:
             state = json.loads(response)
