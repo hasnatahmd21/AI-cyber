@@ -1,0 +1,11 @@
+{
+  "schema": "ai-cyber.dataset-manifest.v1",
+  "dataset_id": "ai-cyber-core-smoke",
+  "version": "1.0.0",
+  "created_by": "ai_cyber_os.dataset_pipeline",
+  "provenance": {"source": "AI-CYBER repository smoke fixtures", "origin": "repository", "license": "project-internal-smoke", "acquired_at": "repository-build"},
+  "artifacts": [
+    {"path":"docs/datasets/dataset_a.jsonl","format":"jsonl","records":1,"sha256":"9cf204e260d8f4c5d7823aa75e9ccd3cdfff8e835d57d3e533735bc7f5ec5cfa","provenance":{"source":"internal-smoke-fixture","version":"1.0"}},
+    {"path":"docs/datasets/dataset_b.jsonl","format":"jsonl","records":1,"sha256":"d510590f8df6df99a83018841b918a2d2cc37a9866267576c51c172269847b20","provenance":{"source":"internal-smoke-fixture","version":"1.0"}}
+  ]
+}
