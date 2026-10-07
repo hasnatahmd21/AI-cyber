@@ -38,6 +38,7 @@ def emit(
     evidence: Any = None,
     source: str = "runtime",
     details: dict[str, Any] | None = None,
+    keep_active: bool = False,
 ) -> dict[str, Any]:
     global _NEXT_ID
     with _CONDITION:
