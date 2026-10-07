@@ -70,9 +70,9 @@ def parse_cisa_kev(path: str | Path, *, dataset: str = "cisa-kev",
     if not isinstance(rows, list):
         raise ValueError("CISA KEV file does not contain vulnerabilities")
     return [
-        _normalize(row, dataset=dataset, source=source, version=version,
-                   source_uri=source_uri, license=license,
-                   validation_status=validation_status)
+        _normalize({**row, "id": row.get("id") or row.get("cveID")}, dataset=dataset,
+                   source=source, version=version, source_uri=source_uri,
+                   license=license, validation_status=validation_status)
         for row in rows if isinstance(row, dict)
     ]
 
