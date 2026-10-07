@@ -18,11 +18,16 @@ def main() -> int:
     args = ap.parse_args()
     metadata = json.loads(args.metadata_json.read_text(encoding="utf-8"))
     if not isinstance(metadata, dict):
-        raise SystemExit("metadata JSON must be an object keyed by dataset filename stem")
+        raise SystemExit("metadata JSON must be an object with dataset-family keys")
+    metadata_by_file = metadata.get("_files", {})
+    metadata_by_dataset = metadata.get("_datasets", metadata)
+    if not isinstance(metadata_by_file, dict) or not isinstance(metadata_by_dataset, dict):
+        raise SystemExit("metadata JSON _files and _datasets must be objects")
     manifests = build_batch(
         args.dataset_root,
         project_root=args.project_root,
-        metadata_by_dataset=metadata,
+        metadata_by_dataset=metadata_by_dataset,
+        metadata_by_file=metadata_by_file,
     )
     paths = write_manifests(manifests, output_dir=args.output_dir)
     print(json.dumps({"ready": True, "manifests": [str(p) for p in paths], "count": len(paths)}, indent=2))
