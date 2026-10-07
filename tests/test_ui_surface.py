@@ -11,6 +11,7 @@ def test_ui_exposes_live_operational_routes():
     assert "/api/command" in ui.TEMPLATE
     assert "NEURAL PHASE FABRIC" in ui.TEMPLATE
     assert len(ui.VALID_PHASES) == 28
+    assert ui.VALID_PHASES == {"all", *{f"phase{i}" for i in range(1, 28)}}
 
 
 def test_nested_hardening_keeps_outer_operation_active():
