@@ -1,0 +1,152 @@
+{
+  "acquisition_timestamp": "2026-10-07T12:52:12Z",
+  "artifact_type": "cpe_products_jsonl_gz",
+  "artifacts": [
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 23585720,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0001.jsonl.gz",
+      "record_count": 200000,
+      "role": "data",
+      "sha256": "ef499c2f2e96ec815188b19ba6e2db5ba5e16aad12d2f7647d3812a29d8902dd",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    },
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 23578433,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0002.jsonl.gz",
+      "record_count": 200000,
+      "role": "data",
+      "sha256": "36b28e3560b4830005722eb3d862743dee20a9b781776d2ed91cdaf557095a4d",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    },
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 23590710,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0003.jsonl.gz",
+      "record_count": 200000,
+      "role": "data",
+      "sha256": "56753d423274462cb091be8daf350fa96e85018a84197fba69253d43cc2e52d3",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    },
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 23597289,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0004.jsonl.gz",
+      "record_count": 200000,
+      "role": "data",
+      "sha256": "4e09cc7f3e25eef91b509286baf237cb70ee7c674a83fa3c4c3861c226ad5815",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    },
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 23575653,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0005.jsonl.gz",
+      "record_count": 200000,
+      "role": "data",
+      "sha256": "ebc1e5995fff7b5a32bb9736265cd7c4674b152477aa4bdef89d878ad84c4c65",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    },
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 23594340,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0006.jsonl.gz",
+      "record_count": 200000,
+      "role": "data",
+      "sha256": "9453dc4151eab57d77dc89cfd0dd231e2368cc838052651e64f3a0d17e4d7385",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    },
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 23611051,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0007.jsonl.gz",
+      "record_count": 200000,
+      "role": "data",
+      "sha256": "9cc87220e4c2786f38cd48fa6db1cee437859480df4b344f020503bf947ab525",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    },
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 23606083,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0008.jsonl.gz",
+      "record_count": 200000,
+      "role": "data",
+      "sha256": "92edc118c246cf51348417be8b239cbdbc45fcb3d2cfb610b26efabb98401c87",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    },
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 23573943,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0009.jsonl.gz",
+      "record_count": 200000,
+      "role": "data",
+      "sha256": "3fc9d20755611562cfb55ed155c1af537941e9aa319c46b2808e714023dd724c",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    },
+    {
+      "artifact_type": "cpe_products_jsonl_gz",
+      "byte_size": 6116376,
+      "count_kind": "jsonl_gz",
+      "path": "datasets/raw/cpe/cpe_products_0010.jsonl.gz",
+      "record_count": 51849,
+      "role": "data",
+      "sha256": "ec40f3f2231e47978efca8d3638baa7e34be3e807dccb23aa5a302c2e00e9234",
+      "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+      "stats": {}
+    }
+  ],
+  "byte_size": 218429598,
+  "dataset": "cpe",
+  "execution_status": "acquired",
+  "ingestion_status": "pending",
+  "license": "US Government work (NIST NVD) - data freely available",
+  "license_basis": "declared by script; verify at URL",
+  "license_files": [],
+  "license_url": "https://nvd.nist.gov/general/FAQ-Sections/General-FAQs",
+  "license_verified": false,
+  "local_path": "datasets/raw/cpe",
+  "manifest_format": 1,
+  "provenance": {
+    "dedup": "latest lastModified wins",
+    "nvd_api": {
+      "api_format": "NVD_CPE",
+      "api_timestamp": "2026-10-07T11:43:12.123",
+      "api_version": "2.0",
+      "ended": "2026-10-07T12:51:24Z",
+      "started": "2026-10-07T11:43:11Z",
+      "total_first": "1851838",
+      "unique_records": 1851849
+    }
+  },
+  "record_count": 1851849,
+  "schema": {
+    "dedup_key": "cpe.cpeNameId",
+    "format": "jsonl.gz",
+    "record": "{cpe:{cpeName,cpeNameId,titles,refs,...}}"
+  },
+  "sha256": "b55d84a067d900deaeb9d2793e06e7c5ed46919c322cb8db5cf38545c47de5b4",
+  "sha256_scheme": "sha256-of-sorted-'sha  path'-lines",
+  "source": "NIST NVD CPE API 2.0",
+  "source_uri": "https://services.nvd.nist.gov/rest/json/cpes/2.0",
+  "validation_status": "validated",
+  "version": "nvd-cpe-api-2.0-snapshot-2026-10-07",
+  "version_basis": "NVD API version + response timestamp (no release number upstream)"
+}
