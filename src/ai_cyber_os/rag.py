@@ -33,7 +33,7 @@ def build_context(
     records = retrieve(query, db_path=db_path, limit=limit, dataset=dataset)
     correlation = correlate(query, db_path=str(db_path), limit=limit, dataset=dataset)
     evidence = []
-    for record in records:
+    for i, record in enumerate(records):
         evidence.append(
             {
                 "record_id": record["record_id"],
