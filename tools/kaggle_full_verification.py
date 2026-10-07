@@ -102,7 +102,18 @@ def main() -> int:
         assert "run" in events
         assert situation.get("runtime") == "online"
         assert command.get("success") is True
-        print("UI/API smoke: PASS")
+
+        run_result = fetch(
+            base + "/api/command",
+            method="POST",
+            payload=json.dumps({"command": "run phase 1"}).encode(),
+        )
+        assert "result" in run_result
+        assert isinstance(run_result["result"], dict)
+        assert "success" in run_result["result"]
+        live_after = fetch(base + "/api/events")
+        assert len(live_after.get("events", [])) >= len(events.get("events", []))
+        print("UI/API + command execution smoke: PASS")
     finally:
         server.terminate()
         try:
