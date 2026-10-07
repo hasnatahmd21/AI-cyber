@@ -11,14 +11,18 @@ from typing import Any
 
 TARGET_DATASETS = (
     "nvd_cve",
-    "cvss",
+    "cisa_kev",
+    "epss",
     "cwe",
     "cpe",
-    "cisa_kev",
+    "cvss",
     "mitre_attack",
-    "suricata",
-    "zeek",
-    "malware",
+    "capec",
+    "d3fend",
+    "sigma",
+    "suricata_rules",
+    "zeek_intel",
+    "mbc",
 )
 
 # Conservative defaults: legal/provenance fields remain explicit placeholders.
