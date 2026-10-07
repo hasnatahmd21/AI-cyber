@@ -34,7 +34,7 @@ def main(argv: list[str] | None = None) -> int:
 
     manifest = sub.add_parser("ingest-manifest")
     manifest.add_argument("path")
-    manifest.add_argument("--require-checksum", action="store_true", default=False)
+    manifest.add_argument("--no-checksum", action="store_true", default=False)
 
     inspect = sub.add_parser("inspect-manifest")
     inspect.add_argument("path")
@@ -50,7 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     args = p.parse_args(argv)
 
     if args.command == "ingest-manifest":
-        result = ingest_manifest(args.path, db_path=args.db, require_checksum=args.require_checksum)
+        result = ingest_manifest(args.path, db_path=args.db, require_checksum=not args.no_checksum)
     elif args.command == "inspect-manifest":
         result = inspect_dataset(args.path)
     elif args.command == "correlate":
