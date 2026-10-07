@@ -137,3 +137,74 @@ PARSERS = {
     "attack-stix": parse_attack_stix,
     "cwe-xml": parse_cwe_xml,
 }
+
+def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> dict[str, int]:
+    """Persist parser output using the same evidence contract as normal ingestion."""
+    from .knowledge import _extract_relations
+    db = __import__("sqlite3").connect(str(db_path))
+    db.row_factory = __import__("sqlite3").Row
+    # Initialize the store schema without introducing a second schema.
+    from .knowledge import open_store
+    db.close()
+    db = open_store(db_path)
+    inserted = updated = duplicates = 0
+    try:
+        for record in records:
+            old = db.execute(
+                "SELECT record_id, content_sha256 FROM knowledge_records WHERE record_id=?",
+                (record["record_id"],),
+            ).fetchone()
+            if old and old["content_sha256"] == record["content_sha256"]:
+                duplicates += 1
+                continue
+            if old:
+                updated += 1
+                db.execute("DELETE FROM knowledge_fts WHERE record_id=?", (record["record_id"],))
+            else:
+                inserted += 1
+            db.execute(
+                """INSERT OR REPLACE INTO knowledge_records
+                (record_id,dataset,source,source_uri,license,version,validation_status,title,content,
+                 content_sha256,metadata_json,schema_version,ingested_at)
+                VALUES (:record_id,:dataset,:source,:source_uri,:license,:version,:validation_status,
+                        :title,:content,:content_sha256,:metadata_json,:schema_version,:ingested_at)""",
+                record,
+            )
+            db.execute("DELETE FROM knowledge_relations WHERE record_id=?", (record["record_id"],))
+            for relation_type, target_id in _extract_relations(
+                f'{record["record_id"]} {record["title"]} {record["content"]}'
+            ):
+                db.execute(
+                    "INSERT OR IGNORE INTO knowledge_relations(record_id,relation_type,target_id) VALUES (?,?,?)",
+                    (record["record_id"], relation_type, target_id),
+                )
+            db.execute(
+                "INSERT INTO knowledge_fts(record_id,dataset,title,content) VALUES (?,?,?,?)",
+                (record["record_id"], record["dataset"], record["title"], record["content"]),
+            )
+        db.commit()
+    finally:
+        db.close()
+    return {"records": inserted + updated + duplicates, "inserted": inserted,
+            "updated": updated, "duplicates": duplicates}
+
+
+def ingest_source(kind: str, path: str | Path, *, db_path: str | Path,
+                  dataset: str | None = None, source: str | None = None,
+                  version: str = "", source_uri: str = "", license: str = "",
+                  validation_status: str = "unverified") -> dict[str, Any]:
+    if kind not in PARSERS:
+        raise ValueError(f"unsupported threat-intel source: {kind}")
+    parser = PARSERS[kind]
+    records = parser(
+        path,
+        dataset=dataset or {"nvd": "cve", "cisa-kev": "cisa-kev",
+                             "attack-stix": "mitre-attack", "cwe-xml": "cwe"}[kind],
+        source=source or {"nvd": "NVD", "cisa-kev": "CISA KEV",
+                          "attack-stix": "MITRE ATT&CK", "cwe-xml": "MITRE CWE"}[kind],
+        version=version, source_uri=source_uri, license=license,
+        validation_status=validation_status,
+    )
+    result = ingest_parsed(records, db_path=db_path)
+    result.update({"success": True, "source_type": kind, "path": str(path)})
+    return result
