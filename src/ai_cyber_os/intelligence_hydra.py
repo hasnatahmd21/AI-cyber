@@ -11,9 +11,9 @@ from .integration_evaluation import run_malware_intelligence_evaluation, run_net
 def run_hydra_phase(name: str) -> dict[str, Any]:
     key = str(name).strip().lower()
     if key in {"phase5-intelligence", "phase5_network", "phase5-network-intelligence"}:
-        return {"phase": "5-intelligence", "success": True, "summary": run_network_intelligence_evaluation()}
+        result = run_network_intelligence_evaluation()\n        return {"phase": "5-intelligence", "success": result["verified"], "summary": result}
     if key in {"phase6-malware", "phase6_malware", "phase6-malware-evaluation"}:
-        return {"phase": "6-malware", "success": True, "summary": run_malware_intelligence_evaluation()}
+        result = run_malware_intelligence_evaluation()\n        return {"phase": "6-malware", "success": result["verified"], "summary": result}
     if key in {"intelligence", "all-intelligence"}:
         network = run_network_intelligence_evaluation()
         malware = run_malware_intelligence_evaluation()
