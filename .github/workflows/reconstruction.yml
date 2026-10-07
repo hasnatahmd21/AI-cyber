@@ -33,7 +33,7 @@ jobs:
           python -m py_compile src/ai_cyber_os/__init__.py
           python -m py_compile src/ai_cyber_os/protected_data.py
           python -m py_compile src/ai_cyber_os/rag.py src/ai_cyber_os/runtime_intelligence.py
-          python -m py_compile src/ai_cyber_os/threat_intel.py src/ai_cyber_os/network_intel.py src/ai_cyber_os/malware_intel.py
+          python -m py_compile src/ai_cyber_os/threat_intel.py src/ai_cyber_os/network_intel.py src/ai_cyber_os/malware_intel.py src/ai_cyber_os/integration_evaluation.py src/ai_cyber_os/continuous_update.py src/ai_cyber_os/intelligence_hydra.py
           python -m py_compile tools/forensic_audit.py
           python -m py_compile tools/forensic_inventory.py
           python -m py_compile tests/*.py
@@ -47,6 +47,16 @@ jobs:
         env:
           PYTHONPATH: src
         run: python -m pytest -q tests
+
+      - name: Run intelligence integration evaluation
+        env:
+          PYTHONPATH: src
+        run: python tools/intelligence_evaluation.py all
+
+      - name: Run complete dataset pipeline end-to-end test
+        env:
+          PYTHONPATH: src
+        run: python tools/end_to_end_dataset_test.py
 
       - name: Run knowledge pipeline smoke test
         env:
@@ -83,6 +93,11 @@ jobs:
           PY
       - name: Run controlled Red-Team vs Blue-Team adversarial verification
         run: python tools/red_blue_adversarial_test.py
+      - name: Run extended intelligence HYDRA registration
+        env:
+          PYTHONPATH: src
+        run: python -c "from ai_cyber_os.intelligence_hydra import run_all_extended; r=run_all_extended(); assert r['summary']['success'], r"
+
       - name: Run complete 27-phase runtime verification
         env:
           PYTHONPATH: src
