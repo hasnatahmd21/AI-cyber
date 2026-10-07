@@ -22,4 +22,4 @@ build-backend = "setuptools.build_meta"
 ai_cyber_os = ["ui_template.html"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = [".", "src"]
