@@ -97,7 +97,7 @@ def test_gzip_jsonl_ingestion(tmp_path: Path):
     import gzip
     data = tmp_path / "feed.jsonl.gz"
     with gzip.open(data, "wt", encoding="utf-8") as handle:
-        handle.write('{"id":"GZ-1","content":"compressed CVE evidence"}\\n')
+        handle.write('{"id":"GZ-1","content":"compressed CVE evidence"}\n')
     db = tmp_path / "knowledge.db"
     result = ingest_file(data, db_path=db, dataset="compressed")
     assert result["success"] is True
