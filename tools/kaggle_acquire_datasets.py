@@ -74,9 +74,9 @@ TODAY = dt.datetime.now(dt.timezone.utc).date().isoformat()
 STAMP = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
-def run(*args: str, cwd: Path | None = None, check: bool = True) -> subprocess.CompletedProcess[str]:
+def run(*args: str, cwd: Path | None = None, check: bool = True, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(args))
-    return subprocess.run(args, cwd=cwd, text=True, check=check)
+    return subprocess.run(args, cwd=cwd, text=True, check=check, env=env)
 
 
 def sha256(path: Path) -> str:
@@ -147,12 +147,10 @@ def get(url: str, target: Path, *, retries: int = 3) -> Path:
 
 
 def git_clone() -> None:
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
     if CHECKOUT.exists():
         shutil.rmtree(CHECKOUT)
+    # Public clone: keep the write token out of URLs, logs, and process listings.
     url = f"https://github.com/{REPO}.git"
-    if token:
-        url = f"https://x-access-token:{token}@github.com/{REPO}.git"
     run("git", "clone", "--branch", BRANCH, "--single-branch", url, str(CHECKOUT))
     run("git", "config", "user.name", "AI-CYBER Dataset Runner", cwd=CHECKOUT)
     run("git", "config", "user.email", "ai-cyber-dataset-runner@users.noreply.github.com", cwd=CHECKOUT)
@@ -453,7 +451,20 @@ def push() -> None:
         print("No dataset changes to commit.")
         return
     run("git", "commit", "-m", f"data: acquire locked AI-CYBER datasets {STAMP}", cwd=CHECKOUT)
-    run("git", "push", "origin", BRANCH, cwd=CHECKOUT)
+    askpass = Path(tempfile.mkstemp(prefix="ai-cyber-git-askpass-", text=True)[1])
+    try:
+        askpass.write_text("#!/bin/sh\nprintf '%s\\n' \"$GITHUB_TOKEN\"\n", encoding="utf-8")
+        askpass.chmod(0o700)
+        env = os.environ.copy()
+        env["GITHUB_TOKEN"] = token
+        env["GIT_ASKPASS"] = str(askpass)
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        run("git", "push", "origin", BRANCH, cwd=CHECKOUT, env=env)
+    finally:
+        try:
+            askpass.unlink()
+        except FileNotFoundError:
+            pass
 
 
 def main() -> int:
