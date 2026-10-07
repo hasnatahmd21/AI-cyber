@@ -15,9 +15,24 @@ def _write_json(path: Path, value: Any) -> Path:
     return path
 
 def _check_nvd_cvss(root: Path) -> None:
-    p = _write_json(root / "nvd.json", {"vulnerabilities": [{"cve": {
-        "id": "CVE-2099-1001", "descriptions": [{"lang": "en", "value": "fixture vulnerability"}],
-        "metrics": {"cvssMetricV31": [{"cvssData": {"baseScore": 9.8}}]}}]})
+    p = _write_json(
+        root / "nvd.json",
+        {
+            "vulnerabilities": [
+                {
+                    "cve": {
+                        "id": "CVE-2099-1001",
+                        "descriptions": [{"lang": "en", "value": "fixture vulnerability"}],
+                        "metrics": {
+                            "cvssMetricV31": [
+                                {"cvssData": {"baseScore": 9.8}}
+                            ]
+                        },
+                    }
+                }
+            ]
+        },
+    )
     rows = parse_nvd(p, version="fixture", validation_status="fixture-validated")
     assert rows and rows[0]["record_id"] == "CVE-2099-1001"
     assert "9.8" in rows[0]["content"]
