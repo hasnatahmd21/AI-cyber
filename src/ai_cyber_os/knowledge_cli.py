@@ -6,6 +6,8 @@ import json
 from pathlib import Path
 
 from .knowledge import DEFAULT_DB, ingest_file, search, status
+from .dataset_pipeline import ingest_manifest, inspect_dataset
+from .intelligence import correlate
 from .rag import build_context
 
 
@@ -29,13 +31,31 @@ def main(argv: list[str] | None = None) -> int:
     q.add_argument("--limit", type=int, default=10)
 
     sub.add_parser("status")
+
+    manifest = sub.add_parser("ingest-manifest")
+    manifest.add_argument("path")
+    manifest.add_argument("--require-checksum", action="store_true", default=False)
+
+    inspect = sub.add_parser("inspect-manifest")
+    inspect.add_argument("path")
+
+    corr = sub.add_parser("correlate")
+    corr.add_argument("query")
+    corr.add_argument("--dataset")
+    corr.add_argument("--limit", type=int, default=10)
     ctx = sub.add_parser("context")
     ctx.add_argument("query")
     ctx.add_argument("--dataset")
     ctx.add_argument("--limit", type=int, default=8)
     args = p.parse_args(argv)
 
-    if args.command == "ingest":
+    if args.command == "ingest-manifest":
+        result = ingest_manifest(args.path, db_path=args.db, require_checksum=args.require_checksum)
+    elif args.command == "inspect-manifest":
+        result = inspect_dataset(args.path)
+    elif args.command == "correlate":
+        result = correlate(args.query, db_path=args.db, dataset=args.dataset, limit=args.limit)
+    elif args.command == "ingest":
         result = ingest_file(args.path, db_path=args.db, dataset=args.dataset,
                              source=args.source, license=args.license, version=args.version,
                              source_uri=args.source_uri, validation_status=args.validation_status)
