@@ -2,11 +2,14 @@
   "dataset": "example",
   "category": "threat_intel",
   "source": "REPLACE_WITH_OFFICIAL_SOURCE",
+  "source_uri": "REPLACE_WITH_OFFICIAL_SOURCE_URI",
   "license": "REPLACE_WITH_LICENSE",
   "version": "REPLACE_WITH_VERSION",
   "acquired_at": "REPLACE_WITH_ISO8601",
-  "sha256": "REPLACE_WITH_SHA256",
-  "format": "jsonl",
-  "record_count": null,
+  "local_path": "datasets/threat_intel/example.jsonl",
+  "sha256": "REPLACE_WITH_64_HEX_SHA256",
+  "record_count": 0,
+  "schema": {"type": "jsonl", "record_contract": "ai-cyber-evidence-v1"},
+  "ingestion_status": "pending",
   "validation_status": "unverified"
 }
