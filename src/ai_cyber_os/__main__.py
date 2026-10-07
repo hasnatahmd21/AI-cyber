@@ -12,7 +12,8 @@ from contextlib import redirect_stdout
 from io import StringIO
 from typing import Any
 
-from .hydra import run_final_hardening_verification\nfrom .intelligence_hydra import run_hydra_phase, run_all_extended
+from .hydra import run_final_hardening_verification
+from .intelligence_hydra import run_hydra_phase, run_all_extended
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -90,7 +91,9 @@ def main(argv: list[str] | None = None) -> int:
             if args.hardening:
                 payload["hardening_result"] = run_final_hardening_verification()
 
-        success = _result_successful(phase_result)\n        if args.extended_all:\n            success = bool(phase_result.get("summary", {}).get("success", False))
+        success = _result_successful(phase_result)
+        if args.extended_all:
+            success = bool(phase_result.get("summary", {}).get("success", False))
         if args.hardening:
             success = success and bool(payload["hardening_result"].get("verified", False))
 
