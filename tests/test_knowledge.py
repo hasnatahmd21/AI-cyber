@@ -89,3 +89,5 @@ def test_rag_context_is_evidence_only(tmp_path: Path):
     assert context["evidence"][0]["record_id"] == "R-1"
     assert context["evidence"][0]["source"] == "fixture"
     assert "content_sha256" in context["evidence"][0]
+    assert "identifiers" in context
+    assert "related" in context
