@@ -33,9 +33,9 @@ jobs:
           python -m py_compile src/ai_cyber_os/__init__.py
           python -m py_compile src/ai_cyber_os/protected_data.py
           python -m py_compile src/ai_cyber_os/rag.py src/ai_cyber_os/runtime_intelligence.py
-          python -m py_compile src/ai_cyber_os/threat_intel.py src/ai_cyber_os/network_intel.py src/ai_cyber_os/malware_intel.py src/ai_cyber_os/integration_evaluation.py src/ai_cyber_os/continuous_update.py src/ai_cyber_os/intelligence_hydra.py
+          python -m py_compile src/ai_cyber_os/threat_intel.py src/ai_cyber_os/network_intel.py src/ai_cyber_os/malware_intel.py src/ai_cyber_os/integration_evaluation.py src/ai_cyber_os/continuous_update.py src/ai_cyber_os/intelligence_hydra.py src/ai_cyber_os/manifest_factory.py
           python -m py_compile tools/forensic_audit.py
-          python -m py_compile tools/forensic_inventory.py
+          python -m py_compile tools/forensic_inventory.py tools/batch_manifest_factory.py
           python -m py_compile tests/*.py
       - name: Run forensic inventory
         run: python tools/forensic_inventory.py --output forensic_inventory.json
@@ -57,6 +57,11 @@ jobs:
           data=json.loads(Path("/tmp/dataset-readiness.json").read_text())
           assert "files" in data and "bytes" in data
           PY
+
+      - name: Validate batch manifest factory
+        env:
+          PYTHONPATH: src
+        run: python -m pytest -q tests/test_manifest_factory.py
 
       - name: Run intelligence integration evaluation
         env:
