@@ -131,11 +131,56 @@ def parse_cwe_xml(path: str | Path, *, dataset: str = "cwe",
     return out
 
 
+
+def parse_cpe(path: str | Path, *, dataset: str = "cpe",
+              source: str = "NVD CPE Dictionary", version: str = "",
+              source_uri: str = "", license: str = "",
+              validation_status: str = "unverified") -> list[dict[str, Any]]:
+    """Parse common NVD CPE JSON/XML exports into evidence records."""
+    p = Path(path)
+    raw = json.loads(p.read_text(encoding="utf-8")) if p.suffix.lower() == ".json" else None
+    candidates: list[Any] = []
+    if isinstance(raw, dict):
+        candidates = raw.get("matches", raw.get("products", raw.get("cpes", [])))
+    elif isinstance(raw, list):
+        candidates = raw
+    if candidates:
+        out = []
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("cpe23Uri") or item.get("cpeName") or item.get("name")
+            if isinstance(name, list) and name:
+                first = name[0]
+                name = first.get("cpe23Uri") if isinstance(first, dict) else first
+            if not name:
+                continue
+            out.append(_normalize({"id": str(name), "name": str(name), "data": item},
+                                  dataset=dataset, source=source, version=version,
+                                  source_uri=source_uri, license=license,
+                                  validation_status=validation_status))
+        return out
+    root = ET.parse(p).getroot()
+    out = []
+    for elem in root.iter():
+        tag = elem.tag.rsplit("}", 1)[-1]
+        if tag not in {"cpe23-item", "cpe-item"}:
+            continue
+        name = elem.attrib.get("name")
+        if not name:
+            continue
+        out.append(_normalize({"id": name, "name": name},
+                              dataset=dataset, source=source, version=version,
+                              source_uri=source_uri, license=license,
+                              validation_status=validation_status))
+    return out
+
 PARSERS = {
     "nvd": parse_nvd,
     "cisa-kev": parse_cisa_kev,
     "attack-stix": parse_attack_stix,
     "cwe-xml": parse_cwe_xml,
+    "cpe": parse_cpe,
 }
 
 def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> dict[str, int]:
@@ -199,9 +244,9 @@ def ingest_source(kind: str, path: str | Path, *, db_path: str | Path,
     records = parser(
         path,
         dataset=dataset or {"nvd": "cve", "cisa-kev": "cisa-kev",
-                             "attack-stix": "mitre-attack", "cwe-xml": "cwe"}[kind],
+                             "attack-stix": "mitre-attack", "cwe-xml": "cwe", "cpe": "cpe"}[kind],
         source=source or {"nvd": "NVD", "cisa-kev": "CISA KEV",
-                          "attack-stix": "MITRE ATT&CK", "cwe-xml": "MITRE CWE"}[kind],
+                          "attack-stix": "MITRE ATT&CK", "cwe-xml": "MITRE CWE", "cpe": "NVD CPE Dictionary"}[kind],
         version=version, source_uri=source_uri, license=license,
         validation_status=validation_status,
     )
