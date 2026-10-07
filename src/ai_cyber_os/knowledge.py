@@ -161,7 +161,7 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
 def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                 dataset: str | None = None, source: str | None = None,
                 license: str = "", version: str = "", source_uri: str = "",
-                validation_status: str = "") -> dict[str, Any]:
+                validation_status: str = "unverified") -> dict[str, Any]:
     records_seen = 0
     inserted = 0
     updated = 0
