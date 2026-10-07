@@ -1,0 +1,73 @@
+{
+  "acquisition_timestamp": "2026-10-07T11:43:09Z",
+  "artifact_type": "mbc_stix_repo_tarball",
+  "artifacts": [
+    {
+      "artifact_type": "mbc_stix_repo_tarball",
+      "byte_size": 841939,
+      "count_kind": "mbc",
+      "path": "datasets/raw/mitre_mbc/mbc-stix2.1_main_add8ab4d523a.tar.gz",
+      "record_count": 1905,
+      "role": "data",
+      "sha256": "e688d2982cdd03ca69e7c1d87b76a423081a9b3be63b24ecfee14258da49eb41",
+      "source_uri": "https://api.github.com/repos/MBCProject/mbc-stix2.1/tarball/add8ab4d523afe1de82e261d34ca378ddeffb1bf",
+      "stats": {
+        "object_types": {
+          "extension-definition": 2,
+          "identity": 1,
+          "indicator": 183,
+          "malware": 50,
+          "malware-behavior": 150,
+          "malware-method": 482,
+          "malware-objective": 21,
+          "marking-definition": 1,
+          "relationship": 1015
+        }
+      }
+    },
+    {
+      "artifact_type": "license_text",
+      "byte_size": 11357,
+      "count_kind": null,
+      "path": "datasets/raw/mitre_mbc/LICENSE.mbc-stix2.1.txt",
+      "record_count": null,
+      "role": "license",
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+      "source_uri": "https://github.com/MBCProject/mbc-stix2.1/blob/add8ab4d523afe1de82e261d34ca378ddeffb1bf/LICENSE.txt",
+      "stats": {}
+    }
+  ],
+  "byte_size": 841939,
+  "dataset": "mitre_mbc",
+  "execution_status": "acquired",
+  "ingestion_status": "pending",
+  "license": "Apache-2.0",
+  "license_basis": "GitHub license API for MBCProject/mbc-stix2.1@add8ab4d523a",
+  "license_files": [
+    "datasets/raw/mitre_mbc/LICENSE.mbc-stix2.1.txt"
+  ],
+  "license_url": "https://github.com/MBCProject/mbc-stix2.1/blob/add8ab4d523afe1de82e261d34ca378ddeffb1bf/LICENSE.txt",
+  "license_verified": true,
+  "local_path": "datasets/raw/mitre_mbc/mbc-stix2.1_main_add8ab4d523a.tar.gz",
+  "manifest_format": 1,
+  "provenance": {
+    "github": {
+      "commit_sha": "add8ab4d523afe1de82e261d34ca378ddeffb1bf",
+      "ref": "main",
+      "ref_kind": "branch_head",
+      "repo": "MBCProject/mbc-stix2.1"
+    },
+    "no_malware_samples": true
+  },
+  "record_count": 1905,
+  "schema": {
+    "format": "STIX 2.1 JSON inside repo tarball"
+  },
+  "sha256": "e688d2982cdd03ca69e7c1d87b76a423081a9b3be63b24ecfee14258da49eb41",
+  "sha256_scheme": "sha256",
+  "source": "MITRE MBC (MBCProject/mbc-stix2.1)",
+  "source_uri": "https://github.com/MBCProject/mbc-stix2.1",
+  "validation_status": "validated",
+  "version": "main",
+  "version_basis": "upstream branch_head"
+}
