@@ -260,3 +260,52 @@ def test_knowledge_rejects_unknown_fields():
     )
     assert status == 400
     assert "unknown request fields" in body["error"]
+
+
+def test_live_events_endpoint():
+    from http.client import HTTPConnection
+    from threading import Thread
+
+    ui.telemetry.reset()
+    ui.telemetry.emit(
+        "attack_observed",
+        "test event",
+        operation="red-team",
+        status="BLOCKED",
+        source="test",
+    )
+    server = ui.ThreadingHTTPServer(("127.0.0.1", 0), ui.Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        conn.request("GET", "/api/events?since=0")
+        response = conn.getresponse()
+        body = json.loads(response.read())
+        assert response.status == 200
+        assert body["events"][-1]["type"] == "attack_observed"
+        assert body["events"][-1]["status"] == "BLOCKED"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_command_endpoint_uses_allowlisted_gateway(monkeypatch):
+    monkeypatch.setattr(
+        ui,
+        "_execute",
+        lambda phase, hardening: {"success": True, "phase": phase, "hardening": hardening},
+    )
+    status, body = _post_to_test_server({"command": "run phase 7"}, "/api/command")
+    assert status == 200
+    assert body["success"] is True
+    assert body["action"] == "run_phase"
+    assert body["result"]["phase"] == "phase7"
+
+
+def test_command_endpoint_rejects_arbitrary_shell():
+    status, body = _post_to_test_server({"command": "rm -rf /"}, "/api/command")
+    assert status == 400
+    assert body["success"] is False
+    assert "unsupported command" in body["error"]
