@@ -186,3 +186,77 @@ def test_ui_has_operational_test_center():
     assert "RUN LOCAL RED-TEAM" in ui.TEMPLATE
     assert "RUN REGRESSION TESTS" in ui.TEMPLATE
     assert "/api/test" in ui.TEMPLATE
+
+
+
+def test_knowledge_status_endpoint(monkeypatch):
+    from http.client import HTTPConnection
+    from threading import Thread
+
+    monkeypatch.setattr(
+        ui,
+        "knowledge_status",
+        lambda db_path: {
+            "ready": True,
+            "records": 2,
+            "datasets": [{"dataset": "demo", "records": 2}],
+            "schema_version": 1,
+        },
+    )
+    server = ui.ThreadingHTTPServer(("127.0.0.1", 0), ui.Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        conn.request("GET", "/api/knowledge/status")
+        response = conn.getresponse()
+        body = json.loads(response.read())
+        assert response.status == 200
+        assert body["records"] == 2
+        assert body["datasets"][0]["dataset"] == "demo"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_knowledge_search_endpoint(monkeypatch):
+    from http.client import HTTPConnection
+    from threading import Thread
+
+    monkeypatch.setattr(
+        ui,
+        "knowledge_search",
+        lambda query, db_path, dataset, limit: [
+            {"record_id": "demo:1", "content": query, "dataset": dataset}
+        ],
+    )
+    server = ui.ThreadingHTTPServer(("127.0.0.1", 0), ui.Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        conn.request(
+            "POST",
+            "/api/knowledge",
+            body=json.dumps({"action": "search", "query": "CVE-TEST-1"}),
+            headers={"Content-Type": "application/json"},
+        )
+        response = conn.getresponse()
+        body = json.loads(response.read())
+        assert response.status == 200
+        assert body["success"] is True
+        assert body["results"][0]["record_id"] == "demo:1"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_knowledge_rejects_unknown_fields():
+    status, body = _post_to_test_server(
+        {"action": "search", "query": "CVE-1", "admin": True},
+        "/api/knowledge",
+    )
+    assert status == 400
+    assert "unknown request fields" in body["error"]
