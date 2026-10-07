@@ -36,6 +36,8 @@ STATE: dict[str, Any] = {
     "last_summary": None,
     "last_hardening": None,
     "failed_phases": [],
+    "last_result": None,
+    "events": [],
 }
 
 
@@ -95,8 +97,17 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
         "phase_result": phase_result,
         "hardening_result": hardening_result,
         "success": success,
-        "state": _snapshot(),
     }
+    with STATE_LOCK:
+        STATE["last_result"] = result
+        STATE["events"].append({
+            "phase": phase,
+            "success": success,
+            "hardening": bool(hardening),
+            "timestamp": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        })
+        STATE["events"] = STATE["events"][-40:]
+        result["state"] = _snapshot()
     save_report("hydra", result)
     return result
 
@@ -140,12 +151,20 @@ class Handler(BaseHTTPRequestHandler):
                 phases=27,
                 network_scope="localhost-only",
                 latest_report=load_report(),
+                knowledge=knowledge_status(db_path=DEFAULT_DB),
             )
             self._send(200, state)
             return
 
         if path == "/api/report":
             self._send(200, {"success": True, "report": load_report()})
+            return
+
+        if path == "/api/situation":
+            state = _snapshot()
+            state["knowledge"] = knowledge_status(db_path=DEFAULT_DB)
+            state["report"] = load_report()
+            self._send(200, state)
             return
 
         if path == "/api/knowledge/status":
