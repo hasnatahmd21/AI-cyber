@@ -59,10 +59,10 @@ Example:
     ai-cyber-knowledge ingest-source nvd /path/to/nvdcve.json --version 2.0 --validation-status source-checked
 
 The official NVD feed documentation describes the 2.0 JSON vulnerability and CPE
-feeds and the use of modified feeds for synchronization. citeturn0search1turn0search2
+feeds and the use of modified feeds for synchronization.
 MITRE documents ATT&CK STIX as the machine-readable source for automated
-ingestion, and CWE publishes XML downloads for current releases. citeturn0search6turn0search0
-The official CPE dictionary is maintained under NIST/NVD responsibility. citeturn0search3
+ingestion, and CWE publishes XML downloads for current releases.
+The official CPE dictionary is maintained under NIST/NVD responsibility.
 
 These references describe upstream formats; they do not make a local dataset
 validated. The manifest validation_status remains the authoritative local
