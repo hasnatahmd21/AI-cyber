@@ -61,6 +61,7 @@ def main() -> int:
     # Phase 13 deterministic security evaluation: local-only fixtures plus
     # intentional evidence tamper detection. No external cyber target is used.
     run(sys.executable, "tools/phase13_security_evaluation_test.py", cwd=ROOT)
+    run(sys.executable, "tools/end_to_end_dataset_test.py", cwd=ROOT)
 
     # Canonical runtime verification.
     code = (
