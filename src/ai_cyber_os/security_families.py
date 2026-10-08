@@ -148,9 +148,15 @@ class SecurityKnowledgeRecord:
         object.__setattr__(self, "title", title)
         object.__setattr__(self, "description", _text(self.description, "description", max_len=20000))
         object.__setattr__(self, "cve_id", _identifier(self.cve_id, "cve_id", _IDENTIFIER_PATTERNS["cve"]))
-        object.__setattr__(self, "cwe_ids", tuple(_identifier(x, "cwe_id", _IDENTIFIER_PATTERNS["cwe"]) for x in self.cwe_ids))
-        object.__setattr__(self, "capec_ids", tuple(_identifier(x, "capec_id", _IDENTIFIER_PATTERNS["capec"]) for x in self.capec_ids))
-        object.__setattr__(self, "attack_ids", tuple(_identifier(x, "attack_id", _IDENTIFIER_PATTERNS["attack"]) for x in self.attack_ids))
+        cwe_ids = tuple(_identifier(x, "cwe_id", _IDENTIFIER_PATTERNS["cwe"]) for x in self.cwe_ids)
+        capec_ids = tuple(_identifier(x, "capec_id", _IDENTIFIER_PATTERNS["capec"]) for x in self.capec_ids)
+        attack_ids = tuple(_identifier(x, "attack_id", _IDENTIFIER_PATTERNS["attack"]) for x in self.attack_ids)
+        for field, values in (("cwe_ids", cwe_ids), ("capec_ids", capec_ids), ("attack_ids", attack_ids)):
+            if len(set(values)) != len(values):
+                raise SecurityFamilyError(f"{field} contains duplicates")
+        object.__setattr__(self, "cwe_ids", cwe_ids)
+        object.__setattr__(self, "capec_ids", capec_ids)
+        object.__setattr__(self, "attack_ids", attack_ids)
         object.__setattr__(self, "cvss_score", _finite_number(self.cvss_score, "cvss_score", 0.0, 10.0))
         object.__setattr__(self, "cvss_vector", _text(self.cvss_vector, "cvss_vector", max_len=1024))
         object.__setattr__(self, "severity", _text(self.severity, "severity", max_len=32))
