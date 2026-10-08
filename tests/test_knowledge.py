@@ -130,7 +130,7 @@ def test_context_packet_is_bounded_and_citable(tmp_path):
     packet = store.retrieve_context(
         "cyber observation",
         top_k=5,
-        max_chars=256,
+        max_chars=512,
     )
 
     assert packet["query"] == "cyber observation"
@@ -138,7 +138,7 @@ def test_context_packet_is_bounded_and_citable(tmp_path):
     assert packet["citations"]
     assert packet["included"] >= 1
     assert packet["truncated"] is True
-    assert len(packet["context"]) <= 256
+    assert len(packet["context"]) <= 512
     assert packet["citations"][0]["record_id"].startswith("fixture-")
 
 
@@ -159,3 +159,4 @@ def test_health_reports_operational_state(tmp_path):
     assert health["documents"] == 2
     assert health["datasets"] == 1
     assert health["integrity"]["bad_hashes"] == 0
+    assert health["integrity"]["content_mismatches"] == 0
