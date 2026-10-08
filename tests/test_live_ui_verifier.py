@@ -30,3 +30,8 @@ def test_live_ui_verifier_checks_both_viewports():
     source = VERIFIER.read_text(encoding="utf-8")
     assert '("desktop", 1440, 900)' in source
     assert '("mobile", 390, 844)' in source
+
+
+def test_httpx2_is_declared_for_current_starlette_testclient():
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    assert "httpx2>=2.13,<3.0" in pyproject

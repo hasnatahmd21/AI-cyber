@@ -30,7 +30,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e .
-          python -m pip install pytest playwright
+          python -m pip install pytest httpx2 playwright
           python -m playwright install --with-deps chromium
 
       - name: Compile live UI verifier and tests
