@@ -686,6 +686,15 @@ def load_cases(path: str | Path) -> list[dict[str, Any]]:
     return [dict(case) for case in cases]
 
 
+def load_outputs(path: str | Path) -> dict[str, Mapping[str, Any] | str]:
+    """Load generated security outputs keyed by evaluation case id."""
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    outputs = payload.get("outputs") if isinstance(payload, dict) else payload
+    if not isinstance(outputs, dict):
+        raise ValueError("output file must contain an object or an 'outputs' object")
+    return dict(outputs)
+
+
 def main() -> int:
     """CLI entry point for the full security evaluation gate."""
     import argparse
