@@ -7,8 +7,9 @@ dataset
   -> SHA-256 + record-count gate
   -> JSONL/NDJSON/JSON/CSV/TXT/MD normalization
   -> provenance + content hash
+  -> deterministic bounded chunking with overlap
   -> SQLite knowledge store
-  -> FTS5 retrieval
+  -> chunk-level FTS5 retrieval aggregated back to evidence records
   -> CVE/CWE/ATT&CK/CPE identifier relations
   -> evidence correlation
 
@@ -87,3 +88,12 @@ retrieval evidence from being mistaken for a verified security conclusion.
 Large or restricted datasets should remain outside Git history. Commit the
 manifest and provenance metadata, then make the dataset available to the local
 runtime through the approved storage mechanism.
+
+
+## Retrieval integrity
+
+Long evidence is split deterministically into bounded overlapping chunks before
+FTS indexing. Retrieval ranks matching chunks but returns the canonical parent
+record, so evaluation and downstream reasoning cite stable evidence records
+rather than transient chunk identifiers. Existing databases are backfilled into
+the chunk index automatically when opened after the schema upgrade.
