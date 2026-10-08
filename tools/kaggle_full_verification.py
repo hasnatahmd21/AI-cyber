@@ -102,11 +102,20 @@ def main() -> int:
             method="POST",
             payload=json.dumps({"command": "status"}).encode(),
         )
+        knowledge_status = fetch(base + "/api/knowledge/status")
+        knowledge_search = fetch(
+            base + "/api/knowledge",
+            method="POST",
+            payload=json.dumps({"action": "search", "query": "CVE"}).encode(),
+        )
         assert status.get("success") is True
         assert "live" in status
         assert "run" in events
         assert situation.get("runtime") == "online"
         assert command.get("success") is True
+        assert knowledge_status.get("ready") is True
+        assert knowledge_search.get("success") is True
+        assert "results" in knowledge_search
 
         run_result = fetch(
             base + "/api/command",
