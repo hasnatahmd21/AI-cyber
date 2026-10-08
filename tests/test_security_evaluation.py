@@ -189,3 +189,13 @@ def test_evaluation_fixture_cases_and_outputs_are_separate():
     assert cases
     assert all("expected_output" not in case for case in cases)
     assert {case["id"] for case in cases} == set(outputs)
+
+
+def test_evidence_quality_fails_closed_on_unverified_status(tmp_path: Path):
+    db = _fixture_db(tmp_path)
+    context = _context(db, "CVE-2099-1001")
+    unverified = dict(context["evidence"][0])
+    unverified["validation_status"] = "unverified"
+    result = evaluate_evidence_quality([unverified])
+    assert result["pass"] is False
+    assert result["records"][0]["core_integrity"] is False
