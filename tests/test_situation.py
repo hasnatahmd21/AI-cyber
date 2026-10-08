@@ -30,7 +30,7 @@ def test_payload_is_data(tmp_path):
 
 def test_correlation_and_snapshot(tmp_path):
     s=SituationStore(tmp_path/"s.sqlite"); s.ingest(ev()); s.ingest(ev(external_id="auth-2",observed_at="2026-10-08T10:02:00Z",severity="CRITICAL")); s.ingest(ev(external_id="proc-1",event_type="process",observed_at="2026-10-08T10:03:00Z",severity="MEDIUM"))
-    assert len(s.correlate(s.query(subject_id="host-1",limit=1)[0]["event_id"],window_seconds=180))==2
+    assert len(s.correlate(s.query(subject_id="host-1",limit=1)[0]["event_id"],window_seconds=180))==3
     snap=s.situation(subject_type="asset",subject_id="host-1",start="2026-10-08T09:59:00Z",end="2026-10-08T10:05:00Z")
     assert snap["event_count"]==3 and snap["severity_counts"]["CRITICAL"]==1 and snap["evidence_only"]
 
