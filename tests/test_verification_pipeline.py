@@ -39,7 +39,8 @@ def test_verifier_contains_fail_closed_contract():
     assert "full pytest regression" in source
     assert "canonical 27-phase runtime" in source
     assert "final hardening verification" in source
-    assert "forensic inventory" in source
+    assert "forensic inventory of canonical source" in source
+    assert "install verification test runner" in source
 
 
 def test_report_writer_is_json_and_redacts_remote_userinfo(tmp_path: Path):

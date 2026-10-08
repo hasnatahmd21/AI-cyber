@@ -226,12 +226,24 @@ def verify(repo: Path, *, report_path: Path, expected_sha: str | None, expected_
     )
     checks.append(dependency_check)
 
+    test_runner = run_command(
+        "install verification test runner",
+        [sys.executable, "-m", "pip", "install", "--disable-pip-version-check", "pytest", "httpx"],
+        cwd=repo,
+        timeout=300,
+    )
+    checks.append(test_runner)
+    if test_runner.status == "FAIL":
+        report = build_report(repo, checks, expected_sha, expected_ref)
+        write_json(report_path, report)
+        return 1
+
     with tempfile.TemporaryDirectory(prefix="ai-cyber-verification-") as td:
         report_dir = Path(td)
         inventory_path = report_dir / "forensic_inventory.json"
         inventory = run_command(
-            "forensic inventory",
-            [sys.executable, "tools/forensic_inventory.py", "--output", str(inventory_path)],
+            "forensic inventory of canonical source",
+            [sys.executable, "tools/forensic_inventory.py", "--output", str(inventory_path), "src"],
             cwd=repo,
             timeout=300,
         )
@@ -246,7 +258,7 @@ def verify(repo: Path, *, report_path: Path, expected_sha: str | None, expected_
                 )
                 if syntax_errors:
                     inventory.status = "FAIL"
-                    inventory.stderr = "syntax errors: " + ", ".join(syntax_errors)
+                    inventory.stderr = "canonical source syntax errors: " + ", ".join(syntax_errors)
             except (OSError, json.JSONDecodeError) as exc:
                 inventory.status = "FAIL"
                 inventory.detail = f"invalid inventory report: {exc}"
