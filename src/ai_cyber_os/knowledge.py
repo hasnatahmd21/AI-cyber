@@ -510,11 +510,6 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
 
         if not best_scores and not exact_ids:
             return []
-
-
-            best_scores,
-            key=lambda record_id: (best_scores[record_id], record_id),
-        )
         if dataset is not None:
             allowed = {
                 row["record_id"]
