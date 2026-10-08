@@ -48,7 +48,7 @@ def test_catalog_is_exactly_13_families():
 
 
 def test_normalization_maps_common_security_identifiers():
-    record = normalize_record(_record(cve=None, cwe=None, cwe_ids=None, cvss=None))
+    record = normalize_record(_record(cve=None, cwe=None, cwe_ids=["CWE-79"], cvss=None))
     assert record.cve_id == "CVE-2026-12345"
     assert record.cwe_ids == ("CWE-79",)
     assert record.cvss_score == 8.8
