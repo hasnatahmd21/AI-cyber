@@ -14,12 +14,13 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 from .backend import BackendIntegrationError, KnowledgeRAGBackend
 from .commands import CommandGatewayError, ControlledCommandGateway
 from .security_families import SecurityKnowledgeRecord, normalize_record
 from .situation import SituationError, SituationStore, TelemetryEvent
+from .ui import APP_CSS, APP_JS, INDEX_HTML, SCHEMA_VERSION as UI_SCHEMA_VERSION
 
 SCHEMA_VERSION = "ai_cyber_api.v1"
 _DEFAULT_DATA_DIR = Path(".ai_cyber") / "data"
@@ -153,6 +154,15 @@ def create_app(
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
         response.headers["X-AI-Cyber-Schema"] = SCHEMA_VERSION
+        response.headers["X-AI-Cyber-UI-Schema"] = UI_SCHEMA_VERSION
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self'; "
+            "connect-src 'self'; img-src 'self' data:; object-src 'none'; "
+            "base-uri 'none'; frame-ancestors 'none'"
+        )
+        response.headers["Cache-Control"] = "no-store"
         return response
 
     def _json_domain_error(request: Request, exc: Exception) -> JSONResponse:
@@ -172,6 +182,19 @@ def create_app(
     @app.exception_handler(CommandGatewayError)
     async def command_error(request: Request, exc: CommandGatewayError):
         return _json_domain_error(request, exc)
+
+    @app.get("/ui", response_class=HTMLResponse)
+    @app.get("/ui/", response_class=HTMLResponse)
+    def ui_index():
+        return HTMLResponse(content=INDEX_HTML, media_type="text/html; charset=utf-8")
+
+    @app.get("/ui/assets/app.css", response_class=Response)
+    def ui_css():
+        return Response(content=APP_CSS, media_type="text/css; charset=utf-8")
+
+    @app.get("/ui/assets/app.js", response_class=Response)
+    def ui_js():
+        return Response(content=APP_JS, media_type="application/javascript; charset=utf-8")
 
     @app.get("/")
     def root(request: Request):

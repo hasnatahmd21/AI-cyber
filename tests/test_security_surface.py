@@ -19,6 +19,7 @@ SCANNED_MODULES = {
     "relationships.py",
     "security_families.py",
     "situation.py",
+    "ui.py",
 }
 
 FORBIDDEN_IMPORT_ROOTS = {
