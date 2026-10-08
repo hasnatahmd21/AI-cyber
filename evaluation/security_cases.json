@@ -1,0 +1,52 @@
+{
+  "metadata": {
+    "kind": "offline-evaluation-fixture",
+    "purpose": "Validate the evaluation machinery without fabricating operational evidence",
+    "evaluator_version": "1.0.0"
+  },
+  "cases": [
+    {
+      "id": "fixture-cve-cwe",
+      "query": "CVE-2099-1001",
+      "limit": 3,
+      "k": 1,
+      "expected_record_ids": ["CVE-2099-1001"],
+      "relevance": {"CVE-2099-1001": 3},
+      "expected_output": {
+        "answer": "The fixture record describes CVE-2099-1001 as a fixture vulnerability associated with CWE-79.",
+        "claims": [
+          {
+            "claim_id": "claim-1",
+            "text": "CVE-2099-1001 is described as a fixture vulnerability associated with CWE-79.",
+            "evidence_ids": ["CVE-2099-1001"]
+          }
+        ],
+        "reasoning_steps": [
+          {
+            "step_id": "step-1",
+            "text": "Use the cited CVE record as the evidence source.",
+            "evidence_ids": ["CVE-2099-1001"]
+          }
+        ]
+      }
+    },
+    {
+      "id": "fixture-cwe",
+      "query": "CWE-79",
+      "limit": 3,
+      "k": 1,
+      "expected_record_ids": ["CWE-79"],
+      "relevance": {"CWE-79": 3},
+      "expected_output": {
+        "answer": "The fixture record describes CWE-79.",
+        "claims": [
+          {
+            "claim_id": "claim-1",
+            "text": "CWE-79 is described by the cited fixture record.",
+            "evidence_ids": ["CWE-79"]
+          }
+        ]
+      }
+    }
+  ]
+}
