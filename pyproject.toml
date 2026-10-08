@@ -12,7 +12,7 @@ dependencies = [
 [project.scripts]
 ai-cyber = "ai_cyber_os.__main__:main"
 ai-cyber-ui = "ai_cyber_os.ui:main"
-ai-cyber-knowledge = "ai_cyber_os.knowledge_cli:main"
+ai-cyber-knowledge = "ai_cyber_os.knowledge_cli:main"\nai-cyber-evaluate = "tools.security_evaluation:main"
 
 [build-system]
 requires = ["setuptools>=68"]
