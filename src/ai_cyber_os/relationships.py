@@ -605,12 +605,18 @@ class CrossDatasetRelationshipStore:
 
         for raw_target in record.related_record_ids:
             relation = "related_to"
-            declaration_payload = {
+            declaration_identity = {
                 "source_node_id": record_node.node_id,
                 "raw_target": raw_target,
                 "relation": relation,
             }
-            declaration_id = "decl:" + _digest(_canonical_json(declaration_payload))
+            declaration_id = "decl:" + _digest(_canonical_json(declaration_identity))
+            declaration_payload = {
+                **declaration_identity,
+                "status": "pending",
+                "target_node_id": None,
+                "candidates": [],
+            }
             declaration_hash = _digest(_canonical_json(declaration_payload))
             db.execute(
                 """
