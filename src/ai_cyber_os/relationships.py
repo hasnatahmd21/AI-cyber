@@ -647,6 +647,17 @@ class CrossDatasetRelationshipStore:
                     if not isinstance(record, SecurityKnowledgeRecord):
                         raise RelationshipError("ingest_records accepts SecurityKnowledgeRecord objects")
                     record_node = self._record_node(record)
+                    # Re-ingestion is a full reconciliation of this record's
+                    # resolver-managed outgoing graph state; this prevents stale
+                    # identifiers, evidence anchors, and declarations from surviving.
+                    db.execute(
+                        "DELETE FROM relationship_edges WHERE source_node_id=?",
+                        (record_node.node_id,),
+                    )
+                    db.execute(
+                        "DELETE FROM relationship_declarations WHERE source_node_id=?",
+                        (record_node.node_id,),
+                    )
                     self._upsert_node_conn(db, record_node)
                     self._materialize_record_anchors_conn(db, record, record_node)
                 db.commit()
@@ -812,8 +823,20 @@ class CrossDatasetRelationshipStore:
         """
         created = 0
         skipped_ambiguous = 0
+        managed_relations = (
+            "maps_to_weakness",
+            "maps_to_attack",
+            "maps_to_attack_pattern",
+            "references_vulnerability",
+            "same_vulnerability",
+        )
         with self._connect() as db:
             db.row_factory = sqlite3.Row
+            db.execute(
+                "DELETE FROM relationship_edges "
+                f"WHERE relation IN ({','.join('?' for _ in managed_relations)})",
+                managed_relations,
+            )
             records = db.execute(
                 """
                 SELECT node_id,family,dataset_id,artifact_path,payload_json
@@ -1160,8 +1183,30 @@ class CrossDatasetRelationshipStore:
                 if node.node_type == "record":
                     record_payload = payload.get("payload")
                     record = normalize_record(record_payload)
-                    if record.content_hash != row["content_hash"]:
-                        errors.append(f"{row['node_id']}: canonical security record hash mismatch")
+                    if record.canonical_payload != record_payload:
+                        errors.append(f"{row['node_id']}: non-canonical security record payload")
+                    expected_id = node_id_for_record(
+                        record.source_dataset,
+                        record.source_artifact,
+                        record.record_id,
+                    )
+                    if expected_id != node.node_id:
+                        errors.append(f"{row['node_id']}: record node identity mismatch")
+                elif node.node_type == "identifier":
+                    expected_id = node_id_for_identifier(
+                        node.identifier_type,
+                        node.identifier_value,
+                    )
+                    if expected_id != node.node_id:
+                        errors.append(f"{row['node_id']}: identifier node identity mismatch")
+                elif node.node_type == "evidence":
+                    reference = node.payload.get("reference")
+                    if node_id_for_evidence(reference) != node.node_id:
+                        errors.append(f"{row['node_id']}: evidence node identity mismatch")
+                elif node.node_type == "severity":
+                    severity = node.payload.get("severity")
+                    if node_id_for_severity(severity) != node.node_id:
+                        errors.append(f"{row['node_id']}: severity node identity mismatch")
             except (json.JSONDecodeError, RelationshipError, SecurityFamilyError, TypeError) as exc:
                 errors.append(f"{row['node_id']}: invalid node: {exc}")
 
@@ -1188,6 +1233,16 @@ class CrossDatasetRelationshipStore:
                 if status == "resolved":
                     if len(candidates) != 1 or target != candidates[0] or target not in node_ids:
                         errors.append(f"{row['declaration_id']}: invalid resolved declaration")
+                    else:
+                        edge_exists = db.execute(
+                            """
+                            SELECT 1 FROM relationship_edges
+                            WHERE source_node_id=? AND target_node_id=? AND relation=?
+                            """,
+                            (row["source_node_id"], target, row["relation"]),
+                        ).fetchone()
+                        if edge_exists is None:
+                            errors.append(f"{row['declaration_id']}: resolved declaration has no matching edge")
                 elif status == "orphan":
                     if candidates or target is not None:
                         errors.append(f"{row['declaration_id']}: invalid orphan declaration")
