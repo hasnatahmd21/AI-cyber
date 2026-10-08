@@ -97,7 +97,34 @@ class SituationStore:
             CREATE TABLE IF NOT EXISTS situation_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);""")
             db.execute("INSERT OR REPLACE INTO situation_meta(key,value) VALUES('schema_version',?)",(SCHEMA_VERSION,))
     def _write(self,db,e):
-        db.execute("""INSERT INTO situation_events(event_id,event_type,observed_at,source,external_id,severity,subject_type,subject_id,action,outcome,evidence_refs_json,related_record_ids_json,payload_json,content_hash,schema_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(event_id) DO UPDATE SET event_type=excluded.event_type,observed_at=excluded.observed_at,source=excluded.source,external_id=excluded.external_id,severity=excluded.severity,subject_type=excluded.subject_type,subject_id=excluded.subject_id,action=excluded.action,outcome=excluded.outcome,evidence_refs_json=excluded.evidence_refs_json,related_record_ids_json=excluded.related_record_ids_json,payload_json=excluded.payload_json,content_hash=excluded.content_hash,schema_version=excluded.schema_version""",(e.event_id,e.event_type,e.observed_at,e.source,e.external_id,e.severity,e.subject_type,e.subject_id,e.action,e.outcome,json.dumps(list(e.evidence_refs)),json.dumps(list(e.related_record_ids)),e.payload_json,e.content_hash,SCHEMA_VERSION))
+        cursor = db.execute(
+            """INSERT INTO situation_events(
+                event_id,event_type,observed_at,source,external_id,severity,
+                subject_type,subject_id,action,outcome,evidence_refs_json,
+                related_record_ids_json,payload_json,content_hash,schema_version
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(event_id) DO NOTHING""",
+            (
+                e.event_id,e.event_type,e.observed_at,e.source,e.external_id,e.severity,
+                e.subject_type,e.subject_id,e.action,e.outcome,
+                json.dumps(list(e.evidence_refs)),json.dumps(list(e.related_record_ids)),
+                e.payload_json,e.content_hash,SCHEMA_VERSION,
+            ),
+        )
+        if cursor.rowcount == 0:
+            existing=db.execute(
+                "SELECT content_hash FROM situation_events WHERE event_id=?",
+                (e.event_id,),
+            ).fetchone()
+            if existing is None:
+                raise SituationError(f"event write lost without an existing record: {e.event_id}")
+            if existing[0] != e.content_hash:
+                raise SituationError(
+                    f"event_id collision with different content: {e.event_id}"
+                )
+            return False
+        return True
+
     def ingest(self,event):
         if not isinstance(event,TelemetryEvent): raise SituationError("event must be TelemetryEvent")
         with self._connect() as db:self._write(db,event)
@@ -108,10 +135,12 @@ class SituationStore:
         with self._connect() as db:
             try:
                 db.execute("BEGIN")
-                for e in batch:self._write(db,e)
+                ingested=0
+                for e in batch:
+                    ingested += int(self._write(db,e))
                 db.commit()
             except Exception: db.rollback(); raise
-        return {"ingested":len(batch),"event_count":self.count()}
+        return {"ingested":ingested,"event_count":self.count()}
     def _row(self,row):
         e=TelemetryEvent(event_id=row[0],event_type=row[1],observed_at=row[2],source=row[3],external_id=row[4],severity=row[5],subject_type=row[6],subject_id=row[7],action=row[8],outcome=row[9],evidence_refs=tuple(json.loads(row[10])),related_record_ids=tuple(json.loads(row[11])),payload=json.loads(row[12]))
         if e.content_hash!=row[13]: raise SituationError(f"event content hash mismatch: {e.event_id}")
@@ -129,8 +158,16 @@ class SituationStore:
         types=tuple(_text(x,"event_type",True,64).lower() for x in (event_types or ())); levels=tuple(_text(x,"severity",True,16).upper() for x in (severities or ()))
         if any(x not in EVENT_TYPES for x in types) or any(x not in SEVERITIES for x in levels): raise SituationError("unsupported filter value")
         clauses=[]; params=[]
-        for col,val in (("observed_at",start),("observed_at",end),("subject_type",st),("subject_id",sid),("source",src)):
-            if val: clauses.append(col+(" >= ?" if col=="observed_at" and val==start else " <= ?" if col=="observed_at" else " = ?")); params.append(val)
+        if start:
+            clauses.append("observed_at >= ?")
+            params.append(start)
+        if end:
+            clauses.append("observed_at <= ?")
+            params.append(end)
+        for col,val in (("subject_type",st),("subject_id",sid),("source",src)):
+            if val:
+                clauses.append(col+" = ?")
+                params.append(val)
         if types: clauses.append("event_type IN ("+",".join("?" for _ in types)+")"); params.extend(types)
         if levels: clauses.append("severity IN ("+",".join("?" for _ in levels)+")"); params.extend(levels)
         where=" WHERE "+" AND ".join(clauses) if clauses else ""

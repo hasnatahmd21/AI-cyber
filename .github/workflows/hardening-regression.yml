@@ -1,0 +1,82 @@
+name: AI-CYBER Hardening + Regression
+
+on:
+  push:
+    branches: [hardening/regression-layer, main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: Regression / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest httpx
+      - name: Dependency consistency
+        run: python -m pip check
+      - name: Compile full source tree
+        run: python -m compileall -q src tests tools
+      - name: Full regression suite
+        run: python -m pytest -q
+      - name: Adversarial hardening regression
+        run: python -m pytest -q tests/test_hardening_regression.py tests/test_security_surface.py
+      - name: Canonical runtime verification
+        run: |
+          python - <<'PY'
+          from ai_cyber_os.hydra import run_hydra_phase, run_final_hardening_verification
+
+          phases = run_hydra_phase("all")
+          assert phases["summary"]["success"] is True, phases
+          assert run_final_hardening_verification()["verified"] is True
+          print("CANONICAL_27_PHASE_RUNTIME=GREEN")
+          PY
+
+  deterministic:
+    name: Deterministic regression / Python 3.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest httpx
+      - name: Hash seed 0
+        env:
+          PYTHONHASHSEED: "0"
+        run: python -m pytest -q tests/test_hardening_regression.py tests/test_knowledge.py tests/test_relationships.py
+      - name: Hash seed 1
+        env:
+          PYTHONHASHSEED: "1"
+        run: python -m pytest -q tests/test_hardening_regression.py tests/test_knowledge.py tests/test_relationships.py
+
+  green_gate:
+    name: Integrated GREEN gate
+    needs: [regression, deterministic]
+    if: ${{ needs.regression.result == 'success' && needs.deterministic.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "AI_CYBER_HARDENING_REGRESSION=GREEN"

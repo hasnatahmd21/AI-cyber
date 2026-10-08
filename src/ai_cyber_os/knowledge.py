@@ -310,15 +310,11 @@ class KnowledgeStore:
 
     @staticmethod
     def _validate_limit(limit: int) -> int:
-        if isinstance(limit, bool):
+        if isinstance(limit, bool) or not isinstance(limit, int):
             raise TypeError("limit must be an integer")
-        try:
-            value = int(limit)
-        except (TypeError, ValueError) as exc:
-            raise ValueError("limit must be an integer") from exc
-        if value < 1:
+        if limit < 1:
             raise ValueError("limit must be >= 1")
-        return min(value, 100)
+        return min(limit, 100)
 
     def search(
         self,

@@ -403,6 +403,15 @@ class ControlledCommandGateway:
             stderr, stderr_truncated = self._bounded_text(exc.stderr, spec.max_output_bytes)
             timed_out = True
             status = "timed_out"
+        except OSError as exc:
+            returncode = None
+            stdout, stdout_truncated = "", False
+            stderr, stderr_truncated = self._bounded_text(
+                str(exc).encode("utf-8"),
+                spec.max_output_bytes,
+            )
+            timed_out = False
+            status = "failed"
 
         finished_at = self._now()
         duration_ms = int((time.monotonic() - started_clock) * 1000)
