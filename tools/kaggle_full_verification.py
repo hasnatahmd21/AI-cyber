@@ -58,6 +58,10 @@ def main() -> int:
     run("pytest", "-q", "tests", cwd=ROOT)
     run(sys.executable, "tools/forensic_inventory.py", cwd=ROOT)
 
+    # Phase 13 deterministic security evaluation: local-only fixtures plus
+    # intentional evidence tamper detection. No external cyber target is used.
+    run(sys.executable, "tools/phase13_security_evaluation_test.py", cwd=ROOT)
+
     # Canonical runtime verification.
     code = (
         "from ai_cyber_os.hydra import run_hydra_phase; "
