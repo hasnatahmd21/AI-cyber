@@ -311,6 +311,51 @@ def test_graph_tampering_is_detected(tmp_path: Path):
     assert any("canonical node payload mismatch" in error for error in result["errors"])
 
 
+def test_reingest_reconciles_removed_declared_relationship_state(tmp_path: Path):
+    store = CrossDatasetRelationshipStore(tmp_path / "graph.sqlite")
+    target = _record("target", "weakness", "cwe", "cwe.jsonl", cve_id=None, cwe_ids=[])
+    original = _record(
+        "source",
+        "vulnerability",
+        "nvd",
+        "source.jsonl",
+        related_record_ids=["target"],
+    )
+    store.ingest_records([target, original])
+    store.resolve_declared_links()
+
+    source_node = node_id_for_record("nvd", "source.jsonl", "source")
+    assert store.count(relation="related_to") == 1
+    assert any(e.relation == "identified_as" for e in store.get_edges(source_node, direction="outgoing"))
+
+    refreshed = _record(
+        "source",
+        "vulnerability",
+        "nvd",
+        "source.jsonl",
+        cve_id=None,
+        cwe_ids=[],
+        capec_ids=[],
+        attack_ids=[],
+        cvss_score=None,
+        cvss_vector=None,
+        severity=None,
+        evidence_refs=[],
+        related_record_ids=[],
+    )
+    store.ingest_records([refreshed])
+
+    outgoing = store.get_edges(source_node, direction="outgoing")
+    assert all(e.relation not in {
+        "identified_as",
+        "supported_by",
+        "has_severity",
+        "related_to",
+    } for e in outgoing)
+    assert store.count(relation="related_to") == 0
+    assert store.verify_integrity()["ok"] is True
+
+
 def test_integrity_reports_pending_and_resolves_later(tmp_path: Path):
     store = CrossDatasetRelationshipStore(tmp_path / "graph.sqlite")
     source = _record(
