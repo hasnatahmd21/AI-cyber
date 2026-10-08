@@ -60,6 +60,23 @@ CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_fts USING fts5(
     content,
     tokenize='unicode61'
 );
+CREATE TABLE IF NOT EXISTS knowledge_chunks (
+    chunk_id TEXT PRIMARY KEY,
+    record_id TEXT NOT NULL,
+    chunk_index INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    content_sha256 TEXT NOT NULL,
+    FOREIGN KEY (record_id) REFERENCES knowledge_records(record_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_record ON knowledge_chunks(record_id, chunk_index);
+CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
+    chunk_id UNINDEXED,
+    record_id UNINDEXED,
+    dataset UNINDEXED,
+    title UNINDEXED,
+    content,
+    tokenize='unicode61'
+);
 """
 
 
@@ -89,6 +106,44 @@ def _text(value: Any) -> str:
 
 def _hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+CHUNK_SIZE = 4000
+CHUNK_OVERLAP = 400
+
+def _chunk_text(text: str, *, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
+    if size <= 0 or overlap < 0 or overlap >= size:
+        raise ValueError('invalid chunk parameters')
+    if len(text) <= size:
+        return [text]
+    chunks: list[str] = []
+    start = 0
+    while start < len(text):
+        end = min(len(text), start + size)
+        if end < len(text):
+            boundary = max(text.rfind('\n', start, end), text.rfind(' ', start, end))
+            if boundary > start + size // 2:
+                end = boundary
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        if end >= len(text):
+            break
+        start = max(start + 1, end - overlap)
+    return chunks
+
+def _index_chunks(db: sqlite3.Connection, record: dict[str, Any]) -> None:
+    db.execute('DELETE FROM knowledge_chunks_fts WHERE record_id=?', (record['record_id'],))
+    db.execute('DELETE FROM knowledge_chunks WHERE record_id=?', (record['record_id'],))
+    for index, chunk in enumerate(_chunk_text(record['content'])):
+        chunk_id = f"{record['record_id']}#chunk-{index}"
+        db.execute(
+            'INSERT INTO knowledge_chunks(chunk_id,record_id,chunk_index,content,content_sha256) VALUES (?,?,?,?,?)',
+            (chunk_id, record['record_id'], index, chunk, _hash(chunk)),
+        )
+        db.execute(
+            'INSERT INTO knowledge_chunks_fts(chunk_id,record_id,dataset,title,content) VALUES (?,?,?,?,?)',
+            (chunk_id, record['record_id'], record['dataset'], record['title'], chunk),
+        )
 
 def _safe_id(dataset: str, source: str, content: str) -> str:
     return hashlib.sha256(
@@ -366,6 +421,7 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                 "INSERT INTO knowledge_fts(record_id,dataset,title,content) VALUES (?,?,?,?)",
                 (record["record_id"], record["dataset"], record["title"], record["content"]),
             )
+            _index_chunks(db, record)
             if records_seen % 1000 == 0:
                 db.commit()
         db.commit()
@@ -394,18 +450,18 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
     try:
         if dataset:
             rows = db.execute(
-                """SELECT k.*, bm25(knowledge_fts) AS score
-                   FROM knowledge_fts f JOIN knowledge_records k ON k.record_id=f.record_id
-                   WHERE knowledge_fts MATCH ? AND k.dataset=?
-                   ORDER BY score LIMIT ?""",
+                """SELECT k.*, MIN(bm25(knowledge_chunks_fts)) AS score
+                   FROM knowledge_chunks_fts f JOIN knowledge_records k ON k.record_id=f.record_id
+                   WHERE knowledge_chunks_fts MATCH ? AND k.dataset=?
+                   GROUP BY k.record_id ORDER BY score LIMIT ?""",
                 (fts_query, dataset, limit),
             ).fetchall()
         else:
             rows = db.execute(
-                """SELECT k.*, bm25(knowledge_fts) AS score
-                   FROM knowledge_fts f JOIN knowledge_records k ON k.record_id=f.record_id
-                   WHERE knowledge_fts MATCH ?
-                   ORDER BY score LIMIT ?""",
+                """SELECT k.*, MIN(bm25(knowledge_chunks_fts)) AS score
+                   FROM knowledge_chunks_fts f JOIN knowledge_records k ON k.record_id=f.record_id
+                   WHERE knowledge_chunks_fts MATCH ?
+                   GROUP BY k.record_id ORDER BY score LIMIT ?""",
                 (fts_query, limit),
             ).fetchall()
         return [dict(row) for row in rows]
