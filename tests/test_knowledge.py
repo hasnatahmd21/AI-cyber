@@ -160,3 +160,13 @@ def test_health_reports_operational_state(tmp_path):
     assert health["datasets"] == 1
     assert health["integrity"]["bad_hashes"] == 0
     assert health["integrity"]["content_mismatches"] == 0
+
+
+def test_empty_context_packet_is_stable(tmp_path):
+    store = KnowledgeStore(tmp_path / "knowledge.sqlite")
+    packet = store.retrieve_context("not indexed", top_k=5)
+    assert packet["hits"] == []
+    assert packet["citations"] == []
+    assert packet["context"] == ""
+    assert packet["included"] == 0
+    assert packet["truncated"] is False
