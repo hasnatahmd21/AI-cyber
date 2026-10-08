@@ -22,3 +22,5 @@ jobs:
         run: python -m compileall -q src tests
       - name: Run tests
         run: pytest -q tests
+      - name: Run Phase 13 standalone security evaluation
+        run: python tools/phase13_security_evaluation_test.py
