@@ -760,6 +760,13 @@ class CrossDatasetRelationshipStore:
                     ).fetchall()
                     candidates = [row[0] for row in rows]
 
+                db.execute(
+                    "DELETE FROM relationship_edges WHERE source_node_id=? AND relation=? "
+                    "AND target_node_id IN (SELECT target_node_id FROM relationship_declarations "
+                    "WHERE declaration_id=?)",
+                    (declaration["source_node_id"], declaration["relation"], declaration["declaration_id"]),
+                )
+
                 if len(candidates) == 1:
                     status = "resolved"
                     target = candidates[0]
@@ -946,9 +953,12 @@ class CrossDatasetRelationshipStore:
                                 target_node_id=right,
                                 relation="same_vulnerability",
                             )
-                            before = self.edge_count(edge.edge_id)
+                            exists = db.execute(
+                                "SELECT 1 FROM relationship_edges WHERE edge_id=?",
+                                (edge.edge_id,),
+                            ).fetchone()
                             self._add_edge_conn(db, edge)
-                            if before == 0:
+                            if exists is None:
                                 created += 1
                     elif len(candidates) > MAX_DIRECT_LINK_TARGETS:
                         skipped_ambiguous += 1
@@ -1211,6 +1221,10 @@ class CrossDatasetRelationshipStore:
                 errors.append(f"{row['node_id']}: invalid node: {exc}")
 
         node_ids = {row["node_id"] for row in node_rows}
+        edge_keys = {
+            (row["source_node_id"], row["target_node_id"], row["relation"])
+            for row in edge_rows
+        }
         for row in edge_rows:
             try:
                 if row["source_node_id"] not in node_ids or row["target_node_id"] not in node_ids:
@@ -1234,14 +1248,7 @@ class CrossDatasetRelationshipStore:
                     if len(candidates) != 1 or target != candidates[0] or target not in node_ids:
                         errors.append(f"{row['declaration_id']}: invalid resolved declaration")
                     else:
-                        edge_exists = db.execute(
-                            """
-                            SELECT 1 FROM relationship_edges
-                            WHERE source_node_id=? AND target_node_id=? AND relation=?
-                            """,
-                            (row["source_node_id"], target, row["relation"]),
-                        ).fetchone()
-                        if edge_exists is None:
+                        if (row["source_node_id"], target, row["relation"]) not in edge_keys:
                             errors.append(f"{row['declaration_id']}: resolved declaration has no matching edge")
                 elif status == "orphan":
                     if candidates or target is not None:
