@@ -257,9 +257,13 @@ def _validate_artifact_contract(
         )
 
     count = artifact.get("records")
-    if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= max_records:
+    if isinstance(count, bool) or not isinstance(count, int) or count < 0:
         raise ManifestValidationError(
-            f"{rel}: records must be an integer in [0, {max_records}]"
+            f"{rel}: records must be a non-negative integer"
+        )
+    if count > max_records:
+        raise ManifestValidationError(
+            f"{rel}: declared record count exceeds configured record limit {max_records}"
         )
 
     digest = artifact.get("sha256")
