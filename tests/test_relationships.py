@@ -285,7 +285,7 @@ def test_family_store_import_requires_integrity_and_provenance(tmp_path: Path):
     assert result["records"] == 1
     assert graph.count(node_type="record") == 1
     integrity = graph.verify_integrity()
-    assert integrity["ok"] is True, integrity["errors"]
+    assert integrity["ok"] is True
 
     with sqlite3.connect(family_db) as db:
         db.execute(
@@ -367,7 +367,7 @@ def test_integrity_reports_pending_and_resolves_later(tmp_path: Path):
     )
     store.ingest_records([source])
     result = store.verify_integrity()
-    assert result["ok"] is True, result["errors"]
+    assert result["ok"] is True
     assert result["pending_declarations"] == 1
 
     target = _record("target", "weakness", "cwe", "cwe.jsonl", cve_id=None, cwe_ids=[])
