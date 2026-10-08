@@ -244,6 +244,8 @@ def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> 
                 "INSERT INTO knowledge_fts(record_id,dataset,title,content) VALUES (?,?,?,?)",
                 (record["record_id"], record["dataset"], record["title"], record["content"]),
             )
+            from .knowledge import _index_chunks
+            _index_chunks(db, record)
         db.commit()
     finally:
         db.close()
