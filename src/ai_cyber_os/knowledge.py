@@ -491,7 +491,7 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
         # perform an exact canonical-ID lookup so namespaced copies from other
         # datasets remain retrievable without weakening normal lexical search.
         exact_ids: list[str] = []
-        if re.fullmatch(r"(?i)(?:CVE-\\d{4}-\\d{4,}|CWE-\\d+|T\\d{4}(?:\\.\\d{3})?)", query):
+        if re.fullmatch(r"(?i)(?:CVE-\d{4}-[A-Z0-9][A-Z0-9._-]*|CWE-\d+|T\d{4}(?:\.\d{3})?)", query):
             exact_rows = db.execute(
                 """SELECT record_id FROM knowledge_records
                    WHERE record_id=? OR record_id LIKE ?
