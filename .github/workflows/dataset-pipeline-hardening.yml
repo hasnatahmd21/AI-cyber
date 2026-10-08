@@ -1,0 +1,83 @@
+name: AI-CYBER Dataset Pipeline Hardening
+
+on:
+  push:
+    branches:
+      - hardening/dataset-pipeline
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dataset-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and test runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest
+
+      - name: Compile dataset pipeline
+        run: |
+          python -m py_compile src/ai_cyber_os/dataset_pipeline.py
+          python -m py_compile tests/test_dataset_pipeline.py
+
+      - name: Adversarial dataset regression suite
+        run: python -m pytest -q tests/test_dataset_pipeline.py
+
+      - name: Canonical manifest integrity gate
+        run: |
+          python - <<'PY'
+          import json
+          import sqlite3
+          import tempfile
+          from pathlib import Path
+          from ai_cyber_os.dataset_pipeline import ingest_and_verify, validate_manifest, verify_store
+
+          root = Path.cwd()
+          manifest = root / "docs/datasets/manifest.json"
+          data = json.loads(manifest.read_text(encoding="utf-8"))
+          validated = validate_manifest(data, root)
+
+          assert validated["schema"] == "ai-cyber.dataset-manifest.v2"
+          assert validated["artifact_count"] == 2
+          assert validated["record_count"] == 2
+
+          with tempfile.TemporaryDirectory() as td:
+              db = Path(td) / "dataset.sqlite"
+              result = ingest_and_verify(manifest, root, db)
+              assert result["verified"] is True
+
+              integrity = verify_store(db, root, dataset_id=result["dataset_id"])
+              assert integrity["ok"] is True
+              assert integrity["artifact_count"] == 2
+              assert integrity["record_count"] == 2
+
+              with sqlite3.connect(db) as conn:
+                  assert conn.execute(
+                      "select count(*) from dataset_catalog"
+                  ).fetchone()[0] == 1
+                  assert conn.execute(
+                      "select count(*) from artifacts"
+                  ).fetchone()[0] == 2
+                  assert conn.execute(
+                      "select count(*) from records"
+                  ).fetchone()[0] == 2
+          print("DATASET_PIPELINE_INTEGRITY_GATE=GREEN")
+          PY
