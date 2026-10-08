@@ -43,13 +43,13 @@ jobs:
       - name: Cross-dataset relationship adversarial suite
         run: python -m pytest -q tests/test_relationships.py
 
-      - name: #1 RAG regression suite
+      - name: "#1 RAG regression suite"
         run: python -m pytest -q tests/test_knowledge.py
 
-      - name: #2 dataset pipeline regression suite
+      - name: "#2 dataset pipeline regression suite"
         run: python -m pytest -q tests/test_dataset_pipeline.py
 
-      - name: #3 security family regression suite
+      - name: "#3 security family regression suite"
         run: python -m pytest -q tests/test_security_families.py
 
       - name: Connected knowledge integrity gate
