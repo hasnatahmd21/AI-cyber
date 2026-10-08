@@ -9,11 +9,12 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 from uuid import uuid4
 
-from fastapi import FastAPI, Header, HTTPException, Query, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
+from fastapi.responses import JSONResponse
 
 from .backend import BackendIntegrationError, KnowledgeRAGBackend
 from .commands import CommandGatewayError, ControlledCommandGateway
@@ -33,9 +34,33 @@ class APIErrorBody(BaseModel):
     schema_version: str = SCHEMA_VERSION
 
 
+class KnowledgeRecordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str = Field(min_length=1, max_length=256)
+    family: str = Field(min_length=1, max_length=64)
+    title: str = Field(min_length=1, max_length=512)
+    description: str | None = Field(default=None, max_length=20_000)
+    cve_id: str | None = Field(default=None, max_length=64)
+    cwe_ids: list[str] = Field(default_factory=list, max_length=64)
+    capec_ids: list[str] = Field(default_factory=list, max_length=64)
+    attack_ids: list[str] = Field(default_factory=list, max_length=64)
+    cvss_score: float | None = Field(default=None, ge=0.0, le=10.0)
+    cvss_vector: str | None = Field(default=None, max_length=1024)
+    severity: str | None = Field(default=None, max_length=32)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=64)
+    related_record_ids: list[str] = Field(default_factory=list, max_length=64)
+    source_dataset: str = Field(min_length=1, max_length=256)
+    source_artifact: str = Field(min_length=1, max_length=1024)
+    source_version: str | None = Field(default=None, max_length=256)
+
+    def to_record(self) -> SecurityKnowledgeRecord:
+        return normalize_record(self.model_dump(exclude_none=True))
+
+
 class KnowledgeIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    records: list[dict[str, Any]] = Field(min_length=1, max_length=100)
+    records: list[KnowledgeRecordRequest] = Field(min_length=1, max_length=100)
 
 
 class TelemetryEventRequest(BaseModel):
@@ -91,16 +116,9 @@ def _error_response(exc: Exception, request_id: str) -> dict[str, Any]:
     ).model_dump()
 
 
-def _get_request_id(request: Request) -> str:
+def _request_id_from(request: Request) -> str:
     value = request.headers.get("X-Request-ID", "")
     return value if _SAFE_REQUEST_ID.fullmatch(value) else uuid4().hex
-
-
-def _raise_domain_error(exc: Exception, request: Request) -> HTTPException:
-    return HTTPException(
-        status_code=400,
-        detail=_error_response(exc, getattr(request.state, "request_id", uuid4().hex)),
-    )
 
 
 def create_app(
@@ -131,11 +149,17 @@ def create_app(
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):
-        request.state.request_id = _get_request_id(request)
+        request.state.request_id = _request_id_from(request)
         response = await call_next(request)
         response.headers["X-Request-ID"] = request.state.request_id
         response.headers["X-AI-Cyber-Schema"] = SCHEMA_VERSION
         return response
+
+    def _json_domain_error(request: Request, exc: Exception) -> JSONResponse:
+        return JSONResponse(
+            status_code=400,
+            content=_error_response(exc, request.state.request_id),
+        )
 
     @app.exception_handler(BackendIntegrationError)
     async def backend_error(request: Request, exc: BackendIntegrationError):
@@ -148,11 +172,6 @@ def create_app(
     @app.exception_handler(CommandGatewayError)
     async def command_error(request: Request, exc: CommandGatewayError):
         return _json_domain_error(request, exc)
-
-    def _json_domain_error(request: Request, exc: Exception):
-        from fastapi.responses import JSONResponse
-
-        return JSONResponse(status_code=400, content=_error_response(exc, request.state.request_id))
 
     @app.get("/")
     def root(request: Request):
@@ -211,9 +230,7 @@ def create_app(
 
     @app.post("/v1/knowledge/records", status_code=201)
     def knowledge_ingest(request: Request, body: KnowledgeIngestRequest):
-        records: list[SecurityKnowledgeRecord] = [
-            normalize_record(item) for item in body.records
-        ]
+        records = [item.to_record() for item in body.records]
         result = backend.ingest_records(records)
         return {"request_id": request.state.request_id, **result}
 

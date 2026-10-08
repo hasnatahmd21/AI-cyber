@@ -59,6 +59,7 @@ def test_health_and_request_id(tmp_path: Path):
     assert body["ok"] is True
     assert body["schema_version"] == SCHEMA_VERSION
     assert response.headers["X-Request-ID"] == "api-test-001"
+    assert response.headers["X-AI-Cyber-Schema"] == SCHEMA_VERSION
 
 
 def test_knowledge_ingest_then_query_is_real_backend_wiring(tmp_path: Path):
@@ -107,10 +108,11 @@ def test_telemetry_single_batch_query_and_situation(tmp_path: Path):
             },
         )
     assert single.status_code == 201
-    assert ingested.status_code == 201 and ingested.json()["event_count"] == 3
-    assert queried.status_code == 200 and queried.json()["count"] == 3
+    assert ingested.status_code == 201 and ingested.json()["event_count"] == 2
+    assert queried.status_code == 200 and queried.json()["count"] == 2
     assert snapshot.status_code == 200
-    assert snapshot.json()["event_count"] == 3
+    assert snapshot.json()["event_count"] == 2
+    assert snapshot.json()["severity_counts"]["CRITICAL"] == 1
     assert snapshot.json()["evidence_only"] is True
 
 
@@ -160,7 +162,7 @@ def test_invalid_domain_input_returns_structured_400(tmp_path: Path):
     with _client(tmp_path) as client:
         response = client.post("/v1/telemetry/events", json=event)
     assert response.status_code == 400
-    detail = response.json()["detail"]
+    detail = response.json()
     assert detail["error_type"] == "SituationError"
     assert detail["schema_version"] == SCHEMA_VERSION
 
@@ -170,3 +172,15 @@ def test_unknown_fields_are_rejected_by_api_models(tmp_path: Path):
     with _client(tmp_path) as client:
         response = client.post("/v1/knowledge/records", json={"records": [body]})
     assert response.status_code == 422
+
+
+def test_default_app_creates_local_first_stores(tmp_path: Path, monkeypatch):
+    monkeypatch.setenv("AI_CYBER_DATA_DIR", str(tmp_path))
+    from ai_cyber_os.api import create_default_app
+
+    with TestClient(create_default_app()) as client:
+        response = client.get("/")
+    assert response.status_code == 200
+    assert (tmp_path / "knowledge.sqlite").is_file()
+    assert (tmp_path / "relationships.sqlite").is_file()
+    assert (tmp_path / "situation.sqlite").is_file()
