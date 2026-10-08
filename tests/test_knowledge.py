@@ -115,3 +115,25 @@ def test_zip_json_ingestion(tmp_path: Path):
     assert result["success"] is True
     assert result["inserted"] == 1
     assert search("archived evidence", db_path=db)[0]["record_id"] == "ZIP-1"
+
+
+def test_same_identifier_from_different_datasets_is_not_overwritten(tmp_path: Path):
+    first = tmp_path / "nvd.jsonl"
+    second = tmp_path / "kev.jsonl"
+    first.write_text(
+        '{"id":"CVE-2026-9999","content":"NVD description","source":"NVD"}\n',
+        encoding="utf-8",
+    )
+    second.write_text(
+        '{"id":"CVE-2026-9999","content":"KEV description","source":"CISA KEV"}\n',
+        encoding="utf-8",
+    )
+    db = tmp_path / "knowledge.db"
+    ingest_file(first, db_path=db, dataset="nvd", source="NVD")
+    ingest_file(second, db_path=db, dataset="cisa-kev", source="CISA KEV")
+    hits = search("CVE-2026-9999", db_path=db, limit=10)
+    assert len(hits) == 2
+    assert {item["dataset"] for item in hits} == {"nvd", "cisa-kev"}
+    assert {item["record_id"] for item in hits} == {
+        "CVE-2026-9999", "cisa-kev:CVE-2026-9999"
+    }
