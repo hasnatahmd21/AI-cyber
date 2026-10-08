@@ -486,10 +486,32 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
             if previous is None or score < previous:
                 best_scores[record_id] = score
 
-        if not best_scores:
-            return []
+        # FTS5's unicode61 tokenizer splits hyphenated identifiers such as
+        # CVE-2026-9999 into multiple tokens. For security identifiers, also
+        # perform an exact canonical-ID lookup so namespaced copies from other
+        # datasets remain retrievable without weakening normal lexical search.
+        exact_ids: list[str] = []
+        if re.fullmatch(r"(?i)(?:CVE-\\d{4}-\\d{4,}|CWE-\\d+|T\\d{4}(?:\\.\\d{3})?)", query):
+            exact_rows = db.execute(
+                """SELECT record_id FROM knowledge_records
+                   WHERE record_id=? OR record_id LIKE ?
+                   ORDER BY record_id""",
+                (query.upper(), "%:" + query.upper()),
+            ).fetchall()
+            exact_ids = [row["record_id"] for row in exact_rows]
 
         ranked_ids = sorted(
+            best_scores,
+            key=lambda record_id: (best_scores[record_id], record_id),
+        )
+        # Exact identifier matches are authoritative and must rank before
+        # ordinary FTS matches. They may have no FTS hit because of tokenization.
+        ranked_ids = exact_ids + [record_id for record_id in ranked_ids if record_id not in exact_ids]
+
+        if not best_scores and not exact_ids:
+            return []
+
+
             best_scores,
             key=lambda record_id: (best_scores[record_id], record_id),
         )
