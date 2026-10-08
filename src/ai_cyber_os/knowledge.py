@@ -22,7 +22,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 DEFAULT_DB = Path.home() / ".ai-cyber" / "knowledge.db"
 SUPPORTED_SUFFIXES = {".jsonl", ".ndjson", ".json", ".csv", ".txt", ".md", ".xml", ".yaml", ".yml", ".gz", ".zip", ".tgz", ".tar"}
 
