@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from ai_cyber_os.knowledge import ingest_file, search, status
@@ -45,7 +46,6 @@ def test_identifier_search_handles_hyphens(tmp_path: Path):
     assert hits and hits[0]["record_id"] == "CVE-2026-1234"
 
 
-
 def test_provenance_status_is_persisted(tmp_path: Path):
     data = tmp_path / "intel.jsonl"
     data.write_text(
@@ -70,7 +70,6 @@ def test_provenance_status_is_persisted(tmp_path: Path):
     assert hit["version"] == "2026-10"
     assert hit["validation_status"] == "validated"
     assert status(db_path=db)["schema_version"] == 4
-
 
 
 def test_rag_context_is_evidence_only(tmp_path: Path):
