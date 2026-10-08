@@ -2,7 +2,7 @@
 
 Stage #12 verifies the currently implemented AI-CYBER operator UI through a real Uvicorn server and headless Chromium.
 
-The live gate seeds one deterministic knowledge record, one telemetry event, and one explicitly allowlisted command. It then verifies, in both desktop and mobile viewports:
+The live gate seeds one deterministic knowledge record, one telemetry event, and one explicitly allowlisted command. It then starts the real Uvicorn application and verifies the served UI in both desktop and mobile viewports:
 
 - UI HTTP response and API/UI schema headers
 - CSP, no-store, nosniff, and referrer policy

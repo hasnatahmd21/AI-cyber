@@ -42,6 +42,7 @@ jobs:
         run: python -m pytest -q tests/test_ui.py tests/test_live_ui_verifier.py
 
       - name: Run live Chromium verification
+        if: always()
         run: |
           python tools/live_ui_verify.py --report live-ui-report.json
 
