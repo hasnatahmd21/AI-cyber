@@ -240,7 +240,13 @@ class KnowledgeStore:
             ):
                 provenance[(row[0], row[1])] = (row[2], row[3])
 
-        dataset_ids = sorted({row[0] for row in rows})
+        catalog_ids = set()
+        if "dataset_catalog" in tables:
+            catalog_ids = {
+                row[0]
+                for row in src.execute("SELECT dataset_id FROM dataset_catalog")
+            }
+        dataset_ids = sorted(catalog_ids | {row[0] for row in rows})
         with self._connect() as db:
             try:
                 for dataset_id in dataset_ids:
@@ -528,11 +534,21 @@ class KnowledgeStore:
                 if stored_hash and hashlib.sha256(content.encode("utf-8")).hexdigest() != stored_hash:
                     bad_hashes += 1
 
+            content_mismatches = db.execute(
+                """
+                SELECT COUNT(*)
+                FROM knowledge_documents d
+                JOIN knowledge_fts f ON f.doc_id=d.doc_id
+                WHERE f.content != d.payload_json
+                """
+            ).fetchone()[0]
+
         ok = (
             document_count == fts_count
             and orphan_fts == 0
             and orphan_documents == 0
             and bad_hashes == 0
+            and content_mismatches == 0
         )
         return {
             "ok": ok,
@@ -541,6 +557,7 @@ class KnowledgeStore:
             "orphan_fts": orphan_fts,
             "orphan_documents": orphan_documents,
             "bad_hashes": bad_hashes,
+            "content_mismatches": content_mismatches,
         }
 
     def health(self) -> dict[str, Any]:
