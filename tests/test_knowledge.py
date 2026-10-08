@@ -137,3 +137,27 @@ def test_same_identifier_from_different_datasets_is_not_overwritten(tmp_path: Pa
     assert {item["record_id"] for item in hits} == {
         "CVE-2026-9999", "cisa-kev:CVE-2026-9999"
     }
+
+
+def test_long_evidence_is_chunked_and_retrieved(tmp_path: Path):
+    data = tmp_path / "long.jsonl"
+    content = ("context " * 700) + " unique-critical-marker"
+    data.write_text(
+        '{"id":"LONG-1","content":' + json.dumps(content) + '}\n',
+        encoding="utf-8",
+    )
+    db = tmp_path / "knowledge.db"
+    ingest_file(data, db_path=db, dataset="long", source="fixture", validation_status="fixture-validated")
+    hits = search("unique-critical-marker", db_path=db)
+    assert hits and hits[0]["record_id"] == "LONG-1"
+
+    import sqlite3
+    conn = sqlite3.connect(db)
+    try:
+        count = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks WHERE record_id=?",
+            ("LONG-1",),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+    assert count > 1
