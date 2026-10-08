@@ -1,0 +1,41 @@
+name: AI-CYBER Kaggle + GitHub Verification
+
+on:
+  push:
+    branches: [hardening/kaggle-github-verification, main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-cyber-kaggle-github-verification-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Portable verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Run portable verifier
+        run: |
+          python tools/kaggle_github_verify.py             --repo-root .             --report "verification-report-${{ matrix.python-version }}.json"             --expected-sha "${{ github.sha }}"
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-cyber-verification-${{ matrix.python-version }}
+          path: "verification-report-${{ matrix.python-version }}.json"
+          if-no-files-found: error
