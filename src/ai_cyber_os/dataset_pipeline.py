@@ -517,6 +517,46 @@ def init_store(db_path: Path) -> None:
         _ensure_column(conn, "artifacts", "provenance_json", "TEXT")
         _ensure_column(conn, "provenance", "license", "TEXT")
         _ensure_column(conn, "records", "payload_sha256", "TEXT")
+
+        # Backfill hashes for stores created by the v1 implementation. Existing
+        # payload JSON is canonicalized during migration so the new integrity
+        # contract has one deterministic representation.
+        legacy_rows = conn.execute(
+            "SELECT rowid,payload_json FROM records WHERE payload_sha256 IS NULL"
+        ).fetchall()
+        for rowid, payload_json in legacy_rows:
+            value = _strict_json_loads(payload_json, f"SQLite record row {rowid}")
+            if not isinstance(value, dict):
+                raise DatasetIntegrityError(
+                    f"legacy SQLite record row {rowid} is not a JSON object"
+                )
+            canonical = _canonical_json(value)
+            digest = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+            conn.execute(
+                "UPDATE records SET payload_json=?,payload_sha256=? WHERE rowid=?",
+                (canonical, digest, rowid),
+            )
+
+        for dataset_id in [
+            row[0]
+            for row in conn.execute(
+                "SELECT dataset_id FROM dataset_catalog "
+                "WHERE artifact_count IS NULL OR record_count IS NULL"
+            ).fetchall()
+        ]:
+            artifact_count = conn.execute(
+                "SELECT count(*) FROM artifacts WHERE dataset_id=?",
+                (dataset_id,),
+            ).fetchone()[0]
+            record_count = conn.execute(
+                "SELECT count(*) FROM records WHERE dataset_id=?",
+                (dataset_id,),
+            ).fetchone()[0]
+            conn.execute(
+                "UPDATE dataset_catalog SET artifact_count=?,record_count=? WHERE dataset_id=?",
+                (artifact_count, record_count, dataset_id),
+            )
+
         conn.execute(
             """
             INSERT INTO dataset_schema_meta(key,value) VALUES('schema',?)
