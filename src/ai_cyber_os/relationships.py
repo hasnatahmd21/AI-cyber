@@ -352,6 +352,9 @@ class CrossDatasetRelationshipStore:
 
     @staticmethod
     def _node_from_row(row: sqlite3.Row) -> GraphNode:
+        wrapper = json.loads(row["payload_json"])
+        if not isinstance(wrapper, dict) or not isinstance(wrapper.get("payload"), dict):
+            raise RelationshipError("stored node payload wrapper is invalid")
         return GraphNode(
             node_id=row["node_id"],
             node_type=row["node_type"],
@@ -362,7 +365,7 @@ class CrossDatasetRelationshipStore:
             family=row["family"],
             identifier_type=row["identifier_type"],
             identifier_value=row["identifier_value"],
-            payload=json.loads(row["payload_json"]),
+            payload=wrapper["payload"],
         )
 
     @staticmethod
@@ -718,7 +721,7 @@ class CrossDatasetRelationshipStore:
         """Resolve #3 related_record_ids against unique record identity.
 
         Plain record IDs resolve only when globally unique. A scoped reference
-        uses the canonical \`dataset_id/artifact_path#record_id\` form.
+        uses the canonical `dataset_id/artifact_path#record_id` form.
         Ambiguous or missing targets are retained as explicit states; no guessed
         edge is created.
         """
