@@ -400,6 +400,26 @@ class KnowledgeStore:
             )
         return hits
 
+    def get_record(
+        self, dataset_id: str, artifact_path: str, record_id: str
+    ) -> dict[str, Any] | None:
+        """Fetch one indexed record by canonical identity without lexical ranking."""
+        self._validate_identity(dataset_id, artifact_path, record_id)
+        doc_id = self._doc_id(dataset_id, artifact_path, record_id)
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT doc_id,dataset_id,artifact_path,record_id,source,version,payload_json "
+                "FROM knowledge_documents WHERE doc_id=?",
+                (doc_id,),
+            ).fetchone()
+        if row is None:
+            return None
+        return {
+            "rank": 0, "doc_id": row[0], "dataset_id": row[1],
+            "artifact_path": row[2], "record_id": row[3], "source": row[4],
+            "version": row[5], "payload": json.loads(row[6]), "score": 0.0,
+            "relevance": 0.0, "snippet": None,
+        }
     def retrieve(self, query: str, top_k: int = 5, **filters: str | None) -> list[dict[str, Any]]:
         """RAG-facing alias for search."""
         return self.search(query, limit=top_k, **filters)
