@@ -162,3 +162,30 @@ def test_retrieval_batch_passes_with_real_store(tmp_path: Path):
     )
     assert result["success"] is True
     assert result["passed"] == 2
+
+
+def test_output_schema_rejects_non_list_evidence_ids(tmp_path: Path):
+    db = _fixture_db(tmp_path)
+    context = _context(db, "CVE-2099-1001")
+    output = {
+        "answer": "CVE-2099-1001 is supported by the cited record.",
+        "claims": [{
+            "claim_id": "c1",
+            "text": "CVE-2099-1001 is supported by the cited record.",
+            "evidence_ids": "CVE-2099-1001",
+        }],
+    }
+    result = validate_security_output(output, context)
+    assert result["pass"] is False
+    assert any("must be a list" in error for error in result["claims"][0]["errors"])
+
+
+def test_evaluation_fixture_cases_and_outputs_are_separate():
+    from ai_cyber_os.security_evaluation import load_cases, load_outputs
+
+    root = Path(__file__).resolve().parents[1]
+    cases = load_cases(root / "evaluation" / "security_cases.json")
+    outputs = load_outputs(root / "evaluation" / "security_outputs.json")
+    assert cases
+    assert all("expected_output" not in case for case in cases)
+    assert {case["id"] for case in cases} == set(outputs)
