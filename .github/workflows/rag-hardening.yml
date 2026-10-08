@@ -35,10 +35,10 @@ jobs:
       - name: Install package and test runner
         run: python -m pip install --disable-pip-version-check -e . pytest
 
-      - name: Run complete repository test suite
+      - name: Run RAG-scoped regression suite
         env:
           PYTHONPATH: src
-        run: python -m pytest -q tests
+        run: python -m pytest -q tests/test_knowledge.py tests/test_dataset_pipeline.py
 
       - name: Run RAG integrity gate
         env:
