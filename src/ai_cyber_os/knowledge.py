@@ -161,6 +161,23 @@ def open_store(path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
         db.execute(
             "ALTER TABLE knowledge_records ADD COLUMN validation_status TEXT NOT NULL DEFAULT 'unverified'"
         )
+    missing_chunks = db.execute(
+        """SELECT k.record_id, k.dataset, k.title, k.content
+           FROM knowledge_records k
+           LEFT JOIN knowledge_chunks c ON c.record_id=k.record_id
+           WHERE c.record_id IS NULL
+           LIMIT 1000"""
+    ).fetchall()
+    for row in missing_chunks:
+        _index_chunks(
+            db,
+            {
+                "record_id": row["record_id"],
+                "dataset": row["dataset"],
+                "title": row["title"],
+                "content": row["content"],
+            },
+        )
     db.commit()
     return db
 
