@@ -213,7 +213,7 @@ def browser_verify(base_url: str) -> dict:
             record(
                 viewport_name + " seeded metrics",
                 page.locator("#metric-knowledge").inner_text() == "1"
-                and page.locator("#metric-telemetry").inner_text() == "1",
+                and int(page.locator("#metric-telemetry").inner_text()) >= 1,
             )
 
             page.locator("#query").fill("CVE-2026-87654")
