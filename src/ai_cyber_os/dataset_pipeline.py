@@ -180,12 +180,13 @@ def _record_id(row: Mapping[str, Any], artifact_path: str, ordinal: int) -> str:
     explicit = next((row[key] for key in ("record_id", "id", "uid") if key in row), None)
     if explicit is None:
         return f"{artifact_path}:{ordinal}"
-    if not isinstance(explicit, str) or not explicit.strip():
+    if isinstance(explicit, bool) or not isinstance(explicit, (str, int)):
         raise ManifestValidationError(
             f"{artifact_path}:{ordinal} has an invalid record identifier"
         )
+    normalized = str(explicit).strip()
     return _validate_identifier(
-        explicit.strip(),
+        normalized,
         f"{artifact_path}:{ordinal} record_id",
     )
 
@@ -726,6 +727,12 @@ def ingest_manifest(
         if stored_record_count != validated["record_count"]:
             raise DatasetIntegrityError("stored record count does not match manifest")
 
+        final_manifest_sha256 = sha256_file(manifest_path)
+        if final_manifest_sha256 != manifest_sha256:
+            raise DatasetIntegrityError(
+                "manifest changed during ingestion; transaction rolled back"
+            )
+
         conn.commit()
 
     return {
@@ -804,9 +811,16 @@ def verify_store(
                     max_artifact_bytes=max_artifact_bytes,
                     max_records=max_records,
                 )
-                expected_paths = {item["path"] for item in validation["artifacts"]}
+                expected_artifacts = {item["path"]: item for item in validation["artifacts"]}
+                expected_paths = set(expected_artifacts)
                 if catalog["manifest_sha256"] and catalog["manifest_sha256"] != manifest_sha:
                     errors.append(f"{ds}: manifest SHA256 mismatch")
+                if catalog["provenance_json"]:
+                    try:
+                        if json.loads(catalog["provenance_json"]) != validation["provenance"]:
+                            errors.append(f"{ds}: stored manifest provenance mismatch")
+                    except (TypeError, json.JSONDecodeError):
+                        errors.append(f"{ds}: stored manifest provenance is invalid JSON")
                 if catalog["version"] != validation["version"]:
                     errors.append(f"{ds}: catalog version mismatch")
                 if int(catalog["artifact_count"] or -1) != validation["artifact_count"]:
@@ -830,6 +844,20 @@ def verify_store(
                 rel = artifact["artifact_path"]
                 try:
                     safe_path = _safe_relative_file(root, rel)
+                    expected_artifact = expected_artifacts.get(rel)
+                    if expected_artifact is None:
+                        errors.append(f"{ds}/{rel}: artifact is not present in manifest")
+                    else:
+                        expected_provenance = _source_provenance(
+                            validation["provenance"],
+                            expected_artifact.get("provenance", {}),
+                        )
+                        try:
+                            stored_provenance = json.loads(artifact["provenance_json"] or "{}")
+                        except (TypeError, json.JSONDecodeError):
+                            stored_provenance = None
+                        if stored_provenance != expected_provenance:
+                            errors.append(f"{ds}/{rel}: stored provenance mismatch")
                     count, digest = _scan_artifact(
                         rel,
                         safe_path,
