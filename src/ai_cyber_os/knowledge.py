@@ -314,12 +314,33 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
         ):
             records_seen += 1
             old = db.execute(
-                "SELECT record_id, content_sha256 FROM knowledge_records WHERE record_id=?",
+                "SELECT record_id, dataset, content_sha256 FROM knowledge_records WHERE record_id=?",
                 (record["record_id"],),
             ).fetchone()
-            if old and old["content_sha256"] == record["content_sha256"]:
+            if old and old["content_sha256"] == record["content_sha256"] and old["dataset"] == record["dataset"]:
                 duplicates += 1
                 continue
+            # A shared identifier such as CVE-... legitimately appears in multiple
+            # datasets. Never let one source overwrite another source's evidence.
+            if old and old["dataset"] != record["dataset"]:
+                base_id = record["record_id"]
+                record["metadata_json"] = json.dumps(
+                    {
+                        **json.loads(record["metadata_json"]),
+                        "external_id": base_id,
+                    },
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    default=str,
+                )
+                record["record_id"] = f"{record['dataset']}:{base_id}"
+                old = db.execute(
+                    "SELECT record_id, dataset, content_sha256 FROM knowledge_records WHERE record_id=?",
+                    (record["record_id"],),
+                ).fetchone()
+                if old and old["content_sha256"] == record["content_sha256"]:
+                    duplicates += 1
+                    continue
             if old:
                 updated += 1
                 db.execute("DELETE FROM knowledge_fts WHERE record_id=?", (record["record_id"],))
