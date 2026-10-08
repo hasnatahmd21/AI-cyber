@@ -1,0 +1,68 @@
+name: AI-CYBER Knowledge RAG Backend Hardening
+
+on:
+  push:
+    branches: [hardening/knowledge-rag-backend, main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  knowledge-rag-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest
+      - name: Compile
+        run: |
+          python -m py_compile src/ai_cyber_os/knowledge.py
+          python -m py_compile src/ai_cyber_os/relationships.py
+          python -m py_compile src/ai_cyber_os/backend.py
+          python -m py_compile tests/test_backend.py
+      - name: #5 backend adversarial suite
+        run: python -m pytest -q tests/test_backend.py
+      - name: #1 RAG regression
+        run: python -m pytest -q tests/test_knowledge.py
+      - name: #2 dataset regression
+        run: python -m pytest -q tests/test_dataset_pipeline.py
+      - name: #3 family regression
+        run: python -m pytest -q tests/test_security_families.py
+      - name: #4 relationship regression
+        run: python -m pytest -q tests/test_relationships.py
+      - name: Integrated GREEN gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+          from ai_cyber_os.backend import KnowledgeRAGBackend
+          from ai_cyber_os.security_families import normalize_record
+          def rec(i, f, d, a, **x):
+              p={"record_id":i,"family":f,"title":f"{f}:{i}","description":"integration evidence",
+                 "cve_id":"CVE-2026-33333" if f=="vulnerability" else None,
+                 "cwe_ids":["CWE-79"] if f in {"vulnerability","weakness"} else [],
+                 "capec_ids":[],"attack_ids":[],"cvss_score":9.1 if f=="vulnerability" else None,
+                 "cvss_vector":None,"severity":"CRITICAL" if f=="vulnerability" else None,
+                 "evidence_refs":[f"{d}:{a}:evidence"],"related_record_ids":[],
+                 "source_dataset":d,"source_artifact":a,"source_version":"1.0"}
+              p.update(x); return normalize_record(p)
+          with TemporaryDirectory() as td:
+              b=KnowledgeRAGBackend(Path(td)/"k.sqlite",Path(td)/"g.sqlite")
+              b.ingest_records([rec("v1","vulnerability","nvd","cve.jsonl"),rec("w1","weakness","cwe","cwe.jsonl")])
+              q=b.query("CVE-2026-33333",graph_depth=2)
+              assert q["lexical_hits"] and any(h["record_id"]=="w1" for h in q["hits"])
+              assert any(x["via_relation"]=="maps_to_weakness" for x in q["graph_relationships"])
+              assert q["citations"] and b.health()["ok"]
+              print("KNOWLEDGE_RAG_BACKEND_INTEGRITY_GATE=GREEN")
+          PY

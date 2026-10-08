@@ -1,0 +1,72 @@
+name: AI-Cyber RAG Foundation Hardening
+
+on:
+  push:
+    branches:
+      - hardening/rag-pipeline
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-cyber-rag-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rag-hardening:
+    name: RAG + regression gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compile RAG foundation and tests
+        run: |
+          python -m py_compile src/ai_cyber_os/knowledge.py
+          python -m py_compile src/ai_cyber_os/dataset_pipeline.py
+          python -m py_compile tests/test_knowledge.py
+          python -m py_compile tests/test_dataset_pipeline.py
+
+      - name: Install package and test runner
+        run: python -m pip install --disable-pip-version-check -e . pytest
+
+      - name: Run RAG-scoped regression suite
+        env:
+          PYTHONPATH: src
+        run: python -m pytest -q tests/test_knowledge.py tests/test_dataset_pipeline.py
+
+      - name: Run RAG integrity gate
+        env:
+          PYTHONPATH: src
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tempfile
+          from ai_cyber_os.dataset_pipeline import ingest_and_verify
+          from ai_cyber_os.knowledge import KnowledgeStore
+
+          root = Path.cwd()
+          with tempfile.TemporaryDirectory() as td:
+              td_path = Path(td)
+              dataset_db = td_path / "dataset.sqlite"
+              knowledge_db = td_path / "knowledge.sqlite"
+
+              result = ingest_and_verify(
+                  root / "docs/datasets/manifest.json",
+                  root,
+                  dataset_db,
+              )
+              store = KnowledgeStore(knowledge_db)
+              ingested = store.ingest_dataset_store(dataset_db)
+              packet = store.retrieve_context("cyber observation", top_k=5)
+
+              assert ingested == result["record_count"]
+              assert packet["hits"]
+              assert packet["citations"]
+              assert store.health()["ok"]
+          PY
