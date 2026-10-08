@@ -1243,16 +1243,6 @@ class CrossDatasetRelationshipStore:
                         ).fetchone()
                         if edge_exists is None:
                             errors.append(f"{row['declaration_id']}: resolved declaration has no matching edge")
-                    else:
-                        edge_exists = db.execute(
-                            """
-                            SELECT 1 FROM relationship_edges
-                            WHERE source_node_id=? AND target_node_id=? AND relation=?
-                            """,
-                            (row["source_node_id"], target, row["relation"]),
-                        ).fetchone()
-                        if edge_exists is None:
-                            errors.append(f"{row['declaration_id']}: resolved declaration has no matching edge")
                 elif status == "orphan":
                     if candidates or target is not None:
                         errors.append(f"{row['declaration_id']}: invalid orphan declaration")
