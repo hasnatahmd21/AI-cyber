@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ai-cyber-live-ui-${{ github.ref }}
+  group: ai-cyber-live-ui-${{ github.workflow }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
