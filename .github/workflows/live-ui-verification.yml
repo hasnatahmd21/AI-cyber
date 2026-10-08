@@ -1,0 +1,54 @@
+name: AI-CYBER Live UI Verification
+
+on:
+  push:
+    branches: [hardening/live-ui-verification, main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-cyber-live-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-ui:
+    name: Live UI / Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install application and browser tooling
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Compile live UI verifier and tests
+        run: |
+          python -m py_compile tools/live_ui_verify.py
+          python -m py_compile tests/test_live_ui_verifier.py
+
+      - name: Run existing UI contract regression
+        run: python -m pytest -q tests/test_ui.py tests/test_live_ui_verifier.py
+
+      - name: Run live Chromium verification
+        run: |
+          python tools/live_ui_verify.py --report live-ui-report.json
+
+      - name: Upload live UI report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-cyber-live-ui-report
+          path: live-ui-report.json
+          if-no-files-found: error

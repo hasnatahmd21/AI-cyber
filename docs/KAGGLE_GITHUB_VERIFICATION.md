@@ -27,7 +27,7 @@ The verifier creates a machine-readable report and exits non-zero on any failed 
 
 ## What is verified
 
-The pipeline checks the repository identity, tracked working-tree cleanliness, canonical module surface, source/test/tool compilation, editable installation, importability, dependency consistency, a forensic inventory of the canonical source surface, forensic baseline artifacts, installation of the verification test runner, the full pytest regression suite, the focused adversarial hardening suite, all 27 canonical HYDRA phases, and final hardening verification. Preserved root-level legacy monoliths remain forensic evidence and are not treated as canonical runtime source.
+The pipeline checks the repository identity, tracked working-tree cleanliness, canonical module surface, source/test/tool compilation, editable installation, importability, dependency consistency, forensic inventory, forensic baseline artifacts, the full pytest regression suite, the focused adversarial hardening suite, all 27 canonical HYDRA phases, and final hardening verification.
 
 ## Fail-closed rule
 
