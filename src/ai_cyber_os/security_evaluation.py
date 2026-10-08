@@ -63,6 +63,16 @@ def _unique(values: Iterable[str]) -> list[str]:
     return list(dict.fromkeys(str(value) for value in values))
 
 
+def _string_list(value: Any, field_name: str) -> tuple[list[str], list[str]]:
+    """Return a strict list of strings plus schema errors."""
+    if not isinstance(value, (list, tuple)):
+        return [], [f"{field_name} must be a list"]
+    values = [str(item).strip() for item in value]
+    if any(not item for item in values):
+        return [], [f"{field_name} cannot contain empty values"]
+    return _unique(values), []
+
+
 def _normalize_identifier(value: str) -> str:
     return value.strip().upper()
 
@@ -402,16 +412,26 @@ def validate_security_output(
     claim_results: list[dict[str, Any]] = []
     grounded_claims = 0
     cited_ids: set[str] = set()
+    seen_claim_ids: set[str] = set()
 
     for index, claim in enumerate(claims):
         if not isinstance(claim, dict):
             errors.append(f"claim[{index}] must be an object")
             continue
+        claim_id = str(claim.get("claim_id", f"claim-{index + 1}")).strip()
         text = str(claim.get("text", "")).strip()
-        evidence_ids = _unique(str(value) for value in claim.get("evidence_ids", []))
+        evidence_ids, schema_errors = _string_list(
+            claim.get("evidence_ids", []), f"claim[{index}].evidence_ids"
+        )
         cited_ids.update(evidence_ids)
-        claim_errors: list[str] = []
+        claim_errors: list[str] = list(schema_errors)
 
+        if not claim_id:
+            claim_errors.append("claim_id is empty")
+        elif claim_id in seen_claim_ids:
+            claim_errors.append("duplicate claim_id")
+        else:
+            seen_claim_ids.add(claim_id)
         if not text:
             claim_errors.append("text is empty")
         if not evidence_ids:
@@ -449,7 +469,7 @@ def validate_security_output(
             grounded_claims += 1
 
         claim_results.append({
-            "claim_id": str(claim.get("claim_id", f"claim-{index + 1}")),
+            "claim_id": claim_id,
             "pass": grounded,
             "grounding_score": round(1.0 if grounded else 0.0, 6),
             "lexical_overlap": round(lexical, 6),
@@ -459,14 +479,24 @@ def validate_security_output(
 
     step_results: list[dict[str, Any]] = []
     grounded_steps = 0
+    seen_step_ids: set[str] = set()
     for index, step in enumerate(reasoning_steps):
         if not isinstance(step, dict):
             errors.append(f"reasoning_steps[{index}] must be an object")
             continue
+        step_id = str(step.get("step_id", f"step-{index + 1}")).strip()
         text = str(step.get("text", "")).strip()
-        evidence_ids = _unique(str(value) for value in step.get("evidence_ids", []))
+        evidence_ids, schema_errors = _string_list(
+            step.get("evidence_ids", []), f"reasoning_steps[{index}].evidence_ids"
+        )
         cited_ids.update(evidence_ids)
-        step_errors: list[str] = []
+        step_errors: list[str] = list(schema_errors)
+        if not step_id:
+            step_errors.append("step_id is empty")
+        elif step_id in seen_step_ids:
+            step_errors.append("duplicate step_id")
+        else:
+            seen_step_ids.add(step_id)
         if not text:
             step_errors.append("text is empty")
         if not evidence_ids:
@@ -490,7 +520,7 @@ def validate_security_output(
         if grounded:
             grounded_steps += 1
         step_results.append({
-            "step_id": str(step.get("step_id", f"step-{index + 1}")),
+            "step_id": step_id,
             "pass": grounded,
             "errors": step_errors,
         })
@@ -608,12 +638,32 @@ def evaluate_end_to_end(
         })
 
     passed = sum(bool(item.get("pass")) for item in case_results)
+    retrieval_cases = [item["retrieval"]["metrics"] for item in case_results if "retrieval" in item]
+    evidence_scores = [
+        float(item["evidence_quality"]["mean_quality_score"])
+        for item in case_results
+        if "evidence_quality" in item
+    ]
+    output_scores = [
+        float(item["output_validation"].get("score", 0.0))
+        for item in case_results
+        if item.get("output_validation", {}).get("status") == "evaluated"
+    ]
+    aggregate = {
+        "precision_at_k": round(_mean([m["precision_at_k"] for m in retrieval_cases]), 6),
+        "recall_at_k": round(_mean([m["recall_at_k"] for m in retrieval_cases]), 6),
+        "mrr": round(_mean([m["mrr"] for m in retrieval_cases]), 6),
+        "ndcg_at_k": round(_mean([m["ndcg_at_k"] for m in retrieval_cases]), 6),
+        "evidence_quality": round(_mean(evidence_scores), 6),
+        "output_grounding": round(_mean(output_scores), 6),
+    }
     return {
         "evaluator_version": EVALUATOR_VERSION,
         "success": bool(case_results) and passed == len(case_results),
         "cases_total": len(case_results),
         "passed": passed,
         "failed": len(case_results) - passed,
+        "aggregate": aggregate,
         "gates": {
             "min_recall_at_k": thresholds.min_recall_at_k,
             "min_precision_at_k": thresholds.min_precision_at_k,
@@ -671,14 +721,7 @@ def main() -> int:
         min_output_grounding=args.min_output_grounding,
     )
     cases = load_cases(args.cases)
-    outputs_payload = json.loads(args.outputs.read_text(encoding="utf-8"))
-    outputs = (
-        outputs_payload.get("outputs")
-        if isinstance(outputs_payload, dict)
-        else None
-    )
-    if not isinstance(outputs, dict):
-        raise ValueError("--outputs must be a JSON object or contain an 'outputs' object")
+    outputs = load_outputs(args.outputs)
 
     result = evaluate_end_to_end(
         cases,
