@@ -198,12 +198,27 @@ def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> 
     try:
         for record in records:
             old = db.execute(
-                "SELECT record_id, content_sha256 FROM knowledge_records WHERE record_id=?",
+                "SELECT record_id, dataset, content_sha256 FROM knowledge_records WHERE record_id=?",
                 (record["record_id"],),
             ).fetchone()
-            if old and old["content_sha256"] == record["content_sha256"]:
+            if old and old["content_sha256"] == record["content_sha256"] and old["dataset"] == record["dataset"]:
                 duplicates += 1
                 continue
+            if old and old["dataset"] != record["dataset"]:
+                base_id = record["record_id"]
+                metadata = json.loads(record["metadata_json"])
+                metadata["external_id"] = base_id
+                record["metadata_json"] = json.dumps(
+                    metadata, ensure_ascii=False, sort_keys=True, default=str
+                )
+                record["record_id"] = f"{record['dataset']}:{base_id}"
+                old = db.execute(
+                    "SELECT record_id, dataset, content_sha256 FROM knowledge_records WHERE record_id=?",
+                    (record["record_id"],),
+                ).fetchone()
+                if old and old["content_sha256"] == record["content_sha256"]:
+                    duplicates += 1
+                    continue
             if old:
                 updated += 1
                 db.execute("DELETE FROM knowledge_fts WHERE record_id=?", (record["record_id"],))
