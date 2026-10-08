@@ -633,3 +633,66 @@ def load_cases(path: str | Path) -> list[dict[str, Any]]:
     if not isinstance(cases, list):
         raise ValueError("evaluation case file must contain a JSON array or a 'cases' array")
     return [dict(case) for case in cases]
+
+
+def main() -> int:
+    """CLI entry point for the full security evaluation gate."""
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description=(
+            "Evaluate AI-CYBER retrieval quality, evidence integrity, "
+            "and evidence-grounded security outputs."
+        )
+    )
+    parser.add_argument("cases", type=Path)
+    parser.add_argument("--db", required=True, help="SQLite knowledge database path")
+    parser.add_argument(
+        "--outputs",
+        type=Path,
+        required=True,
+        help="JSON object mapping case IDs to generated security outputs",
+    )
+    parser.add_argument("--report", type=Path, help="Optional JSON report path")
+    parser.add_argument("--min-recall", type=float, default=1.0)
+    parser.add_argument("--min-precision", type=float, default=0.5)
+    parser.add_argument("--min-mrr", type=float, default=1.0)
+    parser.add_argument("--min-ndcg", type=float, default=0.9)
+    parser.add_argument("--min-evidence-quality", type=float, default=0.9)
+    parser.add_argument("--min-output-grounding", type=float, default=1.0)
+    args = parser.parse_args()
+
+    thresholds = EvaluationThresholds(
+        min_recall_at_k=args.min_recall,
+        min_precision_at_k=args.min_precision,
+        min_mrr=args.min_mrr,
+        min_ndcg_at_k=args.min_ndcg,
+        min_evidence_quality=args.min_evidence_quality,
+        min_output_grounding=args.min_output_grounding,
+    )
+    cases = load_cases(args.cases)
+    outputs_payload = json.loads(args.outputs.read_text(encoding="utf-8"))
+    outputs = (
+        outputs_payload.get("outputs")
+        if isinstance(outputs_payload, dict)
+        else None
+    )
+    if not isinstance(outputs, dict):
+        raise ValueError("--outputs must be a JSON object or contain an 'outputs' object")
+
+    result = evaluate_end_to_end(
+        cases,
+        args.db,
+        outputs=outputs,
+        thresholds=thresholds,
+    )
+    payload = json.dumps(result, indent=2, ensure_ascii=False, sort_keys=True)
+    print(payload)
+    if args.report:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        args.report.write_text(payload + "\n", encoding="utf-8")
+    return 0 if result["success"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
