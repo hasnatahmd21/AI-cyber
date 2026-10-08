@@ -465,20 +465,42 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
     limit = max(1, min(int(limit), 50))
     db = open_store(db_path)
     try:
+        # Evaluate the FTS5 auxiliary bm25() function in a row-level
+        # subquery first. SQLite can reject bm25() when it is evaluated
+        # directly inside an aggregate such as MIN(bm25(...)).
         if dataset:
             rows = db.execute(
-                """SELECT k.*, MIN(bm25(knowledge_chunks_fts)) AS score
-                   FROM knowledge_chunks_fts f JOIN knowledge_records k ON k.record_id=f.record_id
-                   WHERE knowledge_chunks_fts MATCH ? AND k.dataset=?
-                   GROUP BY k.record_id ORDER BY score LIMIT ?""",
+                """SELECT k.*, ranked.score
+                   FROM knowledge_records k
+                   JOIN (
+                       SELECT record_id, MIN(score) AS score
+                       FROM (
+                           SELECT record_id, bm25(knowledge_chunks_fts) AS score
+                           FROM knowledge_chunks_fts
+                           WHERE knowledge_chunks_fts MATCH ?
+                       )
+                       GROUP BY record_id
+                   ) ranked ON ranked.record_id=k.record_id
+                   WHERE k.dataset=?
+                   ORDER BY ranked.score
+                   LIMIT ?""",
                 (fts_query, dataset, limit),
             ).fetchall()
         else:
             rows = db.execute(
-                """SELECT k.*, MIN(bm25(knowledge_chunks_fts)) AS score
-                   FROM knowledge_chunks_fts f JOIN knowledge_records k ON k.record_id=f.record_id
-                   WHERE knowledge_chunks_fts MATCH ?
-                   GROUP BY k.record_id ORDER BY score LIMIT ?""",
+                """SELECT k.*, ranked.score
+                   FROM knowledge_records k
+                   JOIN (
+                       SELECT record_id, MIN(score) AS score
+                       FROM (
+                           SELECT record_id, bm25(knowledge_chunks_fts) AS score
+                           FROM knowledge_chunks_fts
+                           WHERE knowledge_chunks_fts MATCH ?
+                       )
+                       GROUP BY record_id
+                   ) ranked ON ranked.record_id=k.record_id
+                   ORDER BY ranked.score
+                   LIMIT ?""",
                 (fts_query, limit),
             ).fetchall()
         return [dict(row) for row in rows]
