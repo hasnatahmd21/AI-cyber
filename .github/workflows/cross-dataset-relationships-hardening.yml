@@ -1,0 +1,132 @@
+name: AI-CYBER Cross-Dataset Relationship Hardening
+
+on:
+  push:
+    branches:
+      - hardening/cross-dataset-relationships
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cross-dataset-relationships:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package and test runner
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest
+
+      - name: Compile relationship layer
+        run: |
+          python -m py_compile src/ai_cyber_os/relationships.py
+          python -m py_compile src/ai_cyber_os/security_families.py
+          python -m py_compile src/ai_cyber_os/dataset_pipeline.py
+          python -m py_compile tests/test_relationships.py
+
+      - name: Cross-dataset relationship adversarial suite
+        run: python -m pytest -q tests/test_relationships.py
+
+      - name: "#1 RAG regression suite"
+        run: python -m pytest -q tests/test_knowledge.py
+
+      - name: "#2 dataset pipeline regression suite"
+        run: python -m pytest -q tests/test_dataset_pipeline.py
+
+      - name: "#3 security family regression suite"
+        run: python -m pytest -q tests/test_security_families.py
+
+      - name: Connected knowledge integrity gate
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import tempfile
+
+          from ai_cyber_os.relationships import (
+              CrossDatasetRelationshipStore,
+              node_id_for_record,
+          )
+          from ai_cyber_os.security_families import normalize_record
+
+          def rec(record_id, family, dataset, artifact, **extra):
+              payload = {
+                  "record_id": record_id,
+                  "family": family,
+                  "title": f"{family}:{record_id}",
+                  "description": "Deterministic cross-dataset integrity gate record.",
+                  "cve_id": "CVE-2026-12345" if family == "vulnerability" else None,
+                  "cwe_ids": ["CWE-79"] if family in {"vulnerability", "weakness"} else [],
+                  "capec_ids": [],
+                  "attack_ids": ["T1059"] if family == "detection_monitoring" else [],
+                  "cvss_score": 8.8 if family == "vulnerability" else None,
+                  "cvss_vector": None,
+                  "severity": "HIGH" if family == "vulnerability" else None,
+                  "evidence_refs": [f"{dataset}:{artifact}:evidence"],
+                  "related_record_ids": [],
+                  "source_dataset": dataset,
+                  "source_artifact": artifact,
+                  "source_version": "1.0",
+              }
+              payload.update(extra)
+              return normalize_record(payload)
+
+          vulnerability_nvd = rec(
+              "v-nvd", "vulnerability", "nvd", "cve.jsonl",
+              related_record_ids=["cwe/cwe.jsonl#cwe-79"],
+          )
+          vulnerability_vendor = rec("v-vendor", "vulnerability", "vendor", "issues.json")
+          weakness = rec("cwe-79", "weakness", "cwe", "cwe.jsonl")
+          attack = rec(
+              "attack-1059", "attack", "attack-data", "attack.json",
+              cve_id=None, cwe_ids=[], attack_ids=["T1059"],
+          )
+          detection = rec(
+              "det-1059", "detection_monitoring", "detections", "rules.jsonl",
+              cve_id=None, cwe_ids=[], attack_ids=["T1059"],
+          )
+
+          with tempfile.TemporaryDirectory() as td:
+              store = CrossDatasetRelationshipStore(Path(td) / "relationships.sqlite")
+              store.ingest_records([
+                  vulnerability_nvd,
+                  vulnerability_vendor,
+                  weakness,
+                  attack,
+                  detection,
+              ])
+              declared = store.resolve_declared_links()
+              typed = store.resolve_typed_relationships()
+              integrity = store.verify_integrity()
+
+              assert declared["resolved"] == 1
+              assert declared["orphan"] == 0
+              assert declared["ambiguous"] == 0
+              assert typed["created"] >= 3
+              assert store.cross_dataset_edge_count() >= 3
+
+              start = node_id_for_record("nvd", "cve.jsonl", "v-nvd")
+              connected = store.connected_records(start, max_depth=4, limit=20)
+              connected_ids = {node.record_id for node in connected}
+              assert {"v-nvd", "v-vendor", "cwe-79"}.issubset(connected_ids)
+
+              assert integrity["ok"] is True
+              assert integrity["orphan_declarations"] == 0
+              assert integrity["ambiguous_declarations"] == 0
+              print("CROSS_DATASET_RELATIONSHIP_INTEGRITY_GATE=GREEN")
+          PY

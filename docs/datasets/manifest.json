@@ -1,5 +1,5 @@
 {
-  "schema": "ai-cyber.dataset-manifest.v1",
+  "schema": "ai-cyber.dataset-manifest.v2",
   "dataset_id": "ai-cyber-core-smoke",
   "version": "1.0.0",
   "created_by": "ai_cyber_os.dataset_pipeline",
