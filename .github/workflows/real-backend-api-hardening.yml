@@ -1,0 +1,100 @@
+name: AI-CYBER Real Backend API Hardening
+
+on:
+  push:
+    branches: [hardening/real-backend-api, main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  real-backend-api:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest httpx
+      - name: Compile
+        run: |
+          python -m py_compile src/ai_cyber_os/api.py
+          python -m py_compile src/ai_cyber_os/backend.py
+          python -m py_compile src/ai_cyber_os/commands.py
+          python -m py_compile src/ai_cyber_os/situation.py
+          python -m py_compile tests/test_api.py
+          python -m py_compile tests/test_security_surface.py
+      - name: #8 API adversarial suite
+        run: python -m pytest -q tests/test_api.py
+      - name: #1 RAG regression
+        run: python -m pytest -q tests/test_knowledge.py
+      - name: #2 dataset regression
+        run: python -m pytest -q tests/test_dataset_pipeline.py
+      - name: #3 family regression
+        run: python -m pytest -q tests/test_security_families.py
+      - name: #4 relationship regression
+        run: python -m pytest -q tests/test_relationships.py
+      - name: #5 backend regression
+        run: python -m pytest -q tests/test_backend.py
+      - name: #6 situation regression
+        run: python -m pytest -q tests/test_situation.py
+      - name: #7 command regression
+        run: python -m pytest -q tests/test_commands.py
+      - name: execution-surface regression
+        run: python -m pytest -q tests/test_security_surface.py
+      - name: canonical runtime regression
+        run: python -m pytest -q tests/test_canonical_runtime.py
+      - name: Integrated GREEN gate
+        run: |
+          python - <<'PY'
+          import os
+          import sys
+          from pathlib import Path
+          from tempfile import TemporaryDirectory
+
+          from fastapi.testclient import TestClient
+
+          from ai_cyber_os.api import create_app
+          from ai_cyber_os.backend import KnowledgeRAGBackend
+          from ai_cyber_os.commands import CommandSpec, ControlledCommandGateway
+          from ai_cyber_os.situation import SituationStore
+
+          with TemporaryDirectory() as td:
+              root = Path(td)
+              situation = SituationStore(root / "situation.sqlite")
+              backend = KnowledgeRAGBackend(root / "knowledge.sqlite", root / "relationships.sqlite")
+              script = "print('api-green')"
+              gateway = ControlledCommandGateway(
+                  [CommandSpec(
+                      name="probe",
+                      executable=sys.executable,
+                      allowed_argv=(("-c", script),),
+                  )],
+                  workspace_root=root,
+                  audit_store=situation,
+              )
+              with TestClient(create_app(
+                  backend=backend,
+                  situation=situation,
+                  command_gateway=gateway,
+              )) as client:
+                  health = client.get("/health")
+                  command = client.post(
+                      "/v1/commands/execute",
+                      json={"command_name": "probe", "argv": ["-c", script]},
+                  )
+                  telemetry = client.get("/v1/telemetry/events", params={"event_types": "process"})
+              assert health.status_code == 200 and health.json()["ok"] is True
+              assert command.status_code == 200 and command.json()["ok"] is True
+              assert telemetry.status_code == 200 and telemetry.json()["count"] == 1
+              print("REAL_BACKEND_API_INTEGRITY_GATE=GREEN")
+          PY
