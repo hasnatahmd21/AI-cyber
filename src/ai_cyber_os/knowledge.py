@@ -460,53 +460,62 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
     if not query:
         return []
     # Quote each token so CVE/ATT&CK identifiers remain literal FTS terms.
-    fts_query = " AND ".join(chr(34) + token.replace(chr(34), " ") + chr(34)
-                             for token in query.split())
+    fts_query = " AND ".join(
+        chr(34) + token.replace(chr(34), " ") + chr(34)
+        for token in query.split()
+    )
     limit = max(1, min(int(limit), 50))
     db = open_store(db_path)
     try:
-        # Evaluate the FTS5 auxiliary bm25() function in a row-level
-        # subquery first. SQLite can reject bm25() when it is evaluated
-        # directly inside an aggregate such as MIN(bm25(...)).
-        if dataset:
-            rows = db.execute(
-                """SELECT k.*, ranked.score
-                   FROM knowledge_records k
-                   JOIN (
-                       SELECT record_id, MIN(score) AS score
-                       FROM (
-                           SELECT record_id, bm25(knowledge_chunks_fts) AS score
-                           FROM knowledge_chunks_fts
-                           WHERE knowledge_chunks_fts MATCH ?
-                       )
-                       GROUP BY record_id
-                   ) ranked ON ranked.record_id=k.record_id
-                   WHERE k.dataset=?
-                   ORDER BY ranked.score
-                   LIMIT ?""",
-                (fts_query, dataset, limit),
-            ).fetchall()
-        else:
-            rows = db.execute(
-                """SELECT k.*, ranked.score
-                   FROM knowledge_records k
-                   JOIN (
-                       SELECT record_id, MIN(score) AS score
-                       FROM (
-                           SELECT record_id, bm25(knowledge_chunks_fts) AS score
-                           FROM knowledge_chunks_fts
-                           WHERE knowledge_chunks_fts MATCH ?
-                       )
-                       GROUP BY record_id
-                   ) ranked ON ranked.record_id=k.record_id
-                   ORDER BY ranked.score
-                   LIMIT ?""",
-                (fts_query, limit),
-            ).fetchall()
-        return [dict(row) for row in rows]
+        # SQLite FTS5 auxiliary functions such as bm25() must be evaluated
+        # directly in the FTS query context. They cannot reliably be wrapped
+        # in a GROUP BY/aggregate subquery on all supported SQLite builds.
+        # Evaluate one row at a time here, then aggregate chunk scores in Python.
+        match_sql = """
+            SELECT record_id, bm25(knowledge_chunks_fts) AS score
+            FROM knowledge_chunks_fts
+            WHERE knowledge_chunks_fts MATCH ?
+        """
+        matches = db.execute(match_sql, (fts_query,)).fetchall()
+
+        best_scores: dict[str, float] = {}
+        for row in matches:
+            record_id = row["record_id"]
+            score = float(row["score"])
+            previous = best_scores.get(record_id)
+            if previous is None or score < previous:
+                best_scores[record_id] = score
+
+        if not best_scores:
+            return []
+
+        ranked_ids = sorted(
+            best_scores,
+            key=lambda record_id: (best_scores[record_id], record_id),
+        )
+        if dataset is not None:
+            allowed = {
+                row["record_id"]
+                for row in db.execute(
+                    "SELECT record_id FROM knowledge_records WHERE dataset=?",
+                    (dataset,),
+                ).fetchall()
+            }
+            ranked_ids = [record_id for record_id in ranked_ids if record_id in allowed]
+
+        ranked_ids = ranked_ids[:limit]
+        if not ranked_ids:
+            return []
+
+        placeholders = ",".join("?" for _ in ranked_ids)
+        rows = db.execute(
+            f"SELECT * FROM knowledge_records WHERE record_id IN ({placeholders})",
+            ranked_ids,
+        ).fetchall()
+        records = {row["record_id"]: dict(row) for row in rows}
+        return [records[record_id] for record_id in ranked_ids if record_id in records]
     finally:
         db.close()
-
 def status(*, db_path: str | Path = DEFAULT_DB) -> dict[str, Any]:
     db = open_store(db_path)
     try:
