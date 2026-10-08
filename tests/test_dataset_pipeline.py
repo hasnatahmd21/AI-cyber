@@ -446,6 +446,40 @@ def test_failed_ingestion_does_not_partially_replace_existing_dataset(tmp_path: 
         assert rows == [("a.jsonl", "keep", '{"record_id":"keep","value":"good"}')]
 
 
+def test_manifest_mutation_during_transaction_rolls_back(tmp_path: Path, monkeypatch):
+    import ai_cyber_os.dataset_pipeline as pipeline
+
+    artifact = _artifact(tmp_path, "a.jsonl", [{"record_id": "a-1", "value": "stable"}])
+    manifest_path, manifest = _manifest(
+        tmp_path,
+        dataset_id="manifest-race",
+        artifacts=[artifact],
+    )
+    db = tmp_path / "datasets.sqlite"
+
+    original_scan = pipeline._scan_artifact
+    calls = {"count": 0}
+
+    def wrapped_scan(*args, **kwargs):
+        result = original_scan(*args, **kwargs)
+        calls["count"] += 1
+        if calls["count"] == 2:
+            manifest["version"] = "9.9.9"
+            manifest_path.write_text(
+                json.dumps(manifest, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+        return result
+
+    monkeypatch.setattr(pipeline, "_scan_artifact", wrapped_scan)
+    with pytest.raises(DatasetIntegrityError, match="manifest changed"):
+        ingest_manifest(manifest_path, tmp_path, db)
+
+    with sqlite3.connect(db) as conn:
+        assert conn.execute("select count(*) from dataset_catalog").fetchone()[0] == 0
+        assert conn.execute("select count(*) from records").fetchone()[0] == 0
+
+
 def test_cli_returns_nonzero_on_integrity_failure(tmp_path: Path):
     artifact = _artifact(tmp_path, "a.jsonl", [{"record_id": "a-1"}])
     manifest_path, _ = _manifest(tmp_path, artifacts=[artifact])
