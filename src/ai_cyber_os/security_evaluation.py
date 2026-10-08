@@ -299,6 +299,7 @@ def _validate_evidence_record(record: Mapping[str, Any]) -> dict[str, Any]:
         and checks["content_present"]
         and checks["source_present"]
         and checks["content_hash_valid"]
+        and checks["validation_status_trusted"]
     )
     optional_quality = sum(
         bool(checks[name])
