@@ -456,6 +456,15 @@ def _entrypoint_modules(root: Path) -> dict[str, list[str]]:
 
 
 
+def _sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
+    """Hash file contents incrementally so large dataset artifacts do not fill RAM."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(chunk_size), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _repository_inventory(root: Path) -> dict[str, Any]:
     """Inventory every repository file/directory without dumping dataset contents."""
     files_on_disk, directory_names = _walk_repository(root)
@@ -473,9 +482,6 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
     paths = files_on_disk
     for path in sorted(paths, key=lambda p: p.relative_to(root).as_posix()):
         rel = path.relative_to(root).as_posix()
-        raw = path.read_bytes()
-        digest = hashlib.sha256(raw).hexdigest()
-        hashes[digest].append(rel)
         suffix = path.suffix.lower() or ("dotfile" if path.name.startswith(".") else "")
         parts = Path(rel).parts
         if rel in LEGACY_ROOT_FILES:
@@ -506,6 +512,9 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
             category = "compressed_or_binary_artifact"
         else:
             category = "other_file"
+        digest = _sha256_file(path)
+        hashes[digest].append(rel)
+        size = path.stat().st_size
         counts[category] += 1
 
         metadata: dict[str, Any] = {}
@@ -513,6 +522,7 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
         # Large/raw security datasets are hashed, not loaded into this auditor.
         if rel == "pyproject.toml":
             try:
+                raw = path.read_bytes()
                 project = tomllib.loads(raw.decode("utf-8"))
                 block = project.get("project", {})
                 package_contract = {
@@ -528,7 +538,8 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
             except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
                 metadata = {"parse_error": str(exc)}
         elif category in {"dataset_manifest", "evaluation_fixture"} or rel == "docs/FORENSIC_BASELINE.json":
-            if len(raw) <= 5_000_000 and suffix == ".json":
+            if size <= 5_000_000 and suffix == ".json":
+                raw = path.read_bytes()
                 try:
                     payload = json.loads(raw.decode("utf-8"))
                     if isinstance(payload, dict):
@@ -553,6 +564,7 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
                     metadata = {"parse_error": str(exc)}
         elif category == "ci_workflow":
             try:
+                raw = path.read_bytes()
                 text = raw.decode("utf-8")
                 run_lines = []
                 for line_number, line in enumerate(text.splitlines(), 1):
@@ -572,7 +584,7 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
         }
         records.append({
             "path": rel, "category": category, "suffix": suffix,
-            "bytes": len(raw), "sha256": digest, "text_extension": suffix in {
+            "bytes": size, "sha256": digest, "text_extension": suffix in {
                 ".py", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".json",
                 ".jsonl", ".csv", ".xml", ".md", ".txt", ".html", ".js",
                 ".css", ".sh", ".rst",
@@ -614,9 +626,12 @@ def build_report(root: Path) -> dict[str, Any]:
 
     for path in paths:
         rel = path.relative_to(root).as_posix()
-        raw = path.read_bytes()
-        source = raw.decode("utf-8", errors="replace")
-        manifest_hasher.update(rel.encode("utf-8") + b"\0" + raw + b"\0")
+        source = path.read_text(encoding="utf-8", errors="replace")
+        manifest_hasher.update(rel.encode("utf-8") + b"\0")
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                manifest_hasher.update(chunk)
+        manifest_hasher.update(b"\0")
         module = _module_name(path, root)
         if module:
             module_index[module] = rel
@@ -681,7 +696,7 @@ def build_report(root: Path) -> dict[str, Any]:
             classification = "other_python"
         records[rel] = {
             "path": rel, "module": module, "classification": classification,
-            "bytes": len(raw), "lines": len(lines), "sha256": hashlib.sha256(raw).hexdigest(),
+            "bytes": path.stat().st_size, "lines": len(lines), "sha256": _sha256_file(path),
             "syntax_ok": syntax_error is None, "syntax_error": syntax_error,
             "module_docstring": (
                 ast.get_docstring(tree).splitlines()[0].strip()[:240]
