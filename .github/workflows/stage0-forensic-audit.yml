@@ -7,7 +7,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ai-cyber-stage0-audit-\${{ github.ref }}
+  group: ai-cyber-stage0-audit-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   audit-and-test:
@@ -65,11 +65,11 @@ jobs:
             echo
             echo '## Execution evidence from GitHub Actions'
             echo
-            echo "Audited commit: \${GITHUB_SHA}"
-            echo "Project pytest step: \${{ steps.project_tests.outcome }}"
-            echo "Runtime compile step: \${{ steps.compile_runtime.outcome }}"
-            echo "27-phase runtime step: \${{ steps.hydra_runtime.outcome }}"
-            echo "Final hardening step: \${{ steps.hardening.outcome }}"
+            echo "Audited commit: ${GITHUB_SHA}"
+            echo "Project pytest step: ${{ steps.project_tests.outcome }}"
+            echo "Runtime compile step: ${{ steps.compile_runtime.outcome }}"
+            echo "27-phase runtime step: ${{ steps.hydra_runtime.outcome }}"
+            echo "Final hardening step: ${{ steps.hardening.outcome }}"
             echo
             echo 'A code-health failure is a finding, not a reason to hide the audit report.'
           } >> "$RUNNER_TEMP/stage0-forensic-audit.md"
@@ -77,18 +77,18 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ai-cyber-stage0-forensic-audit-\${{ github.sha }}
+          name: ai-cyber-stage0-forensic-audit-${{ github.sha }}
           path: |
-            \${{ runner.temp }}/stage0-forensic-audit.json
-            \${{ runner.temp }}/stage0-forensic-audit.md
-            \${{ runner.temp }}/project-pytest.log
+            ${{ runner.temp }}/stage0-forensic-audit.json
+            ${{ runner.temp }}/stage0-forensic-audit.md
+            ${{ runner.temp }}/project-pytest.log
           if-no-files-found: warn
           retention-days: 90
       - name: Enforce test execution gates
         if: always()
         run: |
-          test "\${{ steps.full_audit.outcome }}" = "success"
-          test "\${{ steps.project_tests.outcome }}" = "success"
-          test "\${{ steps.compile_runtime.outcome }}" = "success"
-          test "\${{ steps.hydra_runtime.outcome }}" = "success"
-          test "\${{ steps.hardening.outcome }}" = "success"
+          test "${{ steps.full_audit.outcome }}" = "success"
+          test "${{ steps.project_tests.outcome }}" = "success"
+          test "${{ steps.compile_runtime.outcome }}" = "success"
+          test "${{ steps.hydra_runtime.outcome }}" = "success"
+          test "${{ steps.hardening.outcome }}" = "success"
