@@ -65,6 +65,12 @@ def test_deep_audit_indexes_symbols_calls_and_ranges(tmp_path: Path):
     assert any(edge["callee"] == "main" for edge in entry["static_call_edges"])
     assert "<module>:function:launch" in entry["duplicate_scoped_symbols"]
     assert entry["lines"] >= 15
+    inventory_item = next(
+        item for item in report["repository_inventory"]["files"]
+        if item["path"] == "src/demo/entry.py"
+    )
+    assert entry["sha256"] == inventory_item["sha256"]
+    assert entry["bytes"] == inventory_item["bytes"]
 
 
 def test_deep_audit_detects_side_effects_comments_and_broad_handlers(tmp_path: Path):
