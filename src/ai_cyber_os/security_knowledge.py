@@ -15,8 +15,8 @@ FAMILY_FIELDS: dict[str, dict[str, Any]] = {
     "cisa_kev": {"id_fields": ("cveID", "cve_id", "id"), "patterns": (("cve", r"\bCVE-\d{4}-\d{4,}\b"),)},
     "epss": {"id_fields": ("cve", "cve_id", "id"), "patterns": (("cve", r"\bCVE-\d{4}-\d{4,}\b"),)},
     "cwe": {"id_fields": ("ID", "cwe_id", "id"), "patterns": (("cwe", r"\bCWE-?\d+\b"),)},
-    "cpe": {"id_fields": ("cpeName", "cpe23Uri", "cpe", "id"), "patterns": (("cpe", r"\bcpe:2\.3:[^\s\\"']+"),)},
-    "cvss": {"id_fields": ("cve_id", "cve", "id"), "patterns": (("cve", r"\bCVE-\d{4}-\d{4,}\b"), ("cvss_vector", r"\bCVSS:3\.[01]/[^\s\\"']+|\bCVSS:4\.0/[^\s\\"']+") )},
+    "cpe": {"id_fields": ("cpeName", "cpe23Uri", "cpe", "id"), "patterns": (("cpe", r"\bcpe:2\.3:\S+"),)},
+    "cvss": {"id_fields": ("cve_id", "cve", "id"), "patterns": (("cve", r"\bCVE-\d{4}-\d{4,}\b"), ("cvss_vector", r"\bCVSS:3\.[01]/\S+|\bCVSS:4\.0/\S+"))},
     "mitre_attack": {"id_fields": ("external_id", "attack_id", "id"), "patterns": (("attack", r"\b(?:T\d{4}(?:\.\d{3})?|G\d{4}|S\d{4}|M\d{4})\b"),)},
     "capec": {"id_fields": ("id", "capec_id", "external_id"), "patterns": (("capec", r"\bCAPEC-?\d+\b"),)},
     "d3fend": {"id_fields": ("id", "d3fend_id", "external_id"), "patterns": (("d3fend", r"\bD3FEND-[A-Z0-9]+\b"),)},
@@ -32,7 +32,7 @@ IDENTIFIER_ALIASES: dict[str, tuple[str, ...]] = {
     "attack": ("attack_id", "technique_id", "external_id"),
     "capec": ("capec_id",),
     "d3fend": ("d3fend_id",),
-    "cpe": ("cpe", "cpe23Uri", "cpeName"),
+    "cpe": {"id_fields": ("cpeName", "cpe23Uri", "cpe", "id"), "patterns": (("cpe", r"\bcpe:2\.3:\S+"),)},
     "suricata_sid": ("sid",),
 }
 
