@@ -68,7 +68,7 @@ def test_identifier_extraction_and_relation_correlation(tmp_path: Path):
 
 
 def test_manifest_rejects_boolean_and_string_record_counts(tmp_path: Path):
-    payload = '{"id":"fixture","content":"evidence"}\\n'
+    payload = '{"id":"fixture","content":"evidence"}\n'
     manifest = _manifest(tmp_path, payload, count=1)
     data = json.loads(manifest.read_text(encoding="utf-8"))
     data["record_count"] = True
@@ -78,7 +78,7 @@ def test_manifest_rejects_boolean_and_string_record_counts(tmp_path: Path):
 
 
 def test_manifest_rejects_symlink_escape(tmp_path: Path):
-    payload = '{"id":"fixture","content":"evidence"}\\n'
+    payload = '{"id":"fixture","content":"evidence"}\n'
     manifest = _manifest(tmp_path, payload, count=1)
     outside = tmp_path.parent / f"{tmp_path.name}-outside.jsonl"
     outside.write_text(payload, encoding="utf-8")
@@ -95,7 +95,7 @@ def test_manifest_rejects_symlink_escape(tmp_path: Path):
 
 
 def test_checksum_can_be_explicitly_skipped_but_count_cannot(tmp_path: Path):
-    payload = '{"id":"fixture-checksum-optout","content":"evidence"}\\n'
+    payload = '{"id":"fixture-checksum-optout","content":"evidence"}\n'
     manifest = _manifest(tmp_path, payload, sha256="0" * 64, count=1)
     result = ingest_manifest(
         manifest, db_path=tmp_path / "knowledge.db", require_checksum=False
@@ -116,7 +116,7 @@ def test_checksum_can_be_explicitly_skipped_but_count_cannot(tmp_path: Path):
 def test_multi_artifact_manifest_rejects_non_integer_record_count(tmp_path: Path):
     data_dir = tmp_path / "datasets"
     data_dir.mkdir()
-    payload = '{"id":"fixture","content":"evidence"}\\n'
+    payload = '{"id":"fixture","content":"evidence"}\n'
     artifact = data_dir / "one.jsonl"
     artifact.write_text(payload, encoding="utf-8")
     manifest_dir = data_dir / "manifests"
