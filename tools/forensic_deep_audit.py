@@ -54,7 +54,7 @@ PRIVATE_KEY_MARKER_RE = re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVA
 DISABLED_TLS_RE = re.compile(r"(?i)\bverify\s*=\s*false\b|\bCERT_NONE\b|_create_unverified_context\s*\(")
 WEAK_CRYPTO_RE = re.compile(r"""(?i)\bhashlib\.(?:md5|sha1)\s*\(|\bhashlib\.new\s*\(\s*["'](?:md5|sha1)["']""")
 PLACEHOLDER_SECRET_RE = re.compile(
-    r"(?i)^(?:your[-_ ]|<|\$[A-Z_][A-Z0-9_]*$|os\.environ|environ|none$|null$|example$|dummy$|test$|redacted$|change.?me$|replace.?me$|placeholder$|x{8,}$)"
+    r"(?i)^(?:your[-_ ]|<|\$\x7b[A-Z_][A-Z0-9_]*\}|\$[A-Z_][A-Z0-9_]*$|os\.environ|environ|none$|null$|example$|dummy$|test$|redacted$|change.?me$|replace.?me$|placeholder$|x{8,}$)"
 )
 
 
