@@ -477,6 +477,25 @@ def _sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
+def _git_lfs_pointer_info(path: Path, size: int) -> dict[str, Any] | None:
+    """Recognize small Git LFS pointer files without reading the referenced payload."""
+    if size > 1024 or path.is_symlink():
+        return None
+    try:
+        lines = path.read_text(encoding="ascii").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+    if len(lines) != 3:
+        return None
+    if lines[0] != "version https://git-lfs.github.com/spec/v1":
+        return None
+    oid = re.fullmatch(r"oid sha256:([0-9a-f]{64})", lines[1])
+    declared_size = re.fullmatch(r"size ([0-9]+)", lines[2])
+    if not oid or not declared_size:
+        return None
+    return {"oid_sha256": oid.group(1), "declared_content_bytes": int(declared_size.group(1))}
+
+
 def _metadata_preview(value: Any) -> Any:
     """Keep report metadata useful and bounded without copying nested manifest data."""
     if value is None or isinstance(value, (bool, int, float)):
@@ -555,7 +574,19 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
         )
         # Parse only small, known configuration/evaluation/manifest surfaces.
         # Large/raw security datasets are hashed, not loaded into this auditor.
-        if rel == "pyproject.toml" and not path.is_symlink():
+        lfs_pointer = (
+            _git_lfs_pointer_info(path, size)
+            if category == "raw_dataset_artifact" and not path.is_symlink()
+            else None
+        )
+        if lfs_pointer:
+            metadata = {
+                "kind": "git-lfs-pointer",
+                "content_hydrated": False,
+                "hash_basis": "pointer_file_bytes",
+                **lfs_pointer,
+            }
+        elif rel == "pyproject.toml" and not path.is_symlink():
             try:
                 raw = path.read_bytes()
                 project = tomllib.loads(raw.decode("utf-8"))
@@ -640,6 +671,15 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
         "duplicate_content_groups": len(duplicate_groups),
         "category_counts": dict(sorted(counts.items())),
         "potentially_sensitive_named_files": [r["path"] for r in records if r["potentially_sensitive_filename"]],
+        "git_lfs_pointer_count": sum(r["metadata"].get("kind") == "git-lfs-pointer" for r in records),
+        "unhydrated_git_lfs_pointers": [
+            {
+                "path": r["path"],
+                "oid_sha256": r["metadata"]["oid_sha256"],
+                "declared_content_bytes": r["metadata"]["declared_content_bytes"],
+            }
+            for r in records if r["metadata"].get("kind") == "git-lfs-pointer"
+        ],
     }
     return {
         "summary": summary,
@@ -941,7 +981,8 @@ def render_markdown(report: dict[str, Any]) -> str:
         ("import_resolution_finding_count", "Import resolution findings"),
         ("static_runtime_reachable_files", "Files statically reachable from selected entry points"),
         ("entrypoint_file_count", "Entry-point files"),
-        ("file_content_manifest_sha256", "File-content manifest SHA-256"),
+        ("file_content_manifest_sha256", "Python-source content manifest SHA-256"),
+        ("git_lfs_pointer_count", "Unhydrated Git LFS pointer files"),
     ]:
         out.append(f"- {label}: {summary[key]}")
     out += [
