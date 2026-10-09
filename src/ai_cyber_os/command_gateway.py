@@ -50,7 +50,10 @@ def execute(
 
     m = _SEARCH_RE.fullmatch(command)
     if m:
-        return {"success": True, "command": command, "action": "search", "result": search(m.group(1).strip())}
+        query = m.group(1).strip()
+        if not query:
+            raise ValueError("search query must be non-empty")
+        return {"success": True, "command": command, "action": "search", "result": search(query)}
 
     if command.lower() in {"run regression", "run regression tests"}:
         return {"success": True, "command": command, "action": "regression", "result": regression()}
