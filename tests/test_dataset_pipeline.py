@@ -133,3 +133,24 @@ def test_multi_artifact_manifest_rejects_non_integer_record_count(tmp_path: Path
     }), encoding="utf-8")
     with pytest.raises(ValueError, match="record_count must be an integer"):
         inspect_dataset(manifest)
+
+
+
+def test_multi_artifact_manifest_rejects_path_escape(tmp_path: Path):
+    outside = tmp_path.parent / f"{tmp_path.name}-outside-artifact.jsonl"
+    payload = '{"id":"fixture","content":"evidence"}\n'
+    outside.write_text(payload, encoding="utf-8")
+    manifest_dir = tmp_path / "datasets" / "manifests"
+    manifest_dir.mkdir(parents=True)
+    manifest = manifest_dir / "multi.json"
+    manifest.write_text(json.dumps({
+        "dataset": "multi-fixture",
+        "version": "1",
+        "artifacts": [{
+            "path": "../" + outside.name,
+            "sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+            "record_count": 1,
+        }],
+    }), encoding="utf-8")
+    with pytest.raises(ValueError, match="remain inside the project"):
+        inspect_dataset(manifest)
