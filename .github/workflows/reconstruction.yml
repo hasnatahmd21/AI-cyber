@@ -27,6 +27,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Run quick forensic inventory
+        run: python tools/forensic_inventory.py --output /tmp/forensic_inventory.json
+      - name: Generate deep Stage 0 forensic evidence
+        if: always()
+        run: |
+          python -m py_compile tools/forensic_deep_audit.py
+          python tools/forensic_deep_audit.py . --json-out /tmp/ai-cyber-stage0-audit.json --markdown-out /tmp/ai-cyber-stage0-audit.md --summary-only
       - name: Compile canonical runtime and verification tooling
         run: |
           python -m py_compile src/ai_cyber_os/hydra.py
@@ -37,12 +44,6 @@ jobs:
           python -m py_compile tools/forensic_audit.py tools/forensic_deep_audit.py
           python -m py_compile tools/forensic_inventory.py tools/batch_manifest_factory.py
           python -m py_compile tests/*.py
-      - name: Run quick forensic inventory
-        run: python tools/forensic_inventory.py --output /tmp/forensic_inventory.json
-      - name: Generate deep Stage 0 forensic evidence
-        run: |
-          python -m py_compile tools/forensic_deep_audit.py
-          python tools/forensic_deep_audit.py . --json-out /tmp/ai-cyber-stage0-audit.json --markdown-out /tmp/ai-cyber-stage0-audit.md --summary-only
       - name: Install test runner
         run: |
           python -m pip install --disable-pip-version-check -e . pytest
