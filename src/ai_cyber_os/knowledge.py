@@ -80,24 +80,11 @@ CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
 """
 
 
-_IDENTIFIER_PATTERNS = {
-    "cve": re.compile(r"\bCVE-\d{4}-\d{4,}\b", re.I),
-    "cwe": re.compile(r"\bCWE-\d+\b", re.I),
-    "attack": re.compile(r"\bT\d{4}(?:\.\d{3})?\b", re.I),
-    "cpe": re.compile(r"\bcpe:2\.3:\S+", re.I),
-}
-
 def _extract_relations(text: str) -> list[tuple[str, str]]:
-    found: set[tuple[str, str]] = set()
-    for relation_type, pattern in _IDENTIFIER_PATTERNS.items():
-        for value in pattern.findall(text):
-            found.add((relation_type, value.upper()))
-    # A record identifier is itself authoritative evidence for the relation.
-    # This also supports deterministic synthetic CVE IDs used by the test corpus.
-    record_match = re.search(r"(?i)\bCVE-\d{4}-[A-Z0-9][A-Z0-9._-]*\b", text)
-    if record_match:
-        found.add(("cve", record_match.group(0).upper()))
-    return sorted(found)
+    """Compatibility wrapper around the cross-dataset relationship extractor."""
+    from .security_relationships import extract_security_relations
+
+    return extract_security_relations(text)
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
