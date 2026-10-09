@@ -954,6 +954,17 @@ def build_report(root: Path) -> dict[str, Any]:
     }
 
 
+def _inventory_metadata_summary(metadata: dict[str, Any]) -> str:
+    """Render informative, bounded metadata without exposing nested manifest values."""
+    if metadata.get("kind") == "git-lfs-pointer":
+        keys = (
+            "kind", "content_hydrated", "hash_basis", "oid_sha256",
+            "declared_content_bytes",
+        )
+        return json.dumps({key: metadata[key] for key in keys if key in metadata}, sort_keys=True)
+    return json.dumps(metadata.get("selected_fields", metadata.get("kind", "")), sort_keys=True)[:180]
+
+
 def render_markdown(report: dict[str, Any]) -> str:
     summary = report["summary"]
     out = [
@@ -1001,7 +1012,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         "|---|---|---:|---|---|",
         *[
             f"| {item['path']} | {item['category']} | {item['bytes']} | {item['sha256']} | "
-            + (json.dumps(item['metadata'].get('selected_fields', item['metadata'].get('kind', '')), sort_keys=True)[:180].replace('|', '\\|') if item['metadata'] else '—')
+            + (_inventory_metadata_summary(item['metadata']).replace('|', '\\|') if item['metadata'] else '—')
             + " |"
             for item in report["repository_inventory"]["files"]
         ],
