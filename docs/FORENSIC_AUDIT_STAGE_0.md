@@ -44,6 +44,12 @@ The repair branch designates src/ai_cyber_os/hydra.py as the single core HYDRA p
 - Static AST analysis cannot prove live SSRF prevention, real network isolation, signed artifact verification, isolated deception, or compromise-to-regeneration recovery.
 - Syntax-error evidence is recorded instead of suppressing the rest of the inventory. A report is expected to expose defects, not turn them into a success claim.
 
+## Part 1 — current-commit verification gate
+
+The general verification workflow must run on the current repair-branch commit and provide an auditable result. It compiles the Python source and tests, then runs the full test suite with verbose per-test progress, the 20 slowest-test timings, a 300-second per-test timeout, and a 45-minute job timeout. A concurrency group cancels stale duplicate runs for the same branch or pull request so they do not build an unbounded backlog. The standalone Phase 13 security-evaluation script runs only after the test suite passes.
+
+A workflow marked queued or in progress is not a pass. A cancelled run or missing artifact is not accepted as verification evidence. Part 1 remains blocked until a fresh run against the current commit finishes successfully and its result is recorded.
+
 ## Stage 0 completion gates
 
 Stage 0 is eligible for acceptance only after:
