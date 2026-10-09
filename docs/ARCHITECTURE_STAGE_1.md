@@ -136,7 +136,7 @@ Status meanings: **Observed** means an identifiable code/test contract exists; *
 
 ## Stage 0 cross-check and clean-up
 
-The companion [Stage 0 forensic audit protocol](FORENSIC_AUDIT_STAGE_0.md) defines the read-only scan and acceptance gates. The deep JSON/Markdown reports are produced by the reconstruction workflow as a commit-specific artifact. This architecture map must be reviewed against that artifact; static reachability and name collisions are evidence leads, not proof of actual runtime execution. Any mismatch between CLI and UI dispatch, legacy symbols and canonical modules, or claimed security behavior remains a gap until a focused integration test proves it.
+The companion [Stage 0 forensic audit protocol](FORENSIC_AUDIT_STAGE_0.md) defines the read-only scan and acceptance gates. The deep JSON/Markdown reports are produced by the reconstruction workflow as a commit-specific artifact. They now cover all repository files/folders and selected config/manifest metadata as well as detailed Python AST evidence. This architecture map must be reviewed against that artifact; static reachability and name collisions are evidence leads, not proof of actual runtime execution. Any mismatch between CLI and UI dispatch, legacy symbols and canonical modules, or claimed security behavior remains a gap until a focused integration test proves it.
 
 ## Source anchors
 

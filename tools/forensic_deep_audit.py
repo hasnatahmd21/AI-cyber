@@ -284,8 +284,166 @@ def _entrypoint_modules(root: Path) -> dict[str, list[str]]:
     return {k: sorted(set(v)) for k, v in sorted(found.items())}
 
 
+
+def _repository_inventory(root: Path) -> dict[str, Any]:
+    """Inventory every repository file/directory without dumping dataset contents."""
+    directories: set[str] = set()
+    records: list[dict[str, Any]] = []
+    hashes: dict[str, list[str]] = defaultdict(list)
+    counts: dict[str, int] = defaultdict(int)
+    package_contract: dict[str, Any] = {}
+    manifest_contracts: list[dict[str, Any]] = []
+    workflow_contracts: list[dict[str, Any]] = []
+    config_categories = {
+        "package_configuration", "ci_configuration", "ci_workflow",
+        "dataset_manifest", "evaluation_fixture", "configuration_or_manifest",
+    }
+    skip_names = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "node_modules", "build", "dist", "site-packages"}
+
+    for folder in root.rglob("*"):
+        rel_parts = folder.relative_to(root).parts
+        if any(part in skip_names for part in rel_parts):
+            continue
+        if folder.is_dir():
+            directories.add(folder.relative_to(root).as_posix())
+    paths = [
+        p for p in root.rglob("*")
+        if p.is_file() and not any(part in skip_names for part in p.relative_to(root).parts)
+    ]
+    for path in sorted(paths, key=lambda p: p.relative_to(root).as_posix()):
+        rel = path.relative_to(root).as_posix()
+        raw = path.read_bytes()
+        digest = hashlib.sha256(raw).hexdigest()
+        hashes[digest].append(rel)
+        suffix = path.suffix.lower() or ("dotfile" if path.name.startswith(".") else "")
+        parts = Path(rel).parts
+        if rel in LEGACY_ROOT_FILES:
+            category = "legacy_forensic_source"
+        elif rel == "pyproject.toml":
+            category = "package_configuration"
+        elif rel.startswith(".github/workflows/"):
+            category = "ci_workflow"
+        elif rel.startswith(".github/"):
+            category = "ci_configuration"
+        elif rel.startswith("datasets/raw/"):
+            category = "raw_dataset_artifact"
+        elif rel.startswith("datasets/manifests/"):
+            category = "dataset_manifest"
+        elif rel.startswith("datasets/acquisition_reports/"):
+            category = "acquisition_report"
+        elif rel.startswith(("evaluation/", "datasets/evaluation/")):
+            category = "evaluation_fixture"
+        elif rel.startswith("docs/") or path.name.lower().startswith("readme") or path.name == "RECONSTRUCTION.md":
+            category = "documentation"
+        elif suffix == ".py":
+            category = "python_source"
+        elif suffix in {".toml", ".yaml", ".yml", ".ini", ".cfg", ".json", ".jsonl", ".env"}:
+            category = "configuration_or_manifest"
+        elif suffix in {".gz", ".zip", ".tgz", ".tar", ".bz2", ".xz", ".whl"}:
+            category = "compressed_or_binary_artifact"
+        else:
+            category = "other_file"
+        counts[category] += 1
+
+        metadata: dict[str, Any] = {}
+        # Parse only small, known configuration/evaluation/manifest surfaces.
+        # Large/raw security datasets are hashed, not loaded into this auditor.
+        if rel == "pyproject.toml":
+            try:
+                project = tomllib.loads(raw.decode("utf-8"))
+                block = project.get("project", {})
+                package_contract = {
+                    "name": block.get("name"),
+                    "version": block.get("version"),
+                    "requires_python": block.get("requires-python"),
+                    "dependencies": block.get("dependencies", []),
+                    "scripts": block.get("scripts", {}),
+                    "build_system": project.get("build-system", {}),
+                    "pytest_ini_options": project.get("tool", {}).get("pytest", {}).get("ini_options", {}),
+                }
+                metadata = {"kind": "python-package-contract", "fields": sorted(block)}
+            except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+                metadata = {"parse_error": str(exc)}
+        elif category in {"dataset_manifest", "evaluation_fixture"} or rel == "docs/FORENSIC_BASELINE.json":
+            if len(raw) <= 5_000_000 and suffix == ".json":
+                try:
+                    payload = json.loads(raw.decode("utf-8"))
+                    if isinstance(payload, dict):
+                        selected = (
+                            "dataset", "version", "source", "license", "sha256",
+                            "record_count", "schema", "ingestion_status", "validation_status",
+                            "canonical_runtime", "logical_phases", "canonicalization_status",
+                            "repository", "repair_branch", "public_entrypoints",
+                        )
+                        metadata = {
+                            "kind": "json-contract",
+                            "top_level_keys": sorted(payload),
+                            "selected_fields": {k: payload[k] for k in selected if k in payload and isinstance(payload[k], (str, int, float, bool, type(None), list, dict))},
+                            "artifact_count": len(payload.get("artifacts", [])) if isinstance(payload.get("artifacts"), list) else None,
+                            "entry_count": len(payload.get("cases", payload.get("records", []))) if isinstance(payload.get("cases", payload.get("records", [])), list) else None,
+                        }
+                        if category == "dataset_manifest":
+                            manifest_contracts.append({"path": rel, **metadata})
+                    elif isinstance(payload, list):
+                        metadata = {"kind": "json-list", "entry_count": len(payload)}
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    metadata = {"parse_error": str(exc)}
+        elif category == "ci_workflow":
+            try:
+                text = raw.decode("utf-8")
+                run_lines = []
+                for line_number, line in enumerate(text.splitlines(), 1):
+                    stripped = line.strip()
+                    if (
+                        stripped.startswith(("uses:", "run:", "on:", "push:", "pull_request:", "workflow_dispatch:", "schedule:"))
+                        or "python-version:" in stripped
+                    ):
+                        run_lines.append({"line": line_number, "text": stripped[:300]})
+                metadata = {"kind": "workflow-static-directives", "directives": run_lines}
+                workflow_contracts.append({"path": rel, **metadata})
+            except UnicodeDecodeError:
+                metadata = {"kind": "non-utf8-workflow"}
+        sensitive_name = path.name.lower() in {
+            ".env", ".env.local", "id_rsa", "id_ed25519", "credentials.json",
+            "service-account.json", "private.key", "server.key",
+        }
+        records.append({
+            "path": rel, "category": category, "suffix": suffix,
+            "bytes": len(raw), "sha256": digest, "text_extension": suffix in {
+                ".py", ".toml", ".yaml", ".yml", ".ini", ".cfg", ".json",
+                ".jsonl", ".csv", ".xml", ".md", ".txt", ".html", ".js",
+                ".css", ".sh", ".rst",
+            },
+            "potentially_sensitive_filename": sensitive_name,
+            "metadata": metadata,
+        })
+
+    duplicate_groups = [
+        {"sha256": digest, "paths": sorted(names)}
+        for digest, names in sorted(hashes.items()) if len(names) > 1
+    ]
+    summary = {
+        "repository_file_count": len(records),
+        "repository_directory_count": len(directories),
+        "configuration_and_manifest_file_count": sum(1 for r in records if r["category"] in config_categories),
+        "duplicate_content_groups": len(duplicate_groups),
+        "category_counts": dict(sorted(counts.items())),
+        "potentially_sensitive_named_files": [r["path"] for r in records if r["potentially_sensitive_filename"]],
+    }
+    return {
+        "summary": summary,
+        "directories": sorted(directories),
+        "files": records,
+        "duplicate_content_groups": duplicate_groups,
+        "package_contract": package_contract,
+        "dataset_manifest_contracts": manifest_contracts,
+        "ci_workflow_contracts": workflow_contracts,
+    }
+
+
 def build_report(root: Path) -> dict[str, Any]:
     root = root.resolve()
+    repository_inventory = _repository_inventory(root)
     paths = _python_files(root)
     records: dict[str, dict[str, Any]] = {}
     module_index: dict[str, str] = {}
@@ -476,6 +634,7 @@ def build_report(root: Path) -> dict[str, Any]:
         "entrypoint_file_count": len(entry_files),
         "legacy_forensic_files_present": sorted(n for n in LEGACY_ROOT_FILES if (root / n).exists()),
         "file_content_manifest_sha256": manifest_hasher.hexdigest(),
+        **repository_inventory["summary"],
     }
     return {
         "schema": "ai-cyber.deep-forensic-audit.v1",
@@ -487,6 +646,7 @@ def build_report(root: Path) -> dict[str, Any]:
             for p, reasons in sorted(entry_files.items())
         },
         "summary": summary,
+        "repository_inventory": repository_inventory,
         "limitations": [
             "Static import reachability is approximate; dynamic imports, reflection, callbacks, decorators, registries, environment-driven dispatch and plugin loading can alter runtime reachability.",
             "Call edges resolve statically visible same-file names and self/cls methods only. Cross-file calls through imported objects and dynamic dispatch are not claimed complete.",
@@ -529,6 +689,50 @@ def render_markdown(report: dict[str, Any]) -> str:
     out += [
         "",
         "Legacy forensic files present: " + (", ".join(summary["legacy_forensic_files_present"]) or "none detected") + ".",
+        "",
+        "## Repository file, folder, and configuration inventory",
+        "",
+        f"- Repository files: {summary['repository_file_count']}",
+        f"- Directories: {summary['repository_directory_count']}",
+        f"- Configuration / manifest files: {summary['configuration_and_manifest_file_count']}",
+        f"- Repeated-content groups: {summary['duplicate_content_groups']}",
+        f"- Potentially sensitive filenames (names only; contents never disclosed): {len(summary['potentially_sensitive_named_files'])}",
+        "",
+        "| Path | Category | Bytes | SHA-256 | Metadata summary |",
+        "|---|---|---:|---|---|",
+        *[
+            f"| {item['path']} | {item['category']} | {item['bytes']} | {item['sha256']} | "
+            + (json.dumps(item['metadata'].get('selected_fields', item['metadata'].get('kind', '')), sort_keys=True)[:180].replace('|', '\\|') if item['metadata'] else '—')
+            + " |"
+            for item in report["repository_inventory"]["files"]
+        ],
+        "",
+        "### Directory inventory",
+        "",
+        *[f"- {folder}/" for folder in report["repository_inventory"]["directories"]],
+        "",
+        "### Package entry points and dependencies",
+        "",
+        f"- Package: {report['repository_inventory']['package_contract'].get('name') or 'unknown'}",
+        f"- Version: {report['repository_inventory']['package_contract'].get('version') or 'unknown'}",
+        f"- Python requirement: {report['repository_inventory']['package_contract'].get('requires_python') or 'unknown'}",
+        "- Runtime dependencies: " + ", ".join(report["repository_inventory"]["package_contract"].get("dependencies", [])),
+        *[f"- Console script: {name} -> {target}" for name, target in sorted(report["repository_inventory"]["package_contract"].get("scripts", {}).items())],
+        "",
+        "### CI workflow directives",
+        "",
+        *[
+            f"- {wf['path']}: " + "; ".join(f"L{d['line']} {d['text']}" for d in wf["directives"])
+            for wf in report["repository_inventory"]["ci_workflow_contracts"]
+        ],
+        "",
+        "### Dataset manifest contracts",
+        "",
+        *[
+            f"- {mf['path']}: keys={', '.join(mf.get('top_level_keys', []))}; "
+            f"selected={json.dumps(mf.get('selected_fields', {}), sort_keys=True)[:400]}"
+            for mf in report["repository_inventory"]["dataset_manifest_contracts"]
+        ],
         "",
         "## File-by-file inventory",
         "",

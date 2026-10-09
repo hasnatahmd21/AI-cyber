@@ -6,9 +6,9 @@
 
 ## Audit method
 
-The deep audit scans tracked and untracked Python source present in a clean checkout, excluding common virtual-environment/build/cache folders. For every parsable Python file it records SHA-256, byte/line counts, module purpose, every class/function/method with source start/end lines, imports, callsites and keyword arguments, same-file statically resolved call edges, main guards, same-scope duplicate definitions, broad exception handlers, side-effect/security-sensitive API signals, TODO/FIXME/HACK markers, entry-point classification, and approximate import reachability from package entry points.
+The deep audit inventories every repository file and directory present in a clean checkout (excluding common virtual-environment/build/cache folders), recording path, category, byte size and SHA-256. For every parsable Python file it additionally records line ranges, module purpose, every class/function/method, imports, callsites and keyword arguments, same-file statically resolved call edges, main guards, same-scope duplicate definitions, broad exception handlers, side-effect/security-sensitive API signals, TODO/FIXME/HACK markers, entry-point classification, and approximate import reachability from package entry points. It extracts the declared package scripts/dependencies, CI workflow directives, and selected fields from small dataset manifests and evaluation fixtures. Large raw dataset contents are hashed but not parsed or copied into reports.
 
-It also records repeated symbol names across files and generates a deterministic file-content manifest hash. The JSON artifact is the machine-readable source of truth; the Markdown artifact provides a readable file-by-file listing. Each artifact records the commit SHA supplied by GitHub Actions.
+It also records repeated symbol names across files and generates a deterministic file-content manifest hash. The JSON artifact is the machine-readable source of truth; the Markdown artifact provides repository-wide file/folder inventory, configuration/manifest summary, and Python symbol/call-site listings. Each artifact records the commit SHA supplied by GitHub Actions.
 
 ## Known forensic source groups
 

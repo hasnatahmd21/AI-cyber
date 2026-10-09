@@ -37,6 +37,12 @@ def _report(tmp_path: Path):
     tests = tmp_path / "tests"
     tests.mkdir()
     (tests / "broken.py").write_text("def broken(:\n    pass\n", encoding="utf-8")
+    (package / "note.txt").write_text("same artifact\n", encoding="utf-8")
+    (tmp_path / "copy-note.txt").write_text("same artifact\n", encoding="utf-8")
+    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows" / "checks.yml").write_text("name: checks\non:\n  push:\njobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n      - run: pytest -q\n", encoding="utf-8")
+    (tmp_path / "datasets" / "manifests").mkdir(parents=True)
+    (tmp_path / "datasets" / "manifests" / "fixture.json").write_text(json.dumps({"dataset":"fixture","version":"1","sha256":"a"*64,"record_count":1}), encoding="utf-8")
     return build_report(tmp_path)
 
 
@@ -78,3 +84,23 @@ def test_audit_output_serializes_deterministically(tmp_path: Path):
     first = _report(tmp_path)
     second = _report(tmp_path)
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+
+
+def test_repository_inventory_covers_configs_manifests_and_all_files(tmp_path: Path):
+    report = _report(tmp_path)
+    inv = report["repository_inventory"]
+    assert inv["summary"]["repository_file_count"] >= report["summary"]["python_file_count"]
+    assert inv["package_contract"]["scripts"]["demo-cli"] == "demo.entry:main"
+    assert any(x["path"] == "pyproject.toml" and x["category"] == "package_configuration" for x in inv["files"])
+    assert any(x["path"] == "src/demo/entry.py" for x in inv["files"])
+    assert "src/demo" in inv["directories"]
+    assert inv["summary"]["configuration_and_manifest_file_count"] >= 1
+
+
+def test_repository_inventory_reports_duplicate_content_by_hash(tmp_path: Path):
+    _report(tmp_path)
+    (tmp_path / "copy-one.txt").write_text("same artifact\n", encoding="utf-8")
+    (tmp_path / "copy-two.txt").write_text("same artifact\n", encoding="utf-8")
+    report = build_report(tmp_path)
+    groups = report["repository_inventory"]["duplicate_content_groups"]
+    assert any(set(g["paths"]) >= {"copy-one.txt", "copy-two.txt"} for g in groups)
