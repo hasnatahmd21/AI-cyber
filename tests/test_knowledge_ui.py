@@ -4,6 +4,7 @@ from http.client import HTTPConnection
 from threading import Thread
 
 from ai_cyber_os import ui
+from ai_cyber_os.knowledge import open_store
 
 
 def test_knowledge_status_endpoint(monkeypatch):
@@ -64,3 +65,13 @@ def test_knowledge_ingest_cannot_escape_project(monkeypatch):
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_knowledge_store_creates_missing_parent_directory(tmp_path):
+    db_path = tmp_path / "new-hidden-dir" / "knowledge.db"
+    db = open_store(db_path)
+    try:
+        assert db_path.is_file()
+        assert db.execute("SELECT COUNT(*) FROM knowledge_records").fetchone()[0] == 0
+    finally:
+        db.close()
