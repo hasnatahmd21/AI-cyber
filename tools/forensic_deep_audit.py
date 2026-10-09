@@ -655,6 +655,7 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
 def build_report(root: Path) -> dict[str, Any]:
     root = root.resolve()
     repository_inventory = _repository_inventory(root)
+    inventory_by_path = {item["path"]: item for item in repository_inventory["files"]}
     paths = [
         root / item["path"]
         for item in repository_inventory["files"]
@@ -734,9 +735,10 @@ def build_report(root: Path) -> dict[str, Any]:
             classification = "package_source"
         else:
             classification = "other_python"
+        inventory_record = inventory_by_path[rel]
         records[rel] = {
             "path": rel, "module": module, "classification": classification,
-            "bytes": path.stat().st_size, "lines": len(lines), "sha256": _sha256_file(path),
+            "bytes": inventory_record["bytes"], "lines": len(lines), "sha256": inventory_record["sha256"],
             "syntax_ok": syntax_error is None, "syntax_error": syntax_error,
             "module_docstring": (
                 ast.get_docstring(tree).splitlines()[0].strip()[:240]
