@@ -12,7 +12,7 @@ def _report(tmp_path: Path):
         encoding="utf-8",
     )
     package = tmp_path / "src" / "demo"
-    package.mkdir(parents=True)
+    package.mkdir(parents=True, exist_ok=True)
     (package / "__init__.py").write_text("from .entry import main\n", encoding="utf-8")
     (package / "entry.py").write_text(
         '"""Demo runtime entry."""\n'
@@ -35,14 +35,14 @@ def _report(tmp_path: Path):
     )
     (package / "helper.py").write_text("def work():\n    return 7\n", encoding="utf-8")
     tests = tmp_path / "tests"
-    tests.mkdir()
+    tests.mkdir(exist_ok=True)
     (tests / "broken.py").write_text("def broken(:\n    pass\n", encoding="utf-8")
     (tests / "test_entry.py").write_text("from demo.entry import main\n", encoding="utf-8")
     (package / "note.txt").write_text("same artifact\n", encoding="utf-8")
     (tmp_path / "copy-note.txt").write_text("same artifact\n", encoding="utf-8")
-    (tmp_path / ".github" / "workflows").mkdir(parents=True)
+    (tmp_path / ".github" / "workflows").mkdir(parents=True, exist_ok=True)
     (tmp_path / ".github" / "workflows" / "checks.yml").write_text("name: checks\non:\n  push:\njobs:\n  test:\n    steps:\n      - uses: actions/checkout@v4\n      - run: pytest -q\n", encoding="utf-8")
-    (tmp_path / "datasets" / "manifests").mkdir(parents=True)
+    (tmp_path / "datasets" / "manifests").mkdir(parents=True, exist_ok=True)
     (tmp_path / "datasets" / "manifests" / "fixture.json").write_text(json.dumps({"dataset":"fixture","version":"1","sha256":"a"*64,"record_count":1}), encoding="utf-8")
     return build_report(tmp_path)
 
