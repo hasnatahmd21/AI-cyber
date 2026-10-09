@@ -29,6 +29,7 @@ The repair branch designates src/ai_cyber_os/hydra.py as the single core HYDRA p
 
 ### Verification and tooling
 
+- The deep audit also runs a redacted code/config scan for hard-coded credential literals, embedded private-key markers, disabled TLS-verification settings, and weak hash calls. Raw dataset payloads are excluded; findings are review leads, and matched values are never recorded.
 - tests/ contains unit/integration contracts; the audit reports which modules are imported or tested statically but does not infer test coverage from filenames alone.
 - tools/ contains audit, dataset, evaluation, and adversarial harness scripts.
 - `.github/workflows/stage0-forensic-audit.yml` is the focused Stage 0 gate. It emits JSON and Markdown evidence for the exact commit, runs the Stage 0-specific tests, validates report identity/structure, and uploads the evidence even when a later test fails.
