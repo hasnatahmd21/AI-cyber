@@ -118,7 +118,7 @@ jobs:
           rows = [
               "# Stage 0 Forensic Audit",
               "",
-              f"- Commit: \`{report.get('commit_sha') or 'missing'}\`",
+              f"- Commit: `{report.get('commit_sha') or 'missing'}`",
               f"- Repository files: {summary.get('repository_file_count')}",
               f"- Python files: {summary.get('python_file_count')}",
               f"- Syntax-error files: {summary.get('syntax_error_file_count')}",
@@ -140,7 +140,7 @@ jobs:
           for name in summary.get("legacy_forensic_files_present", []):
               item = records.get(name, {})
               rows.append(
-                  f"| \`{name}\` | \`{item.get('sha256', 'MISSING')}\` | "
+                  f"| `{name}` | `{item.get('sha256', 'MISSING')}` | "
                   f"{'OK' if item.get('syntax_ok') else 'ERROR/UNKNOWN'} | "
                   f"{len(item.get('symbols', []))} | {len(item.get('calls', []))} | "
                   f"{len(item.get('side_effect_signals', []))} |"
@@ -152,7 +152,7 @@ jobs:
           rows += ["", "## Syntax-error findings", ""]
           if syntax_errors:
               rows.extend(
-                  f"- \`{name}\` L{error.get('line')}: {error.get('message')}"
+                  f"- `{name}` L{error.get('line')}: {error.get('message')}"
                   for name, error in syntax_errors[:30]
               )
               if len(syntax_errors) > 30:
