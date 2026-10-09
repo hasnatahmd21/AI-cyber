@@ -91026,7 +91026,7 @@ _naive_accepts = _naive_accepts14
 def _run_all_phases_final15():
     order=[
         ("phase1",run_phase1_self_test),("phase2",run_phase2_self_test),("phase3",run_phase3_self_tests),
-        ("phase4",run_phase4_verification),("phase5",run_phase5_tests),("phase7",run_phase7_tests),
+        ("phase4",run_phase4_verification),("phase5",run_phase5_tests),("phase6",run_phase6_tests),("phase7",run_phase7_tests),
         ("phase8",run_phase_8_tests),("phase8_agents",run_phase_8_agent_tests),("phase9",run_phase_9_tests),
         ("phase10",run_phase10_tests),("phase11",run_phase11_tests),("phase12",run_phase_12_tests),
         ("phase13",run_phase_13_tests),("phase14",run_phase_14_tests),("phase15",run_phase_15_tests),
@@ -91047,7 +91047,16 @@ def _run_all_phases_final15():
         except Exception as exc:
             out[label]={"status":"EXCEPTION","error":f"{type(exc).__name__}: {exc}"}
             failures.append(label)
-    out["summary"]={"phase_runs":len(order),"failed_phases":failures,"success":not failures}
+    auxiliary_labels = {"phase8_agents"}
+    logical_phases = sum(1 for label, _ in order if label not in auxiliary_labels)
+    auxiliary_checks = sum(1 for label, _ in order if label in auxiliary_labels)
+    out["summary"] = {
+        "phase_runs": len(order),
+        "phases": logical_phases,
+        "auxiliary_checks": auxiliary_checks,
+        "failed_phases": failures,
+        "success": not failures,
+    }
     return out
 
 def run_hydra_phase(name: str):
