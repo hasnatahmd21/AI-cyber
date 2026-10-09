@@ -100,6 +100,7 @@ def test_audit_output_serializes_deterministically(tmp_path: Path):
     first = _report(tmp_path)
     second = _report(tmp_path)
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+    assert render_markdown(first) == render_markdown(second)
 
     expected = hashlib.sha256()
     for source in sorted(tmp_path.rglob("*.py"), key=lambda item: item.relative_to(tmp_path).as_posix()):

@@ -82,9 +82,16 @@ def verify_report(
     if not isinstance(inventory_files, list):
         return errors + ["repository_inventory.files is missing or not a list"]
 
-    inventory_paths = [item.get("path") for item in inventory_files if isinstance(item, dict)]
-    if len(inventory_paths) != len(inventory_files):
-        errors.append("repository inventory contains a non-object file record")
+    inventory_paths: list[str] = []
+    for item in inventory_files:
+        if not isinstance(item, dict):
+            errors.append("repository inventory contains a non-object file record")
+            continue
+        relative = item.get("path")
+        if not isinstance(relative, str):
+            errors.append("inventory record has no string path")
+            continue
+        inventory_paths.append(relative)
     if len(inventory_paths) != len(set(inventory_paths)):
         errors.append("repository inventory contains duplicate path records")
     if inventory_paths != sorted(inventory_paths):
@@ -127,6 +134,9 @@ def verify_report(
             errors.append(f"invalid SHA-256 field for {relative}")
 
     summary = report.get("summary", {})
+    if not isinstance(summary, dict):
+        errors.append("summary is missing or not an object")
+        summary = {}
     if summary.get("repository_file_count") != len(inventory_files):
         errors.append("repository_file_count does not match inventory length")
 
@@ -136,15 +146,21 @@ def verify_report(
         if len(paths) > 1
     ]
     reported_duplicate_groups = inventory.get("duplicate_content_groups", [])
-    normalize = lambda groups: sorted(
-        (
-            {"sha256": group.get("sha256"), "paths": sorted(group.get("paths", []))}
-            for group in groups
-            if isinstance(group, dict)
-        ),
-        key=lambda group: (str(group["sha256"]), group["paths"]),
-    )
-    if normalize(reported_duplicate_groups) != normalize(expected_duplicate_groups):
+
+    def normalize_groups(groups: Any) -> list[dict[str, Any]] | None:
+        if not isinstance(groups, list):
+            return None
+        normalized: list[dict[str, Any]] = []
+        for group in groups:
+            if not isinstance(group, dict):
+                return None
+            paths = group.get("paths")
+            if not isinstance(paths, list) or not all(isinstance(path, str) for path in paths):
+                return None
+            normalized.append({"sha256": group.get("sha256"), "paths": sorted(paths)})
+        return sorted(normalized, key=lambda group: (str(group["sha256"]), group["paths"]))
+
+    if normalize_groups(reported_duplicate_groups) != normalize_groups(expected_duplicate_groups):
         errors.append("duplicate-content groups do not match recomputed inventory hashes")
     if summary.get("duplicate_content_groups") != len(expected_duplicate_groups):
         errors.append("duplicate_content_groups count does not match recomputed inventory")
@@ -156,9 +172,16 @@ def verify_report(
     python_records = report.get("files")
     if not isinstance(python_records, list):
         return errors + ["files (Python AST records) is missing or not a list"]
-    python_paths = [item.get("path") for item in python_records if isinstance(item, dict)]
-    if len(python_paths) != len(python_records):
-        errors.append("Python AST inventory contains a non-object record")
+    python_paths: list[str] = []
+    for item in python_records:
+        if not isinstance(item, dict):
+            errors.append("Python AST inventory contains a non-object record")
+            continue
+        relative = item.get("path")
+        if not isinstance(relative, str):
+            errors.append("Python AST record has no string path")
+            continue
+        python_paths.append(relative)
     if len(python_paths) != len(set(python_paths)):
         errors.append("Python AST inventory contains duplicate path records")
     if set(python_paths) != expected_python_paths:

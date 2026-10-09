@@ -57,3 +57,15 @@ def test_verifier_does_not_follow_symlinked_files(tmp_path: Path):
     assert hashlib.sha256(outside.read_bytes()).hexdigest() not in {
         item.get("sha256") for item in report["repository_inventory"]["files"]
     }
+
+def test_verifier_reports_malformed_artifact_structure_without_crashing(tmp_path: Path):
+    report = _fixture(tmp_path)
+    report["summary"] = []
+    report["repository_inventory"]["duplicate_content_groups"] = [
+        {"sha256": "bad", "paths": None}
+    ]
+
+    failures = verify_report(report, tmp_path, expected_commit="fixture-commit")
+    assert any("summary is missing or not an object" in failure for failure in failures)
+    assert any("duplicate-content groups" in failure for failure in failures)
+
