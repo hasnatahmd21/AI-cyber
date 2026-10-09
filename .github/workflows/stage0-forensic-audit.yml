@@ -21,7 +21,7 @@ jobs:
   forensic-audit:
     name: Generate and verify Stage 0 evidence
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -52,11 +52,31 @@ jobs:
             --markdown-out /tmp/ai-cyber-stage0-audit.md \
             --summary-only
 
-      - name: Install focused test runner
-        run: python -m pip install --disable-pip-version-check pytest
+      - name: Install package, tests and coverage tooling
+        run: |
+          python -m pip install --disable-pip-version-check -e . pytest coverage
+          python -m pip check
 
       - name: Run Stage 0 forensic tests
         run: python -m pytest -q tests/test_forensic_deep_audit.py
+
+      - name: Run complete test suite with measured branch coverage
+        id: project_coverage
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+        run: |
+          set +e
+          set -o pipefail
+          python -m coverage run --branch --source=ai_cyber_os -m pytest -q tests 2>&1 | tee /tmp/stage0-coverage-pytest.log
+          pytest_rc=${PIPESTATUS[0]}
+          python -m coverage json --pretty-print -o /tmp/stage0-coverage.json
+          json_rc=$?
+          python -m coverage report -m > /tmp/stage0-coverage-summary.txt 2>&1
+          report_rc=$?
+          printf 'pytest_exit_code=%s\ncoverage_json_exit_code=%s\ncoverage_report_exit_code=%s\n' "$pytest_rc" "$json_rc" "$report_rc" > /tmp/stage0-coverage-status.txt
+          cat /tmp/stage0-coverage-summary.txt
+          test "$pytest_rc" -eq 0 && test "$json_rc" -eq 0 && test "$report_rc" -eq 0
 
       - name: Validate evidence identity, structure, and legacy coverage
         if: always()
@@ -193,5 +213,14 @@ jobs:
             /tmp/ai-cyber-stage0-audit.json
             /tmp/ai-cyber-stage0-audit.md
             /tmp/forensic_inventory.json
+            /tmp/stage0-coverage-pytest.log
+            /tmp/stage0-coverage.json
+            /tmp/stage0-coverage-summary.txt
+            /tmp/stage0-coverage-status.txt
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Enforce complete Stage 0 gates
+        if: always()
+        run: |
+          test "${{ steps.project_coverage.outcome }}" = "success"
