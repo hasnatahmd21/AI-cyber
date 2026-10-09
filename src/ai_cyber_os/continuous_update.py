@@ -1,6 +1,6 @@
 """Manifest-driven continuous dataset update mechanism."""
 from __future__ import annotations
-import json, os, tempfile
+import hashlib, json, os, tempfile
 from pathlib import Path
 from typing import Any
 from .dataset_pipeline import inspect_dataset, ingest_manifest, load_manifest
@@ -26,12 +26,29 @@ def update_from_manifests(manifest_paths: list[str | Path], *, db_path: str | Pa
     for manifest_path in manifest_paths:
         mf = Path(manifest_path); manifest = load_manifest(mf); inspection = inspect_dataset(mf)
         key = str(manifest.get("dataset") or mf)
-        fingerprint = f"{inspection['sha256']}:{inspection['records']}:{manifest.get('version', '')}"
+        if "sha256" in inspection:
+            dataset_digest = inspection["sha256"]
+        else:
+            dataset_digest = hashlib.sha256(
+                json.dumps(
+                    [
+                        {
+                            "path": artifact["path"],
+                            "sha256": artifact["sha256"],
+                            "records": artifact["records"],
+                        }
+                        for artifact in inspection["artifacts"]
+                    ],
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest()
+        fingerprint = f"{dataset_digest}:{inspection['records']}:{manifest.get('version', '')}"
         previous = state["datasets"].get(key, {}).get("fingerprint")
         if not force and previous == fingerprint:
             results.append({"dataset": key, "status": "UNCHANGED", "fingerprint": fingerprint}); continue
         result = ingest_manifest(mf, db_path=db_path, require_checksum=True)
-        state["datasets"][key] = {"fingerprint": fingerprint, "version": manifest.get("version", ""), "sha256": inspection["sha256"], "record_count": inspection["records"], "manifest": str(mf)}
+        state["datasets"][key] = {"fingerprint": fingerprint, "version": manifest.get("version", ""), "sha256": dataset_digest, "record_count": inspection["records"], "manifest": str(mf)}
         results.append({"dataset": key, "status": "INGESTED", "fingerprint": fingerprint, "ingestion": result})
     _atomic_write(state_file, state)
     return {"success": all(r["status"] in {"UNCHANGED", "INGESTED"} for r in results), "datasets_checked": len(results), "ingested": sum(r["status"]=="INGESTED" for r in results), "unchanged": sum(r["status"]=="UNCHANGED" for r in results), "results": results, "state": str(state_file)}
