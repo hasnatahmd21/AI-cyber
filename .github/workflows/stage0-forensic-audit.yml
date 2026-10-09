@@ -1,0 +1,94 @@
+name: AI-CYBER Stage 0 Forensic Audit
+on:
+  push:
+    branches:
+      - "stage0/**"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ai-cyber-stage0-audit-\${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  audit-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact audited revision
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile audit tool and unit tests
+        run: python -m py_compile tools/stage0_audit.py tests/test_stage0_audit.py
+      - name: Test audit tool on controlled fixtures
+        run: python -m pytest -q tests/test_stage0_audit.py
+      - name: Install project and test runner
+        run: python -m pip install --disable-pip-version-check -e . pytest
+      - name: Generate tracked-file forensic report
+        id: full_audit
+        if: always()
+        run: python tools/stage0_audit.py --json-output "$RUNNER_TEMP/stage0-forensic-audit.json" --markdown-output "$RUNNER_TEMP/stage0-forensic-audit.md"
+      - name: Run project tests and retain log
+        id: project_tests
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+        run: |
+          set -o pipefail
+          python -m pytest -q tests 2>&1 | tee "$RUNNER_TEMP/project-pytest.log"
+      - name: Compile canonical runtime and existing forensic tools
+        id: compile_runtime
+        continue-on-error: true
+        run: |
+          python -m py_compile src/ai_cyber_os/__init__.py src/ai_cyber_os/__main__.py src/ai_cyber_os/canonical.py src/ai_cyber_os/dataset_pipeline.py src/ai_cyber_os/knowledge.py tools/forensic_audit.py tools/forensic_inventory.py
+          python -m py_compile src/ai_cyber_os/hydra.py
+      - name: Run 27-phase runtime verification
+        id: hydra_runtime
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+        run: python -c "from ai_cyber_os.hydra import run_hydra_phase; r=run_hydra_phase('all'); print(r); assert r['summary']['success'], r"
+      - name: Run final hardening verification
+        id: hardening
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+        run: python -c "from ai_cyber_os.hydra import run_final_hardening_verification; r=run_final_hardening_verification(); print(r); assert r['verified'] and r['failed']==0, r"
+      - name: Append observed execution evidence
+        if: always()
+        run: |
+          {
+            echo
+            echo '## Execution evidence from GitHub Actions'
+            echo
+            echo "Audited commit: \${GITHUB_SHA}"
+            echo "Project pytest step: \${{ steps.project_tests.outcome }}"
+            echo "Runtime compile step: \${{ steps.compile_runtime.outcome }}"
+            echo "27-phase runtime step: \${{ steps.hydra_runtime.outcome }}"
+            echo "Final hardening step: \${{ steps.hardening.outcome }}"
+            echo
+            echo 'A code-health failure is a finding, not a reason to hide the audit report.'
+          } >> "$RUNNER_TEMP/stage0-forensic-audit.md"
+      - name: Upload revision-specific audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-cyber-stage0-forensic-audit-\${{ github.sha }}
+          path: |
+            \${{ runner.temp }}/stage0-forensic-audit.json
+            \${{ runner.temp }}/stage0-forensic-audit.md
+            \${{ runner.temp }}/project-pytest.log
+          if-no-files-found: warn
+          retention-days: 90
+      - name: Enforce test execution gates
+        if: always()
+        run: |
+          test "\${{ steps.full_audit.outcome }}" = "success"
+          test "\${{ steps.project_tests.outcome }}" = "success"
+          test "\${{ steps.compile_runtime.outcome }}" = "success"
+          test "\${{ steps.hydra_runtime.outcome }}" = "success"
+          test "\${{ steps.hardening.outcome }}" = "success"
