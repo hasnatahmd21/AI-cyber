@@ -63,3 +63,14 @@ def test_unknown_family_and_missing_identity_fail_closed():
         validate_family_record("unknown", {"id": "X"})
     with pytest.raises(ValueError, match="no recognizable family identifier"):
         validate_family_record("nvd_cve", {"title": "missing identifier"})
+
+
+def test_cpe_alias_contract_remains_a_tuple():
+    from ai_cyber_os.security_knowledge import IDENTIFIER_ALIASES
+
+    assert IDENTIFIER_ALIASES["cpe"] == ("cpe", "cpe23Uri", "cpeName")
+
+
+def test_family_record_rejects_non_object_input():
+    with pytest.raises(ValueError, match="must be an object"):
+        validate_family_record("nvd_cve", ["CVE-2026-1234"])
