@@ -290,8 +290,16 @@ class Handler(BaseHTTPRequestHandler):
                     red_team=_run_redteam,
                 )
                 nested = result.get("result")
-                result["success"] = not isinstance(nested, dict) or nested.get("success", True) is not False
-                self._send(200 if result["success"] else 422, result)
+                action = result.get("action")
+                if action == "status":
+                    # Status has no operation-level success field; a real snapshot is enough.
+                    success = isinstance(nested, dict)
+                else:
+                    # Execution/search handlers must explicitly report success. Missing or
+                    # malformed backend results must never be presented as a green result.
+                    success = isinstance(nested, dict) and nested.get("success") is True
+                result["success"] = success
+                self._send(200 if success else 422, result)
                 return
 
             if path == "/api/knowledge":
