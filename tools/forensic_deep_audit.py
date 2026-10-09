@@ -285,7 +285,7 @@ def _stub_candidates(tree: ast.AST) -> list[dict[str, Any]]:
     return sorted(found, key=lambda x: (x["line_start"], x["name"]))
 
 
-def _unreachable_statement_candidates(tree: ast.AST) -> list[dict[str, Any]]:
+def _unreachable_statement_candidates(tree: ast.AST, source_text: str) -> list[dict[str, Any]]:
     """Find obvious statements following unconditional return/raise/break/continue."""
     found: list[dict[str, Any]] = []
 
@@ -334,7 +334,6 @@ def _unreachable_statement_candidates(tree: ast.AST) -> list[dict[str, Any]]:
             if isinstance(statement, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
                 stopped = True
 
-    source_text = getattr(tree, "_stage0_source_text", "")
     if not isinstance(tree, ast.Module):
         return found
     inspect_block(tree.body, "")
@@ -625,7 +624,6 @@ def build_report(root: Path) -> dict[str, Any]:
             tree = ast.parse(source, filename=rel, type_comments=True)
             facts = _Facts(rel)
             facts.visit(tree)
-            setattr(tree, "_stage0_source_text", source)
             syntax_error = None
         except (SyntaxError, ValueError) as exc:
             tree = None
@@ -693,7 +691,7 @@ def build_report(root: Path) -> dict[str, Any]:
             "imports": imports, "calls": calls,
             "unused_import_candidates": _unused_import_candidates(tree, rel) if tree is not None else [],
             "stub_candidates": _stub_candidates(tree) if tree is not None else [],
-            "unreachable_statement_candidates": _unreachable_statement_candidates(tree) if tree is not None else [],
+            "unreachable_statement_candidates": _unreachable_statement_candidates(tree, source) if tree is not None else [],
             "import_resolution_findings": [],
             "main_guards": facts.main_guards if facts else [],
             "broad_exceptions": facts.broad_exceptions if facts else [],
