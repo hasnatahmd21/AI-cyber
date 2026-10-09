@@ -37,6 +37,7 @@ def _report(tmp_path: Path):
     tests = tmp_path / "tests"
     tests.mkdir()
     (tests / "broken.py").write_text("def broken(:\n    pass\n", encoding="utf-8")
+    (tests / "test_entry.py").write_text("from demo.entry import main\n", encoding="utf-8")
     (package / "note.txt").write_text("same artifact\n", encoding="utf-8")
     (tmp_path / "copy-note.txt").write_text("same artifact\n", encoding="utf-8")
     (tmp_path / ".github" / "workflows").mkdir(parents=True)
@@ -118,3 +119,9 @@ def test_audit_prunes_git_and_virtual_environment_directories(tmp_path: Path):
     all_paths = [x["path"] for x in report["repository_inventory"]["files"]]
     python_paths = [x["path"] for x in report["files"]]
     assert not any(path.startswith((".git/", ".venv/")) for path in all_paths + python_paths)
+
+
+def test_audit_maps_test_files_to_directly_imported_modules(tmp_path: Path):
+    report = _report(tmp_path)
+    entry = next(x for x in report["files"] if x["path"] == "src/demo/entry.py")
+    assert "tests/test_entry.py" in entry["tested_by_test_files"]

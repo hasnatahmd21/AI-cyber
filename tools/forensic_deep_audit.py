@@ -306,7 +306,7 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
     manifest_contracts: list[dict[str, Any]] = []
     workflow_contracts: list[dict[str, Any]] = []
     config_categories = {
-        "package_configuration", "ci_configuration", "ci_workflow",
+        "package_configuration", "repository_configuration", "ci_configuration", "ci_workflow",
         "dataset_manifest", "evaluation_fixture", "configuration_or_manifest",
     }
     paths = files_on_disk
@@ -321,6 +321,8 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
             category = "legacy_forensic_source"
         elif rel == "pyproject.toml":
             category = "package_configuration"
+        elif path.name in {".gitignore", ".gitattributes"}:
+            category = "repository_configuration"
         elif rel.startswith(".github/workflows/"):
             category = "ci_workflow"
         elif rel.startswith(".github/"):
@@ -533,7 +535,7 @@ def build_report(root: Path) -> dict[str, Any]:
             "side_effect_signals": sorted(risks, key=lambda x: (x["line"], x["category"], x["evidence"])),
             "static_import_targets": [], "static_call_edges": [],
             "direct_call_targets_without_local_definition": [],
-            "no_static_callsite_candidates": [],
+            "no_static_callsite_candidates": [], "tested_by_test_files": [],
         }
 
     # Resolve module imports and calculate static entrypoint closure.
@@ -551,6 +553,19 @@ def build_report(root: Path) -> dict[str, Any]:
         for imported in record["imports"]:
             file_edges[rel].update(_resolve_imports(module, package_file, imported, module_index))
         record["static_import_targets"] = sorted(file_edges[rel])
+
+    # Link modules to tests that statically import them; this is association
+    # evidence only and does not assert the tests cover every behavior.
+    for record in records.values():
+        record["tested_by_test_files"] = []
+    for test_path, test_record in records.items():
+        if test_record["classification"] != "test":
+            continue
+        for target in test_record["static_import_targets"]:
+            if target in records:
+                records[target]["tested_by_test_files"].append(test_path)
+    for record in records.values():
+        record["tested_by_test_files"] = sorted(set(record["tested_by_test_files"]))
 
     for rel, record in records.items():
         symbols = record["symbols"]
@@ -787,6 +802,8 @@ def render_markdown(report: dict[str, Any]) -> str:
             out.append("- Main guards: " + ", ".join(f"L{x}" for x in item["main_guards"]))
         if item["entrypoint_reasons"]:
             out.append("- Entry point: " + ", ".join(item["entrypoint_reasons"]))
+        if item["tested_by_test_files"]:
+            out.append("- Tests with direct static import references (not a coverage verdict): " + ", ".join(item["tested_by_test_files"]))
         if item["static_import_targets"]:
             out.append("- Statically resolved internal imports: " + ", ".join(item["static_import_targets"]))
         if item["static_call_edges"]:
