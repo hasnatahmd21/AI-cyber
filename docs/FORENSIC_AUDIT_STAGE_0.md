@@ -31,7 +31,8 @@ The repair branch designates src/ai_cyber_os/hydra.py as the single core HYDRA p
 
 - tests/ contains unit/integration contracts; the audit reports which modules are imported or tested statically but does not infer test coverage from filenames alone.
 - tools/ contains audit, dataset, evaluation, and adversarial harness scripts.
-- .github/workflows/reconstruction.yml is the primary reconstruction CI workflow. It runs compile checks, the quick inventory, the complete pytest suite, data/RAG evaluation gates, CLI and wheel smoke tests, the controlled adversarial harness, the HYDRA phases, and final hardening.
+- `.github/workflows/stage0-forensic-audit.yml` is the focused Stage 0 gate. It emits JSON and Markdown evidence for the exact commit, runs the Stage 0-specific tests, validates report identity/structure, and uploads the evidence even when a later test fails.
+- `.github/workflows/reconstruction.yml` is the broader runtime verification gate. Its compile, package, dataset/RAG, CLI/wheel, adversarial, HYDRA, and hardening results are recorded separately from the forensic auditor's own health.
 
 ## Reading the report correctly
 
@@ -52,6 +53,7 @@ Stage 0 is eligible for acceptance only after:
 4. All six legacy monoliths are individually catalogued by hash, source-line ranges, symbols, duplicates, entry-point guards, imports, side effects, unused-import candidates, stubs, obvious dead statements and TODO markers.
 5. Any suspicious/missing syntax or dynamic edges are recorded as UNKNOWN or BLOCKED rather than guessed.
 6. The Stage 1 architecture map's assertions and gaps are cross-checked against these outputs.
-7. The Stage 0-specific tests and the full reconstruction CI workflow pass on the same commit.
+7. The Stage 0-specific tests and evidence-integrity checks pass on the same commit.
+8. The broader reconstruction CI result is recorded and every failure is classified. An audit-tool/evidence-generation failure blocks Stage 0; an independently confirmed application/runtime defect is documented as a finding for the appropriate later stage, not hidden or mislabelled as a passing product check. Environment/runner blockers remain BLOCKED until evidence is available.
 
-Until these gates are met, use **INVENTORY GENERATED / REVIEW PENDING**, not GREEN.
+Until these gates are met, use **INVENTORY GENERATED / REVIEW PENDING**, not GREEN. Stage 0 does not certify the entire product as secure or green; the resulting findings must be triaged and carried forward before implementation work starts.
