@@ -186,9 +186,16 @@ def test_audit_does_not_follow_symlinked_files_or_directories(tmp_path: Path):
     outside.mkdir()
     secret = outside / "secret.py"
     secret.write_text("SECRET_SENTINEL = 'not repository content'\n", encoding="utf-8")
+    external_config = outside / "external-pyproject.toml"
+    external_config.write_text(
+        '[project.scripts]\nexternal-command = "secret.module:run"\n',
+        encoding="utf-8",
+    )
 
     file_link = root / "external.py"
     file_link.symlink_to(secret)
+    config_link = root / "pyproject.toml"
+    config_link.symlink_to(external_config)
     directory_link = root / "external_dir"
     directory_link.symlink_to(outside, target_is_directory=True)
 
@@ -199,6 +206,7 @@ def test_audit_does_not_follow_symlinked_files_or_directories(tmp_path: Path):
     assert indexed["external.py"]["metadata"] == {
         "kind": "symlink", "hash_basis": "link_target_text"
     }
+    assert indexed["pyproject.toml"]["category"] == "symlink"
     expected_hash = hashlib.sha256(
         os.readlink(file_link).encode("utf-8", errors="surrogateescape")
     ).hexdigest()
@@ -207,5 +215,6 @@ def test_audit_does_not_follow_symlinked_files_or_directories(tmp_path: Path):
 
     report = build_report(root)
     assert not any(item["path"] == "external.py" for item in report["files"])
+    assert "secret.module" not in report["entrypoints"]
     assert "external_dir/secret.py" not in [item["path"] for item in report["repository_inventory"]["files"]]
 
