@@ -448,7 +448,7 @@ def _resolve_imports(module: str, package_file: bool, item: dict[str, Any], modu
 def _entrypoint_modules(root: Path) -> dict[str, list[str]]:
     found: dict[str, list[str]] = defaultdict(list)
     pyproject = root / "pyproject.toml"
-    if pyproject.exists():
+    if pyproject.is_file() and not pyproject.is_symlink():
         try:
             data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
             scripts = data.get("project", {}).get("scripts", {})
