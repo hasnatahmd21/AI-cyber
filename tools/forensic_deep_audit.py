@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tomllib
 from collections import defaultdict, deque
 from pathlib import Path
@@ -223,6 +224,167 @@ class _Facts(ast.NodeVisitor):
                 "suppresses_error": suppresses,
             })
         self.generic_visit(node)
+
+
+
+def _unused_import_candidates(tree: ast.AST, rel: str) -> list[dict[str, Any]]:
+    """Suggest likely unused imports; wildcard/re-export surfaces are excluded."""
+    if Path(rel).name == "__init__.py" or Path(rel).as_posix().endswith("ai_cyber_os/canonical.py"):
+        return []
+    loaded = {
+        node.id for node in ast.walk(tree)
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load)
+    }
+    found = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                bound = alias.asname or alias.name.split(".", 1)[0]
+                if bound not in loaded:
+                    found.append({"line": node.lineno, "module": alias.name, "bound_name": bound})
+        elif isinstance(node, ast.ImportFrom):
+            for alias in node.names:
+                if alias.name == "*":
+                    continue
+                bound = alias.asname or alias.name
+                if bound not in loaded and not (node.module == "__future__" and alias.name == "annotations"):
+                    found.append({
+                        "line": node.lineno, "module": ("." * node.level) + (node.module or ""),
+                        "imported_name": alias.name, "bound_name": bound,
+                    })
+    return sorted(found, key=lambda x: (x["line"], x["bound_name"]))
+
+
+def _stub_candidates(tree: ast.AST) -> list[dict[str, Any]]:
+    """Find obviously placeholder-only function bodies, without judging valid None returns."""
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        body = list(node.body)
+        if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) and isinstance(body[0].value.value, str):
+            body = body[1:]
+        if len(body) != 1:
+            continue
+        statement = body[0]
+        reason = None
+        if isinstance(statement, ast.Pass):
+            reason = "pass_only_body"
+        elif isinstance(statement, ast.Expr) and isinstance(statement.value, ast.Constant) and statement.value.value is Ellipsis:
+            reason = "ellipsis_only_body"
+        elif isinstance(statement, ast.Raise) and isinstance(statement.exc, ast.Call):
+            if _callee(statement.exc.func) == "NotImplementedError":
+                reason = "raises_not_implemented"
+        elif isinstance(statement, ast.Raise) and isinstance(statement.exc, ast.Name) and statement.exc.id == "NotImplementedError":
+            reason = "raises_not_implemented"
+        if reason:
+            found.append({
+                "name": node.name, "line_start": node.lineno,
+                "line_end": getattr(node, "end_lineno", node.lineno), "reason": reason,
+            })
+    return sorted(found, key=lambda x: (x["line_start"], x["name"]))
+
+
+def _unreachable_statement_candidates(tree: ast.AST) -> list[dict[str, Any]]:
+    """Find obvious statements following unconditional return/raise/break/continue."""
+    found: list[dict[str, Any]] = []
+
+    def walk_non_block(node: ast.AST, scope: str) -> None:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            name = f"{scope}.{node.name}" if scope else node.name
+            inspect_block(node.body, name)
+            for dec in node.decorator_list:
+                walk_non_block(dec, scope)
+            return
+        if isinstance(node, ast.ClassDef):
+            name = f"{scope}.{node.name}" if scope else node.name
+            inspect_block(node.body, name)
+            return
+        for _, value in ast.iter_fields(node):
+            if isinstance(value, ast.AST):
+                walk_non_block(value, scope)
+            elif isinstance(value, list):
+                for child in value:
+                    if isinstance(child, ast.AST):
+                        walk_non_block(child, scope)
+
+    def inspect_block(statements: list[ast.stmt], scope: str) -> None:
+        stopped = False
+        for statement in statements:
+            if stopped:
+                found.append({
+                    "line": getattr(statement, "lineno", 0),
+                    "scope": scope or "<module>",
+                    "statement_type": type(statement).__name__,
+                    "source": (ast.get_source_segment(source_text, statement) or "").splitlines()[0][:200],
+                })
+            # Scan nested blocks independently; a return inside an if doesn't
+            # make the following outer statement unreachable.
+            if isinstance(statement, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                walk_non_block(statement, scope)
+            else:
+                for field_name in ("body", "orelse", "finalbody"):
+                    block = getattr(statement, field_name, None)
+                    if isinstance(block, list) and block and all(isinstance(x, ast.stmt) for x in block):
+                        inspect_block(block, scope)
+                for handler in getattr(statement, "handlers", []):
+                    inspect_block(handler.body, scope)
+                for case in getattr(statement, "cases", []):
+                    inspect_block(case.body, scope)
+            if isinstance(statement, (ast.Return, ast.Raise, ast.Break, ast.Continue)):
+                stopped = True
+
+    source_text = getattr(tree, "_stage0_source_text", "")
+    if not isinstance(tree, ast.Module):
+        return found
+    inspect_block(tree.body, "")
+    return sorted(found, key=lambda x: (x["line"], x["scope"]))
+
+
+def _import_findings(
+    imports: list[dict[str, Any]],
+    path: str,
+    module: str | None,
+    module_index: dict[str, str],
+    declared_dependency_roots: set[str],
+) -> list[dict[str, Any]]:
+    """Report unresolved local imports and undeclared external roots as candidates."""
+    findings = []
+    internal_roots = {name.split(".", 1)[0] for name in module_index if "." in name}
+    for item in imports:
+        imported_module = item["module"]
+        root = imported_module.lstrip(".").split(".", 1)[0]
+        is_relative = item["kind"] == "from" and item["level"] > 0
+        is_internal = root in internal_roots and bool(root)
+        if is_relative:
+            if module is None:
+                continue
+            targets = _resolve_imports(module, Path(path).name == "__init__.py", item, module_index)
+            if not targets:
+                findings.append({
+                    "line": item["line"], "kind": "unresolved_relative_import",
+                    "module": imported_module, "name": item.get("name"),
+                })
+            continue
+        if is_internal:
+            # Imported symbols may be re-exported from a package __init__.py,
+            # so only flag an absent module path when the root itself is absent.
+            candidates = [imported_module]
+            if item.get("name") and item["name"] != "*":
+                candidates.append(imported_module + "." + item["name"])
+            if not any(candidate in module_index for candidate in candidates) and imported_module not in module_index:
+                findings.append({
+                    "line": item["line"], "kind": "unresolved_internal_import_candidate",
+                    "module": imported_module, "name": item.get("name"),
+                })
+            continue
+        if root and root not in sys.stdlib_module_names and root not in declared_dependency_roots:
+            if Path(path).parts[0] != "tests":
+                findings.append({
+                    "line": item["line"], "kind": "undeclared_external_dependency_candidate",
+                    "module": imported_module, "name": item.get("name"),
+                })
+    return sorted(findings, key=lambda x: (x["line"], x["kind"], x["module"]))
 
 
 def _module_name(path: Path, root: Path) -> str | None:
@@ -463,6 +625,7 @@ def build_report(root: Path) -> dict[str, Any]:
             tree = ast.parse(source, filename=rel, type_comments=True)
             facts = _Facts(rel)
             facts.visit(tree)
+            setattr(tree, "_stage0_source_text", source)
             syntax_error = None
         except (SyntaxError, ValueError) as exc:
             tree = None
@@ -528,6 +691,10 @@ def build_report(root: Path) -> dict[str, Any]:
             ),
             "symbols": facts.symbols if facts else [],
             "imports": imports, "calls": calls,
+            "unused_import_candidates": _unused_import_candidates(tree, rel) if tree is not None else [],
+            "stub_candidates": _stub_candidates(tree) if tree is not None else [],
+            "unreachable_statement_candidates": _unreachable_statement_candidates(tree) if tree is not None else [],
+            "import_resolution_findings": [],
             "main_guards": facts.main_guards if facts else [],
             "broad_exceptions": facts.broad_exceptions if facts else [],
             "duplicate_scoped_symbols": duplicates,
@@ -553,6 +720,19 @@ def build_report(root: Path) -> dict[str, Any]:
         for imported in record["imports"]:
             file_edges[rel].update(_resolve_imports(module, package_file, imported, module_index))
         record["static_import_targets"] = sorted(file_edges[rel])
+
+    package_contract = _repository_inventory(root)["package_contract"]
+    declared_dependency_roots = {
+        re.split(r"[<>=!~;]", str(dependency), maxsplit=1)[0].strip()
+        .split("[", 1)[0].replace("-", "_").replace(".", "_").lower()
+        for dependency in package_contract.get("dependencies", [])
+    }
+    declared_dependency_roots = {x for x in declared_dependency_roots if x}
+    module_names = {record["module"] for record in records.values() if record["module"]}
+    for rel, record in records.items():
+        record["import_resolution_findings"] = _import_findings(
+            record["imports"], rel, record["module"], module_index, declared_dependency_roots
+        )
 
     # Link modules to tests that statically import them; this is association
     # evidence only and does not assert the tests cover every behavior.
@@ -645,6 +825,10 @@ def build_report(root: Path) -> dict[str, Any]:
         "side_effect_signal_count": sum(len(x["side_effect_signals"]) for x in records.values()),
         "todo_marker_count": sum(len(x["todo_markers"]) for x in records.values()),
         "broad_exception_count": sum(len(x["broad_exceptions"]) for x in records.values()),
+        "unused_import_candidate_count": sum(len(x["unused_import_candidates"]) for x in records.values()),
+        "stub_candidate_count": sum(len(x["stub_candidates"]) for x in records.values()),
+        "unreachable_statement_candidate_count": sum(len(x["unreachable_statement_candidates"]) for x in records.values()),
+        "import_resolution_finding_count": sum(len(x["import_resolution_findings"]) for x in records.values()),
         "static_runtime_reachable_files": len(reachable),
         "entrypoint_file_count": len(entry_files),
         "legacy_forensic_files_present": sorted(n for n in LEGACY_ROOT_FILES if (root / n).exists()),
@@ -696,6 +880,10 @@ def render_markdown(report: dict[str, Any]) -> str:
         ("side_effect_signal_count", "Security-sensitive static signals"),
         ("todo_marker_count", "TODO/FIXME/etc. markers"),
         ("broad_exception_count", "Broad exception handlers"),
+        ("unused_import_candidate_count", "Unused import candidates"),
+        ("stub_candidate_count", "Stub/placeholder function candidates"),
+        ("unreachable_statement_candidate_count", "Unreachable statement candidates"),
+        ("import_resolution_finding_count", "Import resolution findings"),
         ("static_runtime_reachable_files", "Files statically reachable from selected entry points"),
         ("entrypoint_file_count", "Entry-point files"),
         ("file_content_manifest_sha256", "File-content manifest SHA-256"),
@@ -782,6 +970,22 @@ def render_markdown(report: dict[str, Any]) -> str:
                     f"  - {symbol['kind']} {symbol['qualified_name']} "
                     f"(L{symbol['line_start']}-L{symbol['line_end']}){suffix}"
                 )
+        if item["import_resolution_findings"]:
+            out.append("- **Import resolution candidates (review before treating as errors):**")
+            for finding in item["import_resolution_findings"]:
+                out.append(f"  - L{finding['line']}: {finding['kind']} — {finding['module']} {finding.get('name') or ''}")
+        if item["unused_import_candidates"]:
+            out.append("- Unused import candidates (re-exports/dynamic use can be false positives):")
+            for finding in item["unused_import_candidates"]:
+                out.append(f"  - L{finding['line']}: {finding['module']} -> {finding['bound_name']}")
+        if item["stub_candidates"]:
+            out.append("- **Stub/placeholder function candidates:**")
+            for finding in item["stub_candidates"]:
+                out.append(f"  - {finding['name']} (L{finding['line_start']}-L{finding['line_end']}): {finding['reason']}")
+        if item["unreachable_statement_candidates"]:
+            out.append("- Unreachable statement candidates (within the same unconditional block):")
+            for finding in item["unreachable_statement_candidates"]:
+                out.append(f"  - L{finding['line']} in {finding['scope']}: {finding['statement_type']} — {finding['source']}")
         if item["duplicate_scoped_symbols"]:
             out.append("- **Same-scope duplicate definitions (inspect source ranges):**")
             for name, lines in sorted(item["duplicate_scoped_symbols"].items()):

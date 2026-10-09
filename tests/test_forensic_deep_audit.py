@@ -125,3 +125,21 @@ def test_audit_maps_test_files_to_directly_imported_modules(tmp_path: Path):
     report = _report(tmp_path)
     entry = next(x for x in report["files"] if x["path"] == "src/demo/entry.py")
     assert "tests/test_entry.py" in entry["tested_by_test_files"]
+
+
+def test_audit_flags_unused_imports_stubs_and_unreachable_statements(tmp_path: Path):
+    report = _report(tmp_path)
+    entry = next(x for x in report["files"] if x["path"] == "src/demo/entry.py")
+    assert any(x["bound_name"] == "os" for x in entry["unused_import_candidates"])
+    assert any(x["reason"] == "pass_only_body" for x in entry["stub_candidates"])
+    assert any(x["source"].startswith("print(") for x in entry["unreachable_statement_candidates"])
+
+
+def test_audit_marks_unresolved_external_dependency_without_failing_inventory(tmp_path: Path):
+    report = _report(tmp_path)
+    entry = next(x for x in report["files"] if x["path"] == "src/demo/entry.py")
+    assert any(
+        x["kind"] == "undeclared_external_dependency_candidate"
+        and x["module"] == "unknown_dependency"
+        for x in entry["import_resolution_findings"]
+    )
