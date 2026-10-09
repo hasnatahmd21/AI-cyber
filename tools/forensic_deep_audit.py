@@ -477,6 +477,24 @@ def _sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
     return digest.hexdigest()
 
 
+def _metadata_preview(value: Any) -> Any:
+    """Keep report metadata useful and bounded without copying nested manifest data."""
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return value[:300]
+    if isinstance(value, list):
+        return {
+            "kind": "list",
+            "length": len(value),
+            "sample_types": sorted({type(item).__name__ for item in value[:20]}),
+        }
+    if isinstance(value, dict):
+        keys = sorted(str(key) for key in value)
+        return {"kind": "object", "length": len(value), "keys": keys[:50]}
+    return {"kind": type(value).__name__}
+
+
 def _repository_inventory(root: Path) -> dict[str, Any]:
     """Inventory every repository file/directory without dumping dataset contents."""
     files_on_disk, directory_names = _walk_repository(root)
@@ -568,8 +586,9 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
                         )
                         metadata = {
                             "kind": "json-contract",
-                            "top_level_keys": sorted(payload),
-                            "selected_fields": {k: payload[k] for k in selected if k in payload and isinstance(payload[k], (str, int, float, bool, type(None), list, dict))},
+                            "top_level_key_count": len(payload),
+                            "top_level_keys": sorted(str(key) for key in payload)[:200],
+                            "selected_fields": {k: _metadata_preview(payload[k]) for k in selected if k in payload},
                             "artifact_count": len(payload.get("artifacts", [])) if isinstance(payload.get("artifacts"), list) else None,
                             "entry_count": len(payload.get("cases", payload.get("records", []))) if isinstance(payload.get("cases", payload.get("records", [])), list) else None,
                         }
