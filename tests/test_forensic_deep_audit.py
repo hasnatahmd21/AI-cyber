@@ -60,7 +60,7 @@ def test_deep_audit_indexes_symbols_calls_and_ranges(tmp_path: Path):
     report = _report(tmp_path)
     entry = next(x for x in report["files"] if x["path"] == "src/demo/entry.py")
     assert report["schema"] == "ai-cyber.deep-forensic-audit.v1"
-    assert any(s["qualified_name"] == "main" and s["line_start"] == 5 for s in entry["symbols"])
+    assert any(s["qualified_name"] == "main" and s["line_start"] == 7 for s in entry["symbols"])
     assert any(c["callee"] == "helper.work" for c in entry["calls"])
     assert any(edge["callee"] == "main" for edge in entry["static_call_edges"])
     assert "<module>:function:launch" in entry["duplicate_scoped_symbols"]
