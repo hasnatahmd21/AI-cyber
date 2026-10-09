@@ -31,7 +31,7 @@ def _post_json(url: str, payload: dict):
 def test_runtime_intelligence_returns_only_local_evidence(tmp_path):
     data = tmp_path / "evidence.jsonl"
     data.write_text(
-        '{"id":"RAG-LOCAL-1","title":"Test alert","content":"Observed CVE-2026-1234 and CWE-79 in a controlled fixture","source":"local-fixture","validation_status":"fixture-validated"}\\n',
+        '{"id":"RAG-LOCAL-1","title":"Test alert","content":"Observed CVE-2026-1234 and CWE-79 in a controlled fixture","source":"local-fixture","validation_status":"fixture-validated"}\n',
         encoding="utf-8",
     )
     db = tmp_path / "knowledge.db"
@@ -52,7 +52,7 @@ def test_runtime_intelligence_returns_only_local_evidence(tmp_path):
 def test_knowledge_context_api_retrieves_provenance_backed_evidence(tmp_path, monkeypatch):
     data = tmp_path / "evidence.jsonl"
     data.write_text(
-        '{"id":"API-RAG-1","content":"local evidence confirms suspicious PowerShell activity","source":"api-fixture","validation_status":"fixture-validated"}\\n',
+        '{"id":"API-RAG-1","content":"local evidence confirms suspicious PowerShell activity","source":"api-fixture","validation_status":"fixture-validated"}\n',
         encoding="utf-8",
     )
     db = tmp_path / "knowledge.db"
