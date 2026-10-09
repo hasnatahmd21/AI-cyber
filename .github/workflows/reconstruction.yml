@@ -34,11 +34,15 @@ jobs:
           python -m py_compile src/ai_cyber_os/protected_data.py
           python -m py_compile src/ai_cyber_os/rag.py src/ai_cyber_os/runtime_intelligence.py
           python -m py_compile src/ai_cyber_os/threat_intel.py src/ai_cyber_os/network_intel.py src/ai_cyber_os/malware_intel.py src/ai_cyber_os/integration_evaluation.py src/ai_cyber_os/continuous_update.py src/ai_cyber_os/intelligence_hydra.py src/ai_cyber_os/manifest_factory.py
-          python -m py_compile tools/forensic_audit.py
+          python -m py_compile tools/forensic_audit.py tools/forensic_deep_audit.py
           python -m py_compile tools/forensic_inventory.py tools/batch_manifest_factory.py
           python -m py_compile tests/*.py
-      - name: Run forensic inventory
+      - name: Run quick forensic inventory
         run: python tools/forensic_inventory.py --output forensic_inventory.json
+      - name: Generate deep Stage 0 forensic evidence
+        run: |
+          python -m py_compile tools/forensic_deep_audit.py
+          python tools/forensic_deep_audit.py . --json-out /tmp/ai-cyber-stage0-audit.json --markdown-out /tmp/ai-cyber-stage0-audit.md --summary-only
       - name: Install test runner
         run: |
           python -m pip install --disable-pip-version-check -e . pytest
@@ -135,3 +139,15 @@ jobs:
         run: |
           test -s docs/FORENSIC_BASELINE.md
           test -s docs/FORENSIC_BASELINE.json
+
+      - name: Preserve Stage 0 audit evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forensic-stage0-${{ github.sha }}
+          path: |
+            /tmp/ai-cyber-stage0-audit.json
+            /tmp/ai-cyber-stage0-audit.md
+            forensic_inventory.json
+          if-no-files-found: warn
+          retention-days: 30

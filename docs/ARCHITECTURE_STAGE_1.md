@@ -134,6 +134,10 @@ Status meanings: **Observed** means an identifiable code/test contract exists; *
 
 **Stage 1: DOCUMENTED, NOT GREEN.** The observed runtime and subsystem map is recorded, and major target-vs-current gaps are explicit. Stage 1 is not a certification of the advanced architecture. Its final acceptance depends on Stage 0's deeper source-of-truth analysis and on implementing/testing the unestablished contracts above.
 
+## Stage 0 cross-check and clean-up
+
+The companion [Stage 0 forensic audit protocol](FORENSIC_AUDIT_STAGE_0.md) defines the read-only scan and acceptance gates. The deep JSON/Markdown reports are produced by the reconstruction workflow as a commit-specific artifact. This architecture map must be reviewed against that artifact; static reachability and name collisions are evidence leads, not proof of actual runtime execution. Any mismatch between CLI and UI dispatch, legacy symbols and canonical modules, or claimed security behavior remains a gap until a focused integration test proves it.
+
 ## Source anchors
 
 - [Canonical runtime contract](CANONICAL_RUNTIME.md)

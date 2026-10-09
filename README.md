@@ -45,6 +45,10 @@ surface; no live operational capability is claimed merely from passing tests.
 
 No legacy source is considered canonical solely because of its filename.
 
+## Stage 0 forensic audit
+
+The read-only [Stage 0 audit protocol](docs/FORENSIC_AUDIT_STAGE_0.md) describes the per-file inventory. The deep AST report records source line ranges, symbol/call evidence, duplicate names, security-sensitive API signals, markers, and approximate import reachability. The reconstruction workflow preserves commit-specific JSON and Markdown reports as a GitHub Actions artifact. A generated inventory alone is not a GREEN security verdict.
+
 ## Architecture reconstruction status
 
 The [Stage 1 architecture map](docs/ARCHITECTURE_STAGE_1.md) records the observed runtime flow, component contracts, and provisional gap matrix. It does not mark the three AI layers, full artifact-signature trust, complete SSRF containment, isolated attacker deception, or compromise-to-regeneration recovery as implemented without source and negative-test evidence. The report is tied to an exact repair-branch snapshot; this session did not rerun the full CI suite.
