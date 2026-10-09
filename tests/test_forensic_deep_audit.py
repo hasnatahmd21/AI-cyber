@@ -93,6 +93,12 @@ def test_audit_output_serializes_deterministically(tmp_path: Path):
     second = _report(tmp_path)
     assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
 
+    expected = hashlib.sha256()
+    for source in sorted(tmp_path.rglob("*.py"), key=lambda item: item.relative_to(tmp_path).as_posix()):
+        relative = source.relative_to(tmp_path).as_posix()
+        expected.update(relative.encode("utf-8") + b"\0" + source.read_bytes() + b"\0")
+    assert first["summary"]["file_content_manifest_sha256"] == expected.hexdigest()
+
 
 def test_repository_inventory_covers_configs_manifests_and_all_files(tmp_path: Path):
     report = _report(tmp_path)
