@@ -32,7 +32,7 @@ IDENTIFIER_ALIASES: dict[str, tuple[str, ...]] = {
     "attack": ("attack_id", "technique_id", "external_id"),
     "capec": ("capec_id",),
     "d3fend": ("d3fend_id",),
-    "cpe": {"id_fields": ("cpeName", "cpe23Uri", "cpe", "id"), "patterns": (("cpe", r"\bcpe:2\.3:[A-Za-z0-9*._:-]+"),)},
+    "cpe": ("cpe", "cpe23Uri", "cpeName"),
     "suricata_sid": ("sid",),
 }
 
