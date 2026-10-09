@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 from tools import forensic_deep_audit
-from tools.forensic_deep_audit import _repository_inventory, build_report, render_markdown
+from tools.forensic_deep_audit import _git_lfs_pointer_info, _repository_inventory, build_report, render_markdown
 
 
 def _report(tmp_path: Path):
@@ -267,4 +267,40 @@ def test_build_report_reuses_repository_inventory_once(tmp_path: Path, monkeypat
     monkeypatch.setattr(forensic_deep_audit, "_repository_inventory", counted)
     forensic_deep_audit.build_report(tmp_path)
     assert calls == 1
+
+
+def test_git_lfs_pointer_metadata_is_distinct_from_real_payload(tmp_path: Path):
+    path = tmp_path / "enterprise-attack.json"
+    oid = "a" * 64
+    pointer_text = (
+        "version https://git-lfs.github.com/spec/v1\n"
+        f"oid sha256:{oid}\n"
+        "size 123456789\n"
+    )
+    path.write_text(pointer_text, encoding="ascii")
+
+    assert _git_lfs_pointer_info(path, path.stat().st_size) == {
+        "oid_sha256": oid,
+        "declared_content_bytes": 123456789,
+    }
+
+    raw = tmp_path / "real-payload.json"
+    raw.write_text('{"valid":"json"}\n', encoding="utf-8")
+    assert _git_lfs_pointer_info(raw, raw.stat().st_size) is None
+
+    dataset = tmp_path / "datasets" / "raw" / "enterprise-attack.json"
+    dataset.parent.mkdir(parents=True)
+    dataset.write_text(pointer_text, encoding="ascii")
+    record = next(
+        item for item in _repository_inventory(tmp_path)["files"]
+        if item["path"] == "datasets/raw/enterprise-attack.json"
+    )
+    assert record["sha256"] == hashlib.sha256(pointer_text.encode("ascii")).hexdigest()
+    assert record["metadata"] == {
+        "kind": "git-lfs-pointer",
+        "content_hydrated": False,
+        "hash_basis": "pointer_file_bytes",
+        "oid_sha256": oid,
+        "declared_content_bytes": 123456789,
+    }
 
