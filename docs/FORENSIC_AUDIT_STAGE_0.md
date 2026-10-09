@@ -50,6 +50,16 @@ The general verification workflow must run on the current repair-branch commit a
 
 A workflow marked queued or in progress is not a pass. A cancelled run or missing artifact is not accepted as verification evidence. Part 1 remains blocked until a fresh run against the current commit finishes successfully and its result is recorded.
 
+## Part 2 — independent evidence-integrity verification
+
+tools/verify_forensic_evidence.py independently checks the generated audit artifact against the checked-out repository and expected Git commit. It validates report structure, file sizes and hashes, Python AST record coverage, the source-manifest hash, duplicate groups, syntax-status consistency, and safe path handling. This verifies evidence integrity; it does not decide the meaning or severity of each static candidate.
+
+## Part 3 — current-commit findings triage and reconciliation
+
+tools/stage0_findings_review.py generates a deterministic JSON/Markdown triage ledger. It compares each inventory path against the checked-out commit without following symlinks; records all six preserved legacy sources with hashes, byte/line counts, syntax, symbol/call counts, duplicate scopes, side-effect signals, stubs, unused imports, apparent unreachable statements and TODO markers; reconciles the canonical HYDRA source and entry points with static evidence; and flags whether the Stage 1 architecture map names the current audited commit.
+
+The ledger marks evidence-integrity or required-source gaps as BLOCKED and unresolved semantic/static candidates as REVIEW_REQUIRED. It does not silently close findings based on counts and never emits a product-security GREEN verdict. The workflow retains the JSON/Markdown ledger as artifacts and appends it to the Actions job summary. Generating the ledger makes manual review reproducible; it does not prove all findings have been resolved.
+
 ## Stage 0 completion gates
 
 Stage 0 is eligible for acceptance only after:
