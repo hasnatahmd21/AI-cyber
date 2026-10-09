@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 from tools.forensic_deep_audit import _repository_inventory, build_report, render_markdown
@@ -177,4 +178,34 @@ def test_raw_dataset_hashing_streams_without_read_bytes(tmp_path: Path, monkeypa
     assert record["category"] == "raw_dataset_artifact"
     assert record["bytes"] == len(payload)
     assert record["sha256"] == hashlib.sha256(payload).hexdigest()
+
+def test_audit_does_not_follow_symlinked_files_or_directories(tmp_path: Path):
+    root = tmp_path / "repo"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.py"
+    secret.write_text("SECRET_SENTINEL = 'not repository content'\n", encoding="utf-8")
+
+    file_link = root / "external.py"
+    file_link.symlink_to(secret)
+    directory_link = root / "external_dir"
+    directory_link.symlink_to(outside, target_is_directory=True)
+
+    inventory = _repository_inventory(root)
+    indexed = {item["path"]: item for item in inventory["files"]}
+    assert indexed["external.py"]["category"] == "symlink"
+    assert indexed["external_dir"]["category"] == "symlink"
+    assert indexed["external.py"]["metadata"] == {
+        "kind": "symlink", "hash_basis": "link_target_text"
+    }
+    expected_hash = hashlib.sha256(
+        os.readlink(file_link).encode("utf-8", errors="surrogateescape")
+    ).hexdigest()
+    assert indexed["external.py"]["sha256"] == expected_hash
+    assert "SECRET_SENTINEL" not in json.dumps(inventory)
+
+    report = build_report(root)
+    assert not any(item["path"] == "external.py" for item in report["files"])
+    assert "external_dir/secret.py" not in [item["path"] for item in report["repository_inventory"]["files"]]
 
