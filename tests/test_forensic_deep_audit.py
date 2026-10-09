@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 
+from tools import forensic_deep_audit
 from tools.forensic_deep_audit import _repository_inventory, build_report, render_markdown
 
 
@@ -244,4 +245,20 @@ def test_manifest_metadata_is_bounded_and_does_not_copy_nested_values(tmp_path: 
     serialized = json.dumps(inventory)
     assert "SENSITIVE_VALUE_MUST_NOT_APPEAR" not in serialized
     assert "ANOTHER_SENSITIVE_VALUE" not in serialized
+
+
+def test_build_report_reuses_repository_inventory_once(tmp_path: Path, monkeypatch):
+    source = tmp_path / "sample.py"
+    source.write_text("def main():\n    return None\n", encoding="utf-8")
+    original = forensic_deep_audit._repository_inventory
+    calls = 0
+
+    def counted(root: Path):
+        nonlocal calls
+        calls += 1
+        return original(root)
+
+    monkeypatch.setattr(forensic_deep_audit, "_repository_inventory", counted)
+    forensic_deep_audit.build_report(tmp_path)
+    assert calls == 1
 
