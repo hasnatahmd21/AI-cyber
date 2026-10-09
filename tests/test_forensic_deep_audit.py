@@ -29,7 +29,7 @@ def _report(tmp_path: Path):
         "def pending():\n"
         "    pass\n"
         "\n"
-        "def launch():"\n"
+        "def launch():\n"
         "    return subprocess.run(['echo', 'ok'], shell=True)\n"
         "\n"
         "def launch():\n"
