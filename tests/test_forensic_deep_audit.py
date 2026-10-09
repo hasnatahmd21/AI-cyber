@@ -335,10 +335,11 @@ def test_security_review_flags_sensitive_literals_without_leaking_values(tmp_pat
 def test_security_review_ignores_environment_references_and_placeholders(tmp_path: Path):
     from tools.forensic_deep_audit import _security_review_findings
 
+    env_placeholder = chr(36) + "{ACCESS_TOKEN}"
     source = (
         'API_KEY = os.environ["API_KEY"]\n'
         'password = "your_password_here"\n'
-        'access_token = "$" + "{ACCESS_TOKEN}"\n'
+        + "access_token = " + repr(env_placeholder) + "\n"
     )
     findings = _security_review_findings("config.py", source)
     assert not any(item["rule_id"] == "possible_hardcoded_credential" for item in findings)
