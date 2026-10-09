@@ -42,6 +42,56 @@ SENSITIVE_IMPORTS = {
     "socket", "requests", "urllib", "httpx", "aiohttp", "websocket",
     "websockets", "subprocess", "pickle", "dill", "cryptography", "ssl",
 }
+
+SECURITY_SCAN_EXTENSIONS = {
+    ".py", ".pyi", ".toml", ".ini", ".cfg", ".conf", ".properties",
+    ".yaml", ".yml", ".json", ".sh", ".bat", ".ps1", ".sql",
+}
+SENSITIVE_LITERAL_RE = re.compile(
+    r"""(?ix)["']?(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|secret[_-]?(?:key|token)|secret_access_key|access_key_id|password|passwd|private[_-]?key)["']?\s*(?:=|:)\s*(?P<quote>["'])(?P<value>[^"'\r\n]{8,})(?P=quote)"""
+)
+PRIVATE_KEY_MARKER_RE = re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |DSA )?PRIVATE KEY-----")
+DISABLED_TLS_RE = re.compile(r"(?i)\bverify\s*=\s*false\b|\bCERT_NONE\b|_create_unverified_context\s*\(")
+WEAK_CRYPTO_RE = re.compile(r"""(?i)\bhashlib\.(?:md5|sha1)\s*\(|\bhashlib\.new\s*\(\s*["'](?:md5|sha1)["']""")
+PLACEHOLDER_SECRET_RE = re.compile(
+    r"(?i)^(?:your[-_ ]|<|\$[A-Z_][A-Z0-9_]*$|os\.environ|environ|none$|null$|example$|dummy$|test$|redacted$|change.?me$|replace.?me$|placeholder$|x{8,}$)"
+)
+
+
+def _security_review_findings(path: str, source_text: str) -> list[dict[str, Any]]:
+    """Collect security review leads without serializing matched secret values."""
+    findings: list[dict[str, Any]] = []
+    for line_number, line in enumerate(source_text.splitlines(), 1):
+        literal = SENSITIVE_LITERAL_RE.search(line)
+        if literal:
+            value = literal.group("value").strip()
+            if value and not PLACEHOLDER_SECRET_RE.search(value):
+                findings.append({
+                    "rule_id": "possible_hardcoded_credential",
+                    "severity": "high", "confidence": "review_required",
+                    "path": path, "line": line_number, "value_redacted": True,
+                })
+        if PRIVATE_KEY_MARKER_RE.search(line):
+            findings.append({
+                "rule_id": "private_key_material_in_source",
+                "severity": "critical", "confidence": "high",
+                "path": path, "line": line_number, "value_redacted": True,
+            })
+        if DISABLED_TLS_RE.search(line):
+            findings.append({
+                "rule_id": "disabled_tls_verification_indicator",
+                "severity": "high", "confidence": "review_required",
+                "path": path, "line": line_number, "value_redacted": True,
+            })
+        if WEAK_CRYPTO_RE.search(line):
+            findings.append({
+                "rule_id": "weak_hash_algorithm_indicator",
+                "severity": "medium", "confidence": "review_required",
+                "path": path, "line": line_number, "value_redacted": True,
+            })
+    return findings
+
+
 BUILTINS_AND_COMMON_ERRORS = set(
     "print len str int float bool list dict set tuple range enumerate zip sorted sum min max any all "
     "isinstance issubclass super property staticmethod classmethod repr type id open getattr setattr "
@@ -696,6 +746,32 @@ def build_report(root: Path) -> dict[str, Any]:
     root = root.resolve()
     repository_inventory = _repository_inventory(root)
     inventory_by_path = {item["path"]: item for item in repository_inventory["files"]}
+    security_review_findings: list[dict[str, Any]] = []
+    security_scan_files = 0
+    excluded_raw_dataset_files = 0
+    for item in repository_inventory["files"]:
+        rel = item["path"]
+        path = root / rel
+        if item["category"] == "symlink":
+            continue
+        candidate = path.suffix.lower() in SECURITY_SCAN_EXTENSIONS or path.name == ".env" or path.name.startswith(".env.")
+        if not candidate:
+            continue
+        if item["category"] == "raw_dataset_artifact":
+            excluded_raw_dataset_files += 1
+            continue
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        security_scan_files += 1
+        security_review_findings.extend(_security_review_findings(rel, text))
+    security_review_counts: dict[str, int] = defaultdict(int)
+    for finding in security_review_findings:
+        security_review_counts[finding["rule_id"]] += 1
+
     paths = [
         root / item["path"]
         for item in repository_inventory["files"]
@@ -911,6 +987,10 @@ def build_report(root: Path) -> dict[str, Any]:
         record["static_runtime_reachable"] = path in reachable
 
     summary = {
+        "security_review_findings_count": len(security_review_findings),
+        "security_review_rule_counts": dict(sorted(security_review_counts.items())),
+        "security_review_scanned_text_file_count": security_scan_files,
+        "security_review_excluded_raw_dataset_file_count": excluded_raw_dataset_files,
         "python_file_count": len(paths),
         "syntax_error_file_count": sum(not x["syntax_ok"] for x in records.values()),
         "total_symbols": sum(len(x["symbols"]) for x in records.values()),
@@ -940,11 +1020,24 @@ def build_report(root: Path) -> dict[str, Any]:
             for p, reasons in sorted(entry_files.items())
         },
         "summary": summary,
+        "security_review": {
+            "findings": security_review_findings,
+            "rule_counts": dict(sorted(security_review_counts.items())),
+            "scanned_text_file_count": security_scan_files,
+            "excluded_raw_dataset_file_count": excluded_raw_dataset_files,
+            "secret_values_included": False,
+            "limitations": [
+                "Matches are source-pattern review candidates, not confirmed vulnerabilities.",
+                "Raw dataset artifacts are excluded from this code/configuration scan.",
+                "Environment indirection and dynamically assembled values cannot be fully resolved statically.",
+            ],
+        },
         "repository_inventory": repository_inventory,
         "limitations": [
             "Static import reachability is approximate; dynamic imports, reflection, callbacks, decorators, registries, environment-driven dispatch and plugin loading can alter runtime reachability.",
             "Call edges resolve statically visible same-file names and self/cls methods only. Cross-file calls through imported objects and dynamic dispatch are not claimed complete.",
             "A security-sensitive signal is a source-pattern review lead, not a confirmed vulnerability.",
+            "Credential/TLS/weak-hash indicators are source-pattern review candidates; matched values are redacted and raw datasets are excluded from that scan.",
             "A function with no static callsite is an investigation candidate, not proof that it is unreachable.",
             "AST inspection does not execute tests or prove external integrations, OS/network isolation, cryptographic trust, deception, or recovery behavior.",
             "Comment markers are searched as text; absence of TODO/FIXME/etc. is not proof of completeness.",
@@ -984,6 +1077,7 @@ def render_markdown(report: dict[str, Any]) -> str:
         ("cross_file_duplicate_symbol_keys", "Cross-file duplicate symbol-name keys"),
         ("files_with_duplicate_scoped_symbols", "Files with same-scope duplicate definitions"),
         ("side_effect_signal_count", "Security-sensitive static signals"),
+        ("security_review_findings_count", "Credential/TLS/weak-hash review indicators"),
         ("todo_marker_count", "TODO/FIXME/etc. markers"),
         ("broad_exception_count", "Broad exception handlers"),
         ("unused_import_candidate_count", "Unused import candidates"),
@@ -1126,7 +1220,26 @@ def render_markdown(report: dict[str, Any]) -> str:
             for candidate in item["no_static_callsite_candidates"]:
                 out.append(f"  - {candidate['qualified_name']} (L{candidate['line_start']}-L{candidate['line_end']})")
         out.append("")
-    out += ["## Cross-file duplicate symbol names", "",
+    security = report.get("security_review", {})
+    out += [
+        "",
+        "## Credential and security-configuration indicators",
+        "",
+        f"- Text/code/config files scanned: {security.get('scanned_text_file_count', 0)}",
+        f"- Raw dataset artifacts excluded from this scan: {security.get('excluded_raw_dataset_file_count', 0)}",
+        f"- Candidate findings: {len(security.get('findings', []))}",
+        "- Matched credential/private-key values are never copied into this report.",
+        "",
+    ]
+    if security.get("findings"):
+        out += ["| Path | Line | Rule | Severity | Confidence |", "|---|---:|---|---|---|"]
+        out += [
+            f"| {item['path']} | {item['line']} | {item['rule_id']} | {item['severity']} | {item['confidence']} |"
+            for item in security["findings"]
+        ]
+    else:
+        out.append("No configured credential/TLS/weak-hash indicators were found. This is not proof of absence of secrets or insecure configuration.")
+    out += ["", "## Cross-file duplicate symbol names", "",
             "A name collision is not necessarily a semantic duplicate. Do not merge or delete code based on name alone.", ""]
     if report["cross_file_duplicate_symbols"]:
         for key, entries in report["cross_file_duplicate_symbols"].items():
