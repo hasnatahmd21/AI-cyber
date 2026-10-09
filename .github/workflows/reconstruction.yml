@@ -38,7 +38,7 @@ jobs:
           python -m py_compile tools/forensic_inventory.py tools/batch_manifest_factory.py
           python -m py_compile tests/*.py
       - name: Run quick forensic inventory
-        run: python tools/forensic_inventory.py --output forensic_inventory.json
+        run: python tools/forensic_inventory.py --output /tmp/forensic_inventory.json
       - name: Generate deep Stage 0 forensic evidence
         run: |
           python -m py_compile tools/forensic_deep_audit.py
@@ -148,6 +148,6 @@ jobs:
           path: |
             /tmp/ai-cyber-stage0-audit.json
             /tmp/ai-cyber-stage0-audit.md
-            forensic_inventory.json
+            /tmp/forensic_inventory.json
           if-no-files-found: warn
           retention-days: 30
