@@ -218,3 +218,30 @@ def test_audit_does_not_follow_symlinked_files_or_directories(tmp_path: Path):
     assert "secret.module" not in report["entrypoints"]
     assert "external_dir/secret.py" not in [item["path"] for item in report["repository_inventory"]["files"]]
 
+
+def test_manifest_metadata_is_bounded_and_does_not_copy_nested_values(tmp_path: Path):
+    manifest = tmp_path / "datasets" / "manifests" / "fixture.json"
+    manifest.parent.mkdir(parents=True)
+    payload = {
+        "dataset": "fixture",
+        "public_entrypoints": {
+            "primary": "SENSITIVE_VALUE_MUST_NOT_APPEAR",
+            "private_key_reference": "ANOTHER_SENSITIVE_VALUE",
+        },
+        **{f"extra_key_{number:03d}": number for number in range(210)},
+    }
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    inventory = _repository_inventory(tmp_path)
+    record = next(item for item in inventory["files"] if item["path"] == "datasets/manifests/fixture.json")
+    fields = record["metadata"]["selected_fields"]
+
+    assert record["metadata"]["top_level_key_count"] == len(payload)
+    assert len(record["metadata"]["top_level_keys"]) == 200
+    assert fields["public_entrypoints"] == {
+        "kind": "object", "length": 2, "keys": ["primary", "private_key_reference"]
+    }
+    serialized = json.dumps(inventory)
+    assert "SENSITIVE_VALUE_MUST_NOT_APPEAR" not in serialized
+    assert "ANOTHER_SENSITIVE_VALUE" not in serialized
+
