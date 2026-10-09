@@ -316,7 +316,10 @@ def render_markdown(report: dict[str, Any]) -> str:
     ]
     if report["syntax_errors"]:
         lines += ["| File | Line | Column | Error |", "|---|---:|---:|---|"]
-        lines.extend(f"| {x['path'].replace('|', '\\|')} | {x.get('line') or ''} | {x.get('column') or ''} | {str(x.get('message', '')).replace('|', '\\|')} |" for x in report["syntax_errors"])
+        for x in report["syntax_errors"]:
+            escaped_path = x["path"].replace("|", "\\|")
+            escaped_message = str(x.get("message", "")).replace("|", "\\|")
+            lines.append(f"| {escaped_path} | {x.get('line') or ''} | {x.get('column') or ''} | {escaped_message} |")
     else:
         lines.append("No Python syntax errors were observed in the tracked Python files.")
     lines.extend(["", "## Security indicators", ""])
