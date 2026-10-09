@@ -53,7 +53,7 @@ def emit(
             "status": str(status),
             "source": str(source),
             "evidence": evidence,
-            "details": details or {},
+            "details": dict(details) if details is not None else {},
         }
         _NEXT_ID += 1
         _EVENTS.append(event)
