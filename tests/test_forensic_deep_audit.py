@@ -304,3 +304,52 @@ def test_git_lfs_pointer_metadata_is_distinct_from_real_payload(tmp_path: Path):
         "declared_content_bytes": 123456789,
     }
 
+
+
+def test_security_review_flags_sensitive_literals_without_leaking_values(tmp_path: Path):
+    secret_value = "forensic-test-credential-DO-NOT-LEAK"
+    private_marker = "-----BEGIN " + "PRIVATE KEY-----"
+    private_name = "PRIVATE_" + "KEY"
+    body = (
+        "API_KEY = " + repr(secret_value) + "\n"
+        + "requests.get(url, verify=False)\n"
+        + "digest = hashlib.md5(payload).hexdigest()\n"
+        + private_name + " = " + repr(private_marker) + "\n"
+    )
+    (tmp_path / "sensitive.py").write_text(body, encoding="utf-8")
+    report = build_report(tmp_path)
+    findings = report["security_review"]["findings"]
+    rules = {item["rule_id"] for item in findings}
+    assert {
+        "possible_hardcoded_credential",
+        "disabled_tls_verification_indicator",
+        "weak_hash_algorithm_indicator",
+        "private_key_material_in_source",
+    } <= rules
+    serialized = json.dumps(report)
+    assert secret_value not in serialized
+    assert report["security_review"]["secret_values_included"] is False
+    assert report["summary"]["security_review_findings_count"] == len(findings)
+
+
+def test_security_review_ignores_environment_references_and_placeholders(tmp_path: Path):
+    from tools.forensic_deep_audit import _security_review_findings
+
+    source = (
+        'API_KEY = os.environ["API_KEY"]\n'
+        'password = "your_password_here"\n'
+        'access_token = "$" + "{ACCESS_TOKEN}"\n'
+    )
+    findings = _security_review_findings("config.py", source)
+    assert not any(item["rule_id"] == "possible_hardcoded_credential" for item in findings)
+
+
+def test_security_review_excludes_raw_dataset_payloads(tmp_path: Path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/app.py").write_text("def main():\n    return None\n", encoding="utf-8")
+    raw = tmp_path / "datasets" / "raw" / "sample.json"
+    raw.parent.mkdir(parents=True)
+    raw.write_text('{"api_key": "a-real-looking-secret-value"}\n', encoding="utf-8")
+    report = build_report(tmp_path)
+    assert report["summary"]["security_review_excluded_raw_dataset_file_count"] == 1
+    assert not any(item["path"] == "datasets/raw/sample.json" for item in report["security_review"]["findings"])
