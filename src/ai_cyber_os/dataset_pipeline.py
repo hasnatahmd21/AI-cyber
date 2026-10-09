@@ -36,15 +36,46 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
     data = json.loads(p.read_text(encoding="utf-8"))
     if not isinstance(data, dict):
         raise ValueError("manifest must be a JSON object")
-    if isinstance(data.get("artifacts"), list):
-        if not data["artifacts"]:
-            raise ValueError("manifest artifacts must not be empty")
+    if "artifacts" in data:
+        if not isinstance(data["artifacts"], list) or not data["artifacts"]:
+            raise ValueError("manifest artifacts must be a non-empty list")
+        for index, item in enumerate(data["artifacts"]):
+            if not isinstance(item, dict):
+                raise ValueError(f"manifest artifact {index} must be an object")
+            if not str(item.get("path", "")).strip():
+                raise ValueError(f"manifest artifact {index} is missing path")
+            if not str(item.get("sha256", "")).strip():
+                raise ValueError(f"manifest artifact {index} is missing sha256")
+            digest = str(item["sha256"]).strip().lower()
+            if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+                raise ValueError(f"manifest artifact {index} has invalid SHA-256")
+            if "record_count" not in item:
+                raise ValueError(f"manifest artifact {index} is missing record_count")
+            try:
+                count = int(item["record_count"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"manifest artifact {index} record_count must be an integer") from exc
+            if count < 0:
+                raise ValueError(f"manifest artifact {index} record_count must be non-negative")
         return data
     missing = sorted(MANIFEST_REQUIRED - set(data))
     if missing:
         raise ValueError(f"manifest missing required fields: {', '.join(missing)}")
     if not isinstance(data["schema"], (dict, list, str)):
         raise ValueError("manifest schema must be an object, list, or string")
+    digest = str(data["sha256"]).strip().lower()
+    if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
+        raise ValueError("manifest sha256 must be a 64-character hexadecimal SHA-256")
+    try:
+        record_count = int(data["record_count"])
+    except (TypeError, ValueError) as exc:
+        raise ValueError("manifest record_count must be an integer") from exc
+    if record_count < 0:
+        raise ValueError("manifest record_count must be non-negative")
+    if not str(data["dataset"]).strip():
+        raise ValueError("manifest dataset must not be empty")
+    if not str(data["local_path"]).strip():
+        raise ValueError("manifest local_path must not be empty")
     return data
 
 
@@ -79,7 +110,7 @@ def _artifact_inspection(
             raise FileNotFoundError(local)
 
         actual_sha = sha256_file(local)
-        expected_sha = str(item.get("sha256", "")).lower().strip()
+        expected_sha = str(item["sha256"]).lower().strip()
 
         count = sum(
             1
@@ -99,18 +130,14 @@ def _artifact_inspection(
             )
         )
 
-        declared = int(item.get("record_count", -1))
+        declared = int(item["record_count"])
         artifacts.append(
             {
                 "path": str(local),
                 "sha256": actual_sha,
-                "sha256_matches": (
-                    actual_sha == expected_sha if expected_sha else True
-                ),
+                "sha256_matches": actual_sha == expected_sha,
                 "records": count,
-                "record_count_matches": (
-                    count == declared if declared >= 0 else True
-                ),
+                "record_count_matches": count == declared,
             }
         )
 
@@ -163,18 +190,11 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
         "version": manifest["version"],
         "path": str(local),
         "sha256": actual_sha,
-        "sha256_matches": (
-            actual_sha == expected_sha if expected_sha else True
-        ),
+        "sha256_matches": actual_sha == expected_sha,
         "records": records,
-        "record_count_matches": (
-            records == declared if declared >= 0 else True
-        ),
+        "record_count_matches": records == declared,
         "manifest_validation_status": manifest["validation_status"],
-        "ready": (
-            (actual_sha == expected_sha if expected_sha else True)
-            and (records == declared if declared >= 0 else True)
-        ),
+        "ready": actual_sha == expected_sha and records == declared,
     }
 
 
