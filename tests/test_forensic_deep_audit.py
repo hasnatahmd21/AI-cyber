@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
-from tools.forensic_deep_audit import build_report, render_markdown
+from tools.forensic_deep_audit import _repository_inventory, build_report, render_markdown
 
 
 def _report(tmp_path: Path):
@@ -149,3 +150,25 @@ def test_audit_marks_unresolved_external_dependency_without_failing_inventory(tm
         and x["module"] == "unknown_dependency"
         for x in entry["import_resolution_findings"]
     )
+
+def test_raw_dataset_hashing_streams_without_read_bytes(tmp_path: Path, monkeypatch):
+    raw = tmp_path / "datasets" / "raw" / "large-sample.jsonl"
+    raw.parent.mkdir(parents=True)
+    payload = b'{"record":"streamed"}\n' * 300_000
+    raw.write_bytes(payload)
+
+    original_read_bytes = Path.read_bytes
+
+    def guarded_read_bytes(path: Path) -> bytes:
+        if path == raw:
+            raise AssertionError("raw dataset contents must be hashed incrementally")
+        return original_read_bytes(path)
+
+    monkeypatch.setattr(Path, "read_bytes", guarded_read_bytes)
+    inventory = _repository_inventory(tmp_path)
+    record = next(item for item in inventory["files"] if item["path"] == "datasets/raw/large-sample.jsonl")
+
+    assert record["category"] == "raw_dataset_artifact"
+    assert record["bytes"] == len(payload)
+    assert record["sha256"] == hashlib.sha256(payload).hexdigest()
+
