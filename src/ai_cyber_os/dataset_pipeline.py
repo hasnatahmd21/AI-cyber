@@ -42,19 +42,19 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         for index, item in enumerate(data["artifacts"]):
             if not isinstance(item, dict):
                 raise ValueError(f"manifest artifact {index} must be an object")
-            if not str(item.get("path", "")).strip():
-                raise ValueError(f"manifest artifact {index} is missing path")
-            if not str(item.get("sha256", "")).strip():
-                raise ValueError(f"manifest artifact {index} is missing sha256")
-            digest = str(item["sha256"]).strip().lower()
+            if not isinstance(item.get("path"), str) or not item["path"].strip():
+                raise ValueError(f"manifest artifact {index} path must be a non-empty string")
+            if not isinstance(item.get("sha256"), str) or not item["sha256"].strip():
+                raise ValueError(f"manifest artifact {index} sha256 must be a non-empty string")
+            digest = item["sha256"].strip().lower()
             if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
                 raise ValueError(f"manifest artifact {index} has invalid SHA-256")
             if "record_count" not in item:
                 raise ValueError(f"manifest artifact {index} is missing record_count")
-            try:
-                count = int(item["record_count"])
-            except (TypeError, ValueError) as exc:
-                raise ValueError(f"manifest artifact {index} record_count must be an integer") from exc
+            raw_count = item["record_count"]
+            if isinstance(raw_count, bool) or not isinstance(raw_count, int):
+                raise ValueError(f"manifest artifact {index} record_count must be an integer")
+            count = raw_count
             if count < 0:
                 raise ValueError(f"manifest artifact {index} record_count must be non-negative")
         return data
@@ -63,19 +63,25 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
         raise ValueError(f"manifest missing required fields: {', '.join(missing)}")
     if not isinstance(data["schema"], (dict, list, str)):
         raise ValueError("manifest schema must be an object, list, or string")
-    digest = str(data["sha256"]).strip().lower()
+    if not isinstance(data["sha256"], str):
+        raise ValueError("manifest sha256 must be a string")
+    digest = data["sha256"].strip().lower()
     if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
         raise ValueError("manifest sha256 must be a 64-character hexadecimal SHA-256")
-    try:
-        record_count = int(data["record_count"])
-    except (TypeError, ValueError) as exc:
-        raise ValueError("manifest record_count must be an integer") from exc
+    raw_record_count = data["record_count"]
+    if isinstance(raw_record_count, bool) or not isinstance(raw_record_count, int):
+        raise ValueError("manifest record_count must be an integer")
+    record_count = raw_record_count
     if record_count < 0:
         raise ValueError("manifest record_count must be non-negative")
     if not str(data["dataset"]).strip():
         raise ValueError("manifest dataset must not be empty")
-    if not str(data["local_path"]).strip():
-        raise ValueError("manifest local_path must not be empty")
+    if not isinstance(data["local_path"], str) or not data["local_path"].strip():
+        raise ValueError("manifest local_path must be a non-empty string")
+    for field in ("dataset", "version", "source", "source_uri", "license",
+                  "ingestion_status", "validation_status"):
+        if not isinstance(data[field], str):
+            raise ValueError(f"manifest {field} must be a string")
     return data
 
 
@@ -110,7 +116,7 @@ def _artifact_inspection(
             raise FileNotFoundError(local)
 
         actual_sha = sha256_file(local)
-        expected_sha = str(item["sha256"]).lower().strip()
+        expected_sha = item["sha256"].lower().strip()
 
         count = sum(
             1
@@ -170,7 +176,7 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
         raise FileNotFoundError(local)
 
     actual_sha = sha256_file(local)
-    expected_sha = str(manifest["sha256"]).lower().strip()
+    expected_sha = manifest["sha256"].lower().strip()
     records = sum(
         1
         for _ in iter_records(
@@ -222,7 +228,17 @@ def ingest_manifest(
             if not artifact["record_count_matches"]:
                 raise ValueError("dataset record count does not match manifest")
 
-    if not inspection["ready"]:
+    # Checksum enforcement is optional only when explicitly requested; counts
+    # and path containment remain mandatory in either mode.
+    integrity_ok = (
+        all(a["record_count_matches"] and
+            (a["sha256_matches"] or not require_checksum)
+            for a in inspection["artifacts"])
+        if "artifacts" in manifest
+        else inspection["record_count_matches"] and
+             (inspection["sha256_matches"] or not require_checksum)
+    )
+    if not integrity_ok:
         raise ValueError("dataset manifest integrity/count validation failed")
 
     if "artifacts" in manifest:
