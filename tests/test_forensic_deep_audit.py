@@ -104,3 +104,17 @@ def test_repository_inventory_reports_duplicate_content_by_hash(tmp_path: Path):
     report = build_report(tmp_path)
     groups = report["repository_inventory"]["duplicate_content_groups"]
     assert any(set(g["paths"]) >= {"copy-one.txt", "copy-two.txt"} for g in groups)
+
+
+def test_audit_prunes_git_and_virtual_environment_directories(tmp_path: Path):
+    _report(tmp_path)
+    git_dir = tmp_path / ".git"
+    venv_dir = tmp_path / ".venv" / "lib"
+    git_dir.mkdir()
+    venv_dir.mkdir(parents=True)
+    (git_dir / "internal.py").write_text("def should_not_be_scanned(): pass\n", encoding="utf-8")
+    (venv_dir / "installed.py").write_text("def should_not_be_scanned(): pass\n", encoding="utf-8")
+    report = build_report(tmp_path)
+    all_paths = [x["path"] for x in report["repository_inventory"]["files"]]
+    python_paths = [x["path"] for x in report["files"]]
+    assert not any(path.startswith((".git/", ".venv/")) for path in all_paths + python_paths)

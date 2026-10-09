@@ -236,13 +236,23 @@ def _module_name(path: Path, root: Path) -> str | None:
     return ".".join(parts)
 
 
+def _walk_repository(root: Path) -> tuple[list[Path], list[str]]:
+    """Walk the repo while pruning ignored directories before descending."""
+    files: list[Path] = []
+    directories: set[str] = set()
+    for current, dirnames, filenames in os.walk(root):
+        dirnames[:] = sorted(name for name in dirnames if name not in SKIP_DIRS)
+        current_path = Path(current)
+        for dirname in dirnames:
+            directories.add((current_path / dirname).relative_to(root).as_posix())
+        for filename in filenames:
+            files.append(current_path / filename)
+    files.sort(key=lambda p: p.relative_to(root).as_posix())
+    return files, sorted(directories)
+
+
 def _python_files(root: Path) -> list[Path]:
-    files = []
-    for path in root.rglob("*.py"):
-        if any(part in SKIP_DIRS for part in path.relative_to(root).parts):
-            continue
-        files.append(path)
-    return sorted(files, key=lambda p: p.relative_to(root).as_posix())
+    return [path for path in _walk_repository(root)[0] if path.suffix.lower() == ".py"]
 
 
 def _resolve_imports(module: str, package_file: bool, item: dict[str, Any], modules: dict[str, str]) -> set[str]:
@@ -287,7 +297,8 @@ def _entrypoint_modules(root: Path) -> dict[str, list[str]]:
 
 def _repository_inventory(root: Path) -> dict[str, Any]:
     """Inventory every repository file/directory without dumping dataset contents."""
-    directories: set[str] = set()
+    files_on_disk, directory_names = _walk_repository(root)
+    directories = set(directory_names)
     records: list[dict[str, Any]] = []
     hashes: dict[str, list[str]] = defaultdict(list)
     counts: dict[str, int] = defaultdict(int)
@@ -298,18 +309,7 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
         "package_configuration", "ci_configuration", "ci_workflow",
         "dataset_manifest", "evaluation_fixture", "configuration_or_manifest",
     }
-    skip_names = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "node_modules", "build", "dist", "site-packages"}
-
-    for folder in root.rglob("*"):
-        rel_parts = folder.relative_to(root).parts
-        if any(part in skip_names for part in rel_parts):
-            continue
-        if folder.is_dir():
-            directories.add(folder.relative_to(root).as_posix())
-    paths = [
-        p for p in root.rglob("*")
-        if p.is_file() and not any(part in skip_names for part in p.relative_to(root).parts)
-    ]
+    paths = files_on_disk
     for path in sorted(paths, key=lambda p: p.relative_to(root).as_posix()):
         rel = path.relative_to(root).as_posix()
         raw = path.read_bytes()
@@ -444,7 +444,7 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
 def build_report(root: Path) -> dict[str, Any]:
     root = root.resolve()
     repository_inventory = _repository_inventory(root)
-    paths = _python_files(root)
+    paths = [root / item["path"] for item in repository_inventory["files"] if Path(item["path"]).suffix.lower() == ".py"]
     records: dict[str, dict[str, Any]] = {}
     module_index: dict[str, str] = {}
     manifest_hasher = hashlib.sha256()
