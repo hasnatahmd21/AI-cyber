@@ -44,7 +44,7 @@ jobs:
       - name: Run Stage 0 forensic tests
         run: python -m pytest -q tests/test_forensic_deep_audit.py
 
-      - name: Validate evidence identity and structure
+      - name: Validate evidence identity, structure, and legacy coverage
         if: always()
         run: |
           python - <<'PY'
@@ -62,7 +62,109 @@ jobs:
           assert isinstance(report.get("files"), list) and report["files"]
           assert isinstance(report.get("repository_inventory", {}).get("files"), list)
           assert report.get("summary", {}).get("file_content_manifest_sha256")
+
+          expected_legacy = {
+              "Assrf next .py",
+              "HYDRA_FINAL_CLIENT_HANDOVER_FIXED.py",
+              "HYDRA_MASTER_RECONSTRUCTED_v2.py",
+              "HYDRA_patched-3.py",
+              "IT_tech__MERGED_ALL_FIXES_APPLIED.py",
+              "New tech .py",
+          }
+          present = set(report["summary"].get("legacy_forensic_files_present", []))
+          assert present == expected_legacy, {
+              "expected": sorted(expected_legacy), "present": sorted(present)
+          }
+          records = {item["path"]: item for item in report["files"]}
+          required_fields = {
+              "sha256", "syntax_ok", "syntax_error", "symbols", "imports", "calls",
+              "main_guards", "side_effect_signals", "unused_import_candidates",
+              "stub_candidates", "unreachable_statement_candidates", "todo_markers",
+          }
+          for name in sorted(expected_legacy):
+              assert name in records, f"Missing AST record for legacy source: {name}"
+              record = records[name]
+              assert record.get("classification") == "legacy_forensic_candidate"
+              assert len(record.get("sha256", "")) == 64
+              assert required_fields <= set(record), {
+                  "file": name, "missing_fields": sorted(required_fields - set(record))
+              }
+
+          core = records.get("src/ai_cyber_os/hydra.py")
+          assert core is not None, "Canonical HYDRA source absent from forensic AST inventory"
           print(json.dumps(report["summary"], indent=2, sort_keys=True))
+          print("Legacy sources individually catalogued:", len(expected_legacy))
+          PY
+
+      - name: Publish concise forensic findings
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          report_path = Path("/tmp/ai-cyber-stage0-audit.json")
+          summary_path = Path(os.environ["GITHUB_STEP_SUMMARY"])
+          if not report_path.is_file():
+              summary_path.write_text(
+                  "# Stage 0 Forensic Audit\n\n**BLOCKED:** no JSON evidence was generated.\n",
+                  encoding="utf-8",
+              )
+              raise SystemExit(0)
+
+          report = json.loads(report_path.read_text(encoding="utf-8"))
+          summary = report["summary"]
+          rows = [
+              "# Stage 0 Forensic Audit",
+              "",
+              f"- Commit: \`{report.get('commit_sha') or 'missing'}\`",
+              f"- Repository files: {summary.get('repository_file_count')}",
+              f"- Python files: {summary.get('python_file_count')}",
+              f"- Syntax-error files: {summary.get('syntax_error_file_count')}",
+              f"- Symbols / callsites: {summary.get('total_symbols')} / {summary.get('total_callsites')}",
+              f"- Same-scope duplicate-definition files: {summary.get('files_with_duplicate_scoped_symbols')}",
+              f"- Cross-file duplicate-name keys: {summary.get('cross_file_duplicate_symbol_keys')}",
+              f"- Security-sensitive static signals (review candidates): {summary.get('side_effect_signal_count')}",
+              f"- TODO/FIXME/etc. markers: {summary.get('todo_marker_count')}",
+              f"- Unused-import candidates: {summary.get('unused_import_candidate_count')}",
+              f"- Placeholder/stub candidates: {summary.get('stub_candidate_count')}",
+              f"- Import-resolution candidates: {summary.get('import_resolution_finding_count')}",
+              "",
+              "## Legacy source inventory",
+              "",
+              "| Source | SHA-256 | Syntax | Symbols | Calls | Risk signals |",
+              "|---|---|---:|---:|---:|---:|",
+          ]
+          records = {item["path"]: item for item in report.get("files", [])}
+          for name in summary.get("legacy_forensic_files_present", []):
+              item = records.get(name, {})
+              rows.append(
+                  f"| \`{name}\` | \`{item.get('sha256', 'MISSING')}\` | "
+                  f"{'OK' if item.get('syntax_ok') else 'ERROR/UNKNOWN'} | "
+                  f"{len(item.get('symbols', []))} | {len(item.get('calls', []))} | "
+                  f"{len(item.get('side_effect_signals', []))} |"
+              )
+          syntax_errors = [
+              (item["path"], item.get("syntax_error", {}))
+              for item in report.get("files", []) if not item.get("syntax_ok")
+          ]
+          rows += ["", "## Syntax-error findings", ""]
+          if syntax_errors:
+              rows.extend(
+                  f"- \`{name}\` L{error.get('line')}: {error.get('message')}"
+                  for name, error in syntax_errors[:30]
+              )
+              if len(syntax_errors) > 30:
+                  rows.append(f"- ... and {len(syntax_errors) - 30} more; see the JSON artifact.")
+          else:
+              rows.append("No Python syntax errors were detected by the static parser.")
+          rows += [
+              "",
+              "> Static findings are investigation leads, not automatic vulnerability/dead-code verdicts. "
+              "This report does not prove runtime security, isolation, cryptographic trust, or self-recovery.",
+          ]
+          summary_path.write_text("\n".join(rows) + "\n", encoding="utf-8")
           PY
 
       - name: Preserve forensic evidence
