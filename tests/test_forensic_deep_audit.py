@@ -18,10 +18,13 @@ def _report(tmp_path: Path):
         '"""Demo runtime entry."""\n'
         "from . import helper\n"
         "import subprocess\n"
+        "import os\n"
+        "import unknown_dependency\n"
         "\n"
         "def main():\n"
         "    # TODO: test this path\n"
         "    return helper.work()\n"
+        "    print(\"unreachable\")\n"
         "\n"
         "def launch():\n"
         "    return subprocess.run(['echo', 'ok'], shell=True)\n"

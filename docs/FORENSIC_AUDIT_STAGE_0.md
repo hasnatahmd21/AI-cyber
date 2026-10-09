@@ -49,7 +49,7 @@ Stage 0 is eligible for acceptance only after:
 1. The deep audit artifact is generated from the exact branch commit.
 2. Its summary and syntax-error/duplicate/risk findings are reviewed, not merely counted.
 3. Canonical entry points and the core HYDRA module are reconciled with actual static import/call evidence.
-4. All six legacy monoliths are individually catalogued by hash, source-line ranges, symbols, duplicates, entry-point guards, imports, side effects and TODO markers.
+4. All six legacy monoliths are individually catalogued by hash, source-line ranges, symbols, duplicates, entry-point guards, imports, side effects, unused-import candidates, stubs, obvious dead statements and TODO markers.
 5. Any suspicious/missing syntax or dynamic edges are recorded as UNKNOWN or BLOCKED rather than guessed.
 6. The Stage 1 architecture map's assertions and gaps are cross-checked against these outputs.
 7. The Stage 0-specific tests and the full reconstruction CI workflow pass on the same commit.
