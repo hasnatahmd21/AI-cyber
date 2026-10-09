@@ -157,7 +157,7 @@ def ndcg_at_k(
     def dcg(items: Sequence[tuple[int, float]]) -> float:
         return sum(
             gain / math.log2(rank + 1)
-            for rank, (_, gain) in items
+            for rank, gain in items
             if gain > 0
         )
 
