@@ -143,7 +143,12 @@ def _safe_id(dataset: str, source: str, content: str) -> str:
     ).hexdigest()
 
 def open_store(path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
-    db = sqlite3.connect(str(path))
+    # A fresh install may not have the hidden application-data directory yet.
+    # Create it before SQLite opens the file, otherwise live status/search routes
+    # can terminate the HTTP connection with "unable to open database file".
+    db_path = Path(path).expanduser()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(str(db_path))
     db.row_factory = sqlite3.Row
     db.executescript(_SCHEMA)
     columns = {row["name"] for row in db.execute("PRAGMA table_info(knowledge_records)")}
