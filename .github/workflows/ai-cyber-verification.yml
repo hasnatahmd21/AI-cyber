@@ -5,9 +5,19 @@ on:
     branches: ["repair/forensic-reconstruction"]
   pull_request:
 
+permissions:
+  contents: read
+
+# Keep repeated pushes from spawning an unbounded backlog of identical full-suite jobs.
+concurrency:
+  group: ai-cyber-verification-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   tests:
+    name: tests
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,10 +27,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pytest
+          pip install pytest pytest-timeout
       - name: Compile Python
         run: python -m compileall -q src tests
-      - name: Run tests
-        run: pytest -q tests
+      - name: Run tests with progress logging and per-test timeout
+        env:
+          PYTHONPATH: src
+          PYTHONFAULTHANDLER: "1"
+        run: pytest -vv --durations=20 --timeout=300 tests
       - name: Run Phase 13 standalone security evaluation
         run: python tools/phase13_security_evaluation_test.py
