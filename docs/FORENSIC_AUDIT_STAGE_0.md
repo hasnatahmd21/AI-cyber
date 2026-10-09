@@ -53,7 +53,7 @@ Stage 0 is eligible for acceptance only after:
 4. All six legacy monoliths are individually catalogued by hash, source-line ranges, symbols, duplicates, entry-point guards, imports, side effects, unused-import candidates, stubs, obvious dead statements and TODO markers.
 5. Any suspicious/missing syntax or dynamic edges are recorded as UNKNOWN or BLOCKED rather than guessed.
 6. The Stage 1 architecture map's assertions and gaps are cross-checked against these outputs.
-7. The Stage 0-specific tests and evidence-integrity checks pass on the same commit.
-8. The broader reconstruction CI result is recorded and every failure is classified. An audit-tool/evidence-generation failure blocks Stage 0; an independently confirmed application/runtime defect is documented as a finding for the appropriate later stage, not hidden or mislabelled as a passing product check. Environment/runner blockers remain BLOCKED until evidence is available.
+7. The Stage 0-specific tests and evidence-integrity checks pass on the same commit, and the full test suite is measured with branch coverage. The coverage percentage is reported as evidence; this stage does not invent a threshold.
+8. The broader reconstruction CI result is recorded and every failure is classified; the Stage 0 workflow preserves the measured-coverage run and its logs even if an application test fails. An audit-tool/evidence-generation failure blocks Stage 0; an independently confirmed application/runtime defect is documented as a finding for the appropriate later stage, not hidden or mislabelled as a passing product check. Environment/runner blockers remain BLOCKED until evidence is available.
 
 Until these gates are met, use **INVENTORY GENERATED / REVIEW PENDING**, not GREEN. Stage 0 does not certify the entire product as secure or green; the resulting findings must be triaged and carried forward before implementation work starts.
