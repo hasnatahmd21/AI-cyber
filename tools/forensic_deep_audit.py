@@ -398,14 +398,23 @@ def _module_name(path: Path, root: Path) -> str | None:
 
 
 def _walk_repository(root: Path) -> tuple[list[Path], list[str]]:
-    """Walk the repo while pruning ignored directories before descending."""
+    """Walk repository-owned paths without descending through directory symlinks."""
     files: list[Path] = []
     directories: set[str] = set()
-    for current, dirnames, filenames in os.walk(root):
-        dirnames[:] = sorted(name for name in dirnames if name not in SKIP_DIRS)
+    for current, dirnames, filenames in os.walk(root, followlinks=False):
         current_path = Path(current)
-        for dirname in dirnames:
-            directories.add((current_path / dirname).relative_to(root).as_posix())
+        traversable: list[str] = []
+        for dirname in sorted(dirnames):
+            if dirname in SKIP_DIRS:
+                continue
+            candidate = current_path / dirname
+            if candidate.is_symlink():
+                # Inventory the link itself; never recurse through it.
+                files.append(candidate)
+            else:
+                traversable.append(dirname)
+                directories.add(candidate.relative_to(root).as_posix())
+        dirnames[:] = traversable
         for filename in filenames:
             files.append(current_path / filename)
     files.sort(key=lambda p: p.relative_to(root).as_posix())
@@ -457,8 +466,11 @@ def _entrypoint_modules(root: Path) -> dict[str, list[str]]:
 
 
 def _sha256_file(path: Path, chunk_size: int = 1024 * 1024) -> str:
-    """Hash file contents incrementally so large dataset artifacts do not fill RAM."""
+    """Hash file contents incrementally; for symlinks hash only the link target text."""
     digest = hashlib.sha256()
+    if path.is_symlink():
+        digest.update(os.readlink(path).encode("utf-8", errors="surrogateescape"))
+        return digest.hexdigest()
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(chunk_size), b""):
             digest.update(chunk)
@@ -484,7 +496,9 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
         rel = path.relative_to(root).as_posix()
         suffix = path.suffix.lower() or ("dotfile" if path.name.startswith(".") else "")
         parts = Path(rel).parts
-        if rel in LEGACY_ROOT_FILES:
+        if path.is_symlink():
+            category = "symlink"
+        elif rel in LEGACY_ROOT_FILES:
             category = "legacy_forensic_source"
         elif rel == "pyproject.toml":
             category = "package_configuration"
@@ -514,13 +528,16 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
             category = "other_file"
         digest = _sha256_file(path)
         hashes[digest].append(rel)
-        size = path.stat().st_size
+        size = path.lstat().st_size if path.is_symlink() else path.stat().st_size
         counts[category] += 1
 
-        metadata: dict[str, Any] = {}
+        metadata: dict[str, Any] = (
+            {"kind": "symlink", "hash_basis": "link_target_text"}
+            if path.is_symlink() else {}
+        )
         # Parse only small, known configuration/evaluation/manifest surfaces.
         # Large/raw security datasets are hashed, not loaded into this auditor.
-        if rel == "pyproject.toml":
+        if rel == "pyproject.toml" and not path.is_symlink():
             try:
                 raw = path.read_bytes()
                 project = tomllib.loads(raw.decode("utf-8"))
@@ -537,7 +554,7 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
                 metadata = {"kind": "python-package-contract", "fields": sorted(block)}
             except (UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
                 metadata = {"parse_error": str(exc)}
-        elif category in {"dataset_manifest", "evaluation_fixture"} or rel == "docs/FORENSIC_BASELINE.json":
+        elif not path.is_symlink() and (category in {"dataset_manifest", "evaluation_fixture"} or rel == "docs/FORENSIC_BASELINE.json"):
             if size <= 5_000_000 and suffix == ".json":
                 raw = path.read_bytes()
                 try:
@@ -562,7 +579,7 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
                         metadata = {"kind": "json-list", "entry_count": len(payload)}
                 except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                     metadata = {"parse_error": str(exc)}
-        elif category == "ci_workflow":
+        elif category == "ci_workflow" and not path.is_symlink():
             try:
                 raw = path.read_bytes()
                 text = raw.decode("utf-8")
@@ -619,7 +636,11 @@ def _repository_inventory(root: Path) -> dict[str, Any]:
 def build_report(root: Path) -> dict[str, Any]:
     root = root.resolve()
     repository_inventory = _repository_inventory(root)
-    paths = [root / item["path"] for item in repository_inventory["files"] if Path(item["path"]).suffix.lower() == ".py"]
+    paths = [
+        root / item["path"]
+        for item in repository_inventory["files"]
+        if Path(item["path"]).suffix.lower() == ".py" and item["category"] != "symlink"
+    ]
     records: dict[str, dict[str, Any]] = {}
     module_index: dict[str, str] = {}
     manifest_hasher = hashlib.sha256()
