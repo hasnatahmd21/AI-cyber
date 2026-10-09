@@ -1,0 +1,78 @@
+name: AI-CYBER Stage 0 Forensic Audit
+
+on:
+  push:
+    branches:
+      - repair/forensic-reconstruction
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ai-cyber-stage0-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  forensic-audit:
+    name: Generate and verify Stage 0 evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate quick forensic inventory
+        if: always()
+        run: python tools/forensic_inventory.py --output /tmp/forensic_inventory.json
+
+      - name: Generate deep Stage 0 evidence
+        if: always()
+        run: |
+          python -m py_compile tools/forensic_deep_audit.py
+          python tools/forensic_deep_audit.py . \
+            --json-out /tmp/ai-cyber-stage0-audit.json \
+            --markdown-out /tmp/ai-cyber-stage0-audit.md \
+            --summary-only
+
+      - name: Install focused test runner
+        run: python -m pip install --disable-pip-version-check pytest
+
+      - name: Run Stage 0 forensic tests
+        run: python -m pytest -q tests/test_forensic_deep_audit.py
+
+      - name: Validate evidence identity and structure
+        if: always()
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          path = Path("/tmp/ai-cyber-stage0-audit.json")
+          assert path.is_file() and path.stat().st_size > 0, "Deep audit JSON was not generated"
+          report = json.loads(path.read_text(encoding="utf-8"))
+          assert report.get("schema") == "ai-cyber.deep-forensic-audit.v1"
+          assert report.get("commit_sha") == os.environ["GITHUB_SHA"], (
+              report.get("commit_sha"), os.environ["GITHUB_SHA"]
+          )
+          assert isinstance(report.get("files"), list) and report["files"]
+          assert isinstance(report.get("repository_inventory", {}).get("files"), list)
+          assert report.get("summary", {}).get("file_content_manifest_sha256")
+          print(json.dumps(report["summary"], indent=2, sort_keys=True))
+          PY
+
+      - name: Preserve forensic evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: forensic-stage0-${{ github.sha }}
+          path: |
+            /tmp/ai-cyber-stage0-audit.json
+            /tmp/ai-cyber-stage0-audit.md
+            /tmp/forensic_inventory.json
+          if-no-files-found: warn
+          retention-days: 30
