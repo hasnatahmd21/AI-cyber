@@ -1,5 +1,7 @@
 # AI-Cyber Forensic Baseline
 
+> **Historical snapshot notice (Stage 0 follow-up, 2026-10-09):** Quantities and findings in this document describe baseline commit `fd3dceef411191be84ff4f38d05ea9835776aaf5` only; they are not a current inventory of `main`. At the start of this Stage 0 work, `main` pointed to `fed337131518e7fedebdac6314dff7d61fc7e68f` and already contained `src/ai_cyber_os/`, tests, tooling, and `pyproject.toml`. Use the commit-specific artifact from `.github/workflows/stage0-forensic-audit.yml` for the refreshed inventory. Historical findings below remain useful leads but require current-revision revalidation.
+
 **Repository:** `hasnatahmd21/AI-cyber`  
 **Baseline commit:** `fd3dceef411191be84ff4f38d05ea9835776aaf5`  
 **Repair branch:** `repair/forensic-reconstruction`  
@@ -7,7 +9,7 @@
 
 ## 1. Baseline inventory
 
-The main branch currently contains six Python sources plus a minimal README:
+At the historical baseline commit above, the inspected tree contained six Python sources plus a minimal README:
 
 | Source | Approx. size | Lines | Classes | Functions |
 |---|---:|---:|---:|---:|
@@ -61,9 +63,9 @@ The large sources contain repeated phase markers:
 
 This is evidence of repeated phase integration/merge history, not evidence that the newest phase copy is authoritative.
 
-### D. The repository currently has no meaningful package structure
+### D. The historical baseline had no meaningful package structure
 
-The main branch has no established `src/` package, test suite, configuration package, or documented public API. README is only 10 bytes. Therefore package architecture must be recovered from actual implementations rather than assumed from filenames.
+At that historical revision, the main branch had no established `src/` package, test suite, configuration package, or documented public API. README was only 10 bytes. Those statements do not describe the newer main revision; use the fresh Stage 0 artifact for current state.
 
 ### E. Several large files cannot be safely selected as canonical from filename alone
 

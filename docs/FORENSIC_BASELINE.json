@@ -33,5 +33,9 @@
     "Multiple legacy monoliths contain repeated implementations and phase markers.",
     "Existing reconstruction automation must not select a canonical source solely by filename.",
     "A minimal import test is insufficient evidence of system wiring."
-  ]
+  ],
+  "snapshot_status": "historical_not_current_main",
+  "baseline_commit": "fd3dceef411191be84ff4f38d05ea9835776aaf5",
+  "current_main_at_stage0_start": "fed337131518e7fedebdac6314dff7d61fc7e68f",
+  "refresh_instruction": "Use the revision-specific artifact produced by .github/workflows/stage0-forensic-audit.yml for current inventory; findings here are historical leads requiring revalidation."
 }
