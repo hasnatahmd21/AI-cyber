@@ -11,19 +11,19 @@ import re
 from typing import Any
 
 FAMILY_FIELDS: dict[str, dict[str, Any]] = {
-    "nvd_cve": {"id_fields": ("cve.id", "cve_id", "id"), "patterns": (("cve", r"\\bCVE-\\d{4}-\\d{4,}\\b"),)},
-    "cisa_kev": {"id_fields": ("cveID", "cve_id", "id"), "patterns": (("cve", r"\\bCVE-\\d{4}-\\d{4,}\\b"),)},
-    "epss": {"id_fields": ("cve", "cve_id", "id"), "patterns": (("cve", r"\\bCVE-\\d{4}-\\d{4,}\\b"),)},
-    "cwe": {"id_fields": ("ID", "cwe_id", "id"), "patterns": (("cwe", r"\\bCWE-?\\d+\\b"),)},
-    "cpe": {"id_fields": ("cpeName", "cpe23Uri", "cpe", "id"), "patterns": (("cpe", r"\\bcpe:2\\.3:[^\\s\\\"']+"),)},
-    "cvss": {"id_fields": ("cve_id", "cve", "id"), "patterns": (("cve", r"\\bCVE-\\d{4}-\\d{4,}\\b"), ("cvss_vector", r"\\bCVSS:3\\.[01]/[^\\s\\\"']+|\\bCVSS:4\\.0/[^\\s\\\"']+") )},
-    "mitre_attack": {"id_fields": ("external_id", "attack_id", "id"), "patterns": (("attack", r"\\b(?:T\\d{4}(?:\\.\\d{3})?|G\\d{4}|S\\d{4}|M\\d{4})\\b"),)},
-    "capec": {"id_fields": ("id", "capec_id", "external_id"), "patterns": (("capec", r"\\bCAPEC-?\\d+\\b"),)},
-    "d3fend": {"id_fields": ("id", "d3fend_id", "external_id"), "patterns": (("d3fend", r"\\bD3FEND-?\\d+\\b"),)},
-    "sigma": {"id_fields": ("id", "rule_id", "uuid"), "patterns": (("sigma", r"\\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\\b"),)},
-    "suricata_rules": {"id_fields": ("sid", "id", "rule_id"), "patterns": (("suricata_sid", r"\\bsid\\s*:\\s*(\\d+)\\s*;?"),)},
+    "nvd_cve": {"id_fields": ("cve.id", "cve_id", "id"), "patterns": (("cve", r"\bCVE-\d{4}-\d{4,}\b"),)},
+    "cisa_kev": {"id_fields": ("cveID", "cve_id", "id"), "patterns": (("cve", r"\bCVE-\d{4}-\d{4,}\b"),)},
+    "epss": {"id_fields": ("cve", "cve_id", "id"), "patterns": (("cve", r"\bCVE-\d{4}-\d{4,}\b"),)},
+    "cwe": {"id_fields": ("ID", "cwe_id", "id"), "patterns": (("cwe", r"\bCWE-?\d+\b"),)},
+    "cpe": {"id_fields": ("cpeName", "cpe23Uri", "cpe", "id"), "patterns": (("cpe", r"\bcpe:2\.3:[^\s\\"']+"),)},
+    "cvss": {"id_fields": ("cve_id", "cve", "id"), "patterns": (("cve", r"\bCVE-\d{4}-\d{4,}\b"), ("cvss_vector", r"\bCVSS:3\.[01]/[^\s\\"']+|\bCVSS:4\.0/[^\s\\"']+") )},
+    "mitre_attack": {"id_fields": ("external_id", "attack_id", "id"), "patterns": (("attack", r"\b(?:T\d{4}(?:\.\d{3})?|G\d{4}|S\d{4}|M\d{4})\b"),)},
+    "capec": {"id_fields": ("id", "capec_id", "external_id"), "patterns": (("capec", r"\bCAPEC-?\d+\b"),)},
+    "d3fend": {"id_fields": ("id", "d3fend_id", "external_id"), "patterns": (("d3fend", r"\bD3FEND-[A-Z0-9]+\b"),)},
+    "sigma": {"id_fields": ("id", "rule_id", "uuid"), "patterns": (("sigma", r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}\b"),)},
+    "suricata_rules": {"id_fields": ("sid", "id", "rule_id"), "patterns": (("suricata_sid", r"\bsid\s*:\s*(\d+)\s*;?"),)},
     "zeek_intel": {"id_fields": ("indicator", "value", "id", "indicator_value"), "patterns": (("indicator", r""),)},
-    "mbc": {"id_fields": ("id", "mbc_id", "external_id"), "patterns": (("mbc", r"\\b[BCF]\\d{4}\\b"),)},
+    "mbc": {"id_fields": ("id", "mbc_id", "external_id"), "patterns": (("mbc", r"\b[BCF]\d{4}\b"),)},
 }
 
 IDENTIFIER_ALIASES: dict[str, tuple[str, ...]] = {
@@ -77,19 +77,19 @@ def extract_family_identifiers(dataset: str, raw: dict[str, Any]) -> list[dict[s
         value = _string(_path_value(raw, field))
         if not value:
             continue
-        if field == "cve.id" or re.fullmatch(r"CVE-\\d{4}-\\d{4,}", value, re.I):
+        if field == "cve.id" or re.fullmatch(r"CVE-\d{4}-\d{4,}", value, re.I):
             found.add(("cve", value.upper()))
         elif family == "cwe":
-            match = re.search(r"CWE-?\\d+", value, re.I)
+            match = re.search(r"CWE-?\d+", value, re.I)
             if match:
                 found.add(("cwe", match.group(0).upper().replace("CWE", "CWE-") if not match.group(0).upper().startswith("CWE-") else match.group(0).upper()))
         elif family == "cpe" and value.lower().startswith("cpe:2.3:"):
             found.add(("cpe", value))
-        elif family == "mitre_attack" and re.fullmatch(r"(?:T\\d{4}(?:\\.\\d{3})?|G\\d{4}|S\\d{4}|M\\d{4})", value, re.I):
+        elif family == "mitre_attack" and re.fullmatch(r"(?:T\d{4}(?:\.\d{3})?|G\d{4}|S\d{4}|M\d{4})", value, re.I):
             found.add(("attack", value.upper()))
-        elif family == "capec" and re.fullmatch(r"CAPEC-?\\d+", value, re.I):
+        elif family == "capec" and re.fullmatch(r"CAPEC-?\d+", value, re.I):
             found.add(("capec", value.upper().replace("CAPEC", "CAPEC-").replace("CAPEC--", "CAPEC-")))
-        elif family == "d3fend" and re.fullmatch(r"D3FEND-?\\d+", value, re.I):
+        elif family == "d3fend" and re.fullmatch(r"D3FEND-?[A-Z0-9]+", value, re.I):
             found.add(("d3fend", value.upper().replace("D3FEND", "D3FEND-").replace("D3FEND--", "D3FEND-")))
         elif family == "suricata_rules" and value.isdigit():
             found.add(("suricata_sid", value))
@@ -97,7 +97,7 @@ def extract_family_identifiers(dataset: str, raw: dict[str, Any]) -> list[dict[s
             found.add(("sigma", value.lower()))
         elif family == "zeek_intel":
             found.add(("indicator", value))
-        elif family == "mbc" and re.fullmatch(r"[BCF]\\d{4}", value, re.I):
+        elif family == "mbc" and re.fullmatch(r"[BCF]\d{4}", value, re.I):
             found.add(("mbc", value.upper()))
     return [{"type": kind, "value": value} for kind, value in sorted(found)]
 
