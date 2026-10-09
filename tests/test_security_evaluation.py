@@ -8,6 +8,7 @@ from ai_cyber_os.security_evaluation import (
     evaluate_end_to_end,
     evaluate_retrieval_case,
     evaluate_retrieval_cases,
+    ndcg_at_k,
     validate_security_output,
 )
 
@@ -199,3 +200,15 @@ def test_evidence_quality_fails_closed_on_unverified_status(tmp_path: Path):
     result = evaluate_evidence_quality([unverified])
     assert result["pass"] is False
     assert result["records"][0]["core_integrity"] is False
+
+
+def test_ndcg_rewards_correct_ranking_and_discount_lower_ranks():
+    assert ndcg_at_k(["high", "low"], {"high": 3.0, "low": 1.0}, 2) == 1.0
+    score = ndcg_at_k(["low", "high"], {"high": 3.0, "low": 1.0}, 2)
+    assert 0.0 < score < 1.0
+
+
+def test_ndcg_with_no_positive_relevance_is_well_defined():
+    assert ndcg_at_k(["irrelevant"], {"gold": 0.0}, 5) == 1.0
+    assert ndcg_at_k([], {"gold": 0.0}, 0) == 1.0
+
