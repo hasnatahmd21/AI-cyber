@@ -774,7 +774,7 @@ def build_report(root: Path) -> dict[str, Any]:
             file_edges[rel].update(_resolve_imports(module, package_file, imported, module_index))
         record["static_import_targets"] = sorted(file_edges[rel])
 
-    package_contract = _repository_inventory(root)["package_contract"]
+    package_contract = repository_inventory["package_contract"]
     declared_dependency_roots = {
         re.split(r"[<>=!~;]", str(dependency), maxsplit=1)[0].strip()
         .split("[", 1)[0].replace("-", "_").replace(".", "_").lower()
