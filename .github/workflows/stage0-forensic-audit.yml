@@ -25,6 +25,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Hydrate Git LFS dataset payloads
+        continue-on-error: true
+        run: |
+          if ! git lfs version >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y git-lfs
+          fi
+          git lfs install --local
+          git lfs pull
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -66,6 +76,9 @@ jobs:
           assert isinstance(report.get("files"), list) and report["files"]
           assert isinstance(report.get("repository_inventory", {}).get("files"), list)
           assert report.get("summary", {}).get("file_content_manifest_sha256")
+          assert report["summary"].get("git_lfs_pointer_count", 0) == 0, {
+              "unhydrated_git_lfs_pointers": report["summary"].get("unhydrated_git_lfs_pointers", [])
+          }
 
           expected_legacy = {
               "Assrf next .py",
