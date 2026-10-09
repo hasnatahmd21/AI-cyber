@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 from .hydra import run_final_hardening_verification, run_hydra_phase
 from .operations import load_report, run_regression, save_report
 from .knowledge import DEFAULT_DB, ingest_file, search as knowledge_search, status as knowledge_status
+from .rag import build_context as build_rag_context
 from .runtime_intelligence import analyze as intelligence_analyze
 from .dataset_pipeline import ingest_manifest, inspect_dataset
 from .threat_intel import ingest_source, PARSERS
@@ -302,19 +303,31 @@ class Handler(BaseHTTPRequestHandler):
                     raise ValueError("JSON object required")
                 action = body.get("action")
 
-                if action == "search":
+                if action in {"search", "context"}:
                     allowed = {"action", "query", "dataset", "limit"}
                     unknown = set(body) - allowed
                     if unknown:
                         raise ValueError("unknown request fields: " + ", ".join(sorted(str(x) for x in unknown)))
                     query = body.get("query")
-                    if not isinstance(query, str):
-                        raise ValueError("query must be a string")
-                    result = knowledge_search(
-                        query, db_path=DEFAULT_DB, dataset=body.get("dataset"), limit=body.get("limit", 10)
-                    )
-                    if isinstance(result, list):
-                        result = {"success": True, "query": query, "results": result}
+                    if not isinstance(query, str) or not query.strip():
+                        raise ValueError("query must be a non-empty string")
+                    dataset = body.get("dataset")
+                    if dataset is not None and (not isinstance(dataset, str) or not dataset.strip()):
+                        raise ValueError("dataset must be a non-empty string when supplied")
+                    limit = body.get("limit", 10 if action == "search" else 8)
+                    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
+                        raise ValueError("limit must be an integer between 1 and 50")
+                    if action == "context":
+                        result = build_rag_context(
+                            query.strip(), db_path=DEFAULT_DB, dataset=dataset, limit=limit
+                        )
+                        result["success"] = True
+                    else:
+                        result = knowledge_search(
+                            query.strip(), db_path=DEFAULT_DB, dataset=dataset, limit=limit
+                        )
+                        if isinstance(result, list):
+                            result = {"success": True, "query": query.strip(), "results": result}
                 elif action == "ingest":
                     allowed = {"action", "path", "manifest", "kind", "dataset", "source", "license", "version", "source_uri", "validation_status"}
                     unknown = set(body) - allowed
