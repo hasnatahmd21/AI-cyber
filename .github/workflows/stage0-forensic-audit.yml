@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - repair/forensic-reconstruction
+      - feature-layered-defense-wiring
   pull_request:
     branches:
       - main

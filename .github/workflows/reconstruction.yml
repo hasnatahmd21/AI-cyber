@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - repair/forensic-reconstruction
+      - feature-layered-defense-wiring
   pull_request:
     branches:
       - main
@@ -24,6 +25,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Inspect project ZIP integrity and archived components
+        if: github.ref == 'refs/heads/feature-layered-defense-wiring'
+        run: python tools/verify_project_zip.py ai_cyber_project.zip
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
