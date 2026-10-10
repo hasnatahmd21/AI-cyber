@@ -28,6 +28,9 @@ jobs:
       - name: Inspect project ZIP integrity and archived components
         if: github.ref == 'refs/heads/feature-layered-defense-wiring'
         run: python tools/verify_project_zip.py ai_cyber_project.zip
+      - name: Inspect ZIP source architecture and static wiring evidence
+        if: github.ref == 'refs/heads/feature-layered-defense-wiring'
+        run: python tools/audit_project_zip_architecture.py ai_cyber_project.zip
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
