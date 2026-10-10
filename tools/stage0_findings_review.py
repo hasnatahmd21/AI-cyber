@@ -146,7 +146,7 @@ def build_review(report: dict[str, Any], root: Path, expected_commit: str) -> di
             nonlegacy_errors.append(ev)
         add(f"ST0-SYNTAX-{ 'LEGACY' if legacy else 'BLOCK' }-{len(syntax_errors):03d}",
             "medium" if legacy else "high", "REVIEW_REQUIRED" if legacy else "BLOCKED",
-            "Preserved legacy syntax error" if legacy else "Non-legacy Python syntax error", ev,
+            "Preserved legacy source syntax error" if legacy else "Non-legacy Python syntax error", ev,
             "Preserve original bytes and track parser evidence." if legacy else
             "Investigate this syntax failure, then rerun current-commit verification.")
 
