@@ -94,7 +94,17 @@ button,input,select{font:inherit}button{cursor:pointer}
 <div class="body"><div class="matrix" id="controls"><div class="control">Canonical hardening controls will populate from the real verification result.</div></div></div>
 </section>
 
-<section class="panel" id="testCenter"><div class="head">OPERATIONAL TEST CENTER</div></section>
+<section class="panel" id="testCenter">
+<div class="head">OPERATIONAL TEST CENTER <span id="testState">READY</span></div>
+<div class="body">
+<div class="searchRow">
+<button class="btn" onclick="runTest('red-team')">RUN LOCAL RED-TEAM</button>
+<button class="btn" onclick="runTest('regression')">RUN REGRESSION TESTS</button>
+<button class="btn" onclick="runTest('full')">RUN FULL HYDRA</button>
+<button class="btn" onclick="runTest('hardening')">RUN FULL HYDRA + HARDENING</button>
+</div>
+<div class="results" id="testOut">Choose a local test. Results are returned by the backend.</div>
+</div></section>
 <section class="panel" id="command">
 <div class="head">⌘ CONTROLLED COMMAND CONSOLE <span id="cmdState">READY</span></div>
 <div class="body">
@@ -162,6 +172,18 @@ const box=document.getElementById("events");
 const lines=items.map(e=>{const ev=e.evidence?" | evidence="+JSON.stringify(e.evidence):"";return "["+e.timestamp+"] "+e.status+" :: "+(e.operation||"runtime")+" :: "+(e.phase||"-")+" :: "+e.message+ev});
 box.textContent=lines.join("\n");box.scrollTop=box.scrollHeight;
 if(runState){const active=!!runState.active;document.getElementById("sitState").textContent=active?"LIVE / EXECUTING":(runState.status||"IDLE");document.getElementById("srun").textContent=active?"EXECUTING":(runState.status||"IDLE");document.getElementById("live").textContent=active?"LIVE TELEMETRY":"SYSTEM ONLINE";document.getElementById("live").classList.toggle("bad",runState.status==="FAIL"||runState.status==="ERROR");}
+}
+async function runTest(kind){
+const labels={"red-team":"LOCAL RED-TEAM","regression":"REGRESSION TESTS","full":"FULL HYDRA","hardening":"FULL HYDRA + HARDENING"};
+const state=document.getElementById("testState"),out=document.getElementById("testOut");
+state.textContent="RUNNING";out.textContent="Running "+(labels[kind]||"TEST")+"...";
+try{
+const r=await fetch("/api/test",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({kind})});
+const x=await r.json();const ok=r.ok&&x.success===true;
+state.textContent=ok?"PASS":"FAILED";
+out.textContent=(ok?"PASS — ":"FAILED — ")+(labels[kind]||kind)+"\\n"+JSON.stringify(x,null,2);
+log((ok?"✓ ":"✕ ")+(labels[kind]||kind)+" completed",ok);return x;
+}catch(e){state.textContent="ERROR";out.textContent="Test request failed: "+String(e);log("Test request failed: "+e,false);}
 }
 async function pollEvents(){try{const r=await fetch("/api/events?since="+liveEventId,{cache:"no-store"});const x=await r.json();if(x.events&&x.events.length){liveEventId=x.next_id||liveEventId;renderTelemetry(x.events,x.run);}}catch(e){}}
 async function sendCommand(){const input=document.getElementById("commandInput");const command=input.value.trim();if(!command)return;document.getElementById("cmdState").textContent="EXECUTING";log("COMMAND > "+command);try{const r=await fetch("/api/command",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({command})});const x=await r.json();document.getElementById("cmdState").textContent=x.success?"COMPLETE":"REJECTED";log((x.success?"✓ ":"✕ ")+command,x.success);if(x.result&&x.result.state)applyState(x.result.state);if(x.result&&x.result.phase_result)document.getElementById("detailResult").textContent=JSON.stringify(x.result.phase_result,null,2);}catch(e){document.getElementById("cmdState").textContent="ERROR";log("Command failed: "+e,false)}}
