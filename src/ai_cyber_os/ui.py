@@ -149,7 +149,9 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
                 "timestamp": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
             })
             STATE["events"] = STATE["events"][-40:]
-            result["state"] = _snapshot()
+        # Snapshot only after releasing STATE_LOCK: _snapshot() acquires the same
+        # non-reentrant lock, so calling it inside this block would deadlock.
+        result["state"] = _snapshot()
 
         telemetry.complete(
             "hydra",
