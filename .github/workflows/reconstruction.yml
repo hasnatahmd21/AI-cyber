@@ -31,6 +31,34 @@ jobs:
       - name: Inspect ZIP source architecture and static wiring evidence
         if: github.ref == 'refs/heads/feature-layered-defense-wiring'
         run: python tools/audit_project_zip_architecture.py ai_cyber_project.zip
+      - name: Extract and test the standalone project ZIP
+        if: github.ref == 'refs/heads/feature-layered-defense-wiring'
+        run: |
+          python - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import zipfile
+          archive = Path("ai_cyber_project.zip")
+          destination = Path("/tmp/ai-cyber-zip-test")
+          destination.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(archive) as zf:
+              for item in zf.infolist():
+                  path = PurePosixPath(item.filename)
+                  if path.is_absolute() or ".." in path.parts:
+                      raise SystemExit(f"Unsafe ZIP path: {item.filename}")
+              zf.extractall(destination)
+          project = destination / "ai_cyber_project"
+          if not (project / "run_gates.py").is_file():
+              raise SystemExit("ZIP project missing run_gates.py")
+          if not (project / "tests").is_dir():
+              raise SystemExit("ZIP project missing tests directory")
+          print(f"Extracted standalone ZIP project: {project}")
+          PY
+          cd /tmp/ai-cyber-zip-test/ai_cyber_project
+          python -m compileall -q ai_cyber tests run_gates.py
+          python -m pip install --upgrade pip
+          python -m pip install pytest cryptography
+          python -m pytest -q
+          python run_gates.py
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
