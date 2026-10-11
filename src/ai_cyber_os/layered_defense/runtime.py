@@ -46,6 +46,22 @@ def build_system(config: Optional[Dict[str, Any]] = None, key_provider: Optional
             raise StartupError("signing key provider is required")
     try: key_provider.get_key("default")
     except Exception as exc: raise StartupError(f"invalid signing key: {exc}") from exc
+
+    # The canonical application runtime must never come up with the IT-Tech
+    # authority/network layers silently omitted or operating on unverified code.
+    source = cfg.get("it_tech_source")
+    integrity_verified = cfg.get("it_tech_integrity_verified")
+    if not isinstance(integrity_verified, bool):
+        raise StartupError("IT-Tech integrity verification must be an explicit boolean result")
+    if not isinstance(source, str) or not source.strip():
+        raise StartupError("verified IT-Tech source is required; defensive layers cannot be disabled")
+    source = os.path.abspath(source)
+    if os.path.islink(source) or not os.path.isfile(source):
+        raise StartupError("IT-Tech source must be a regular, non-symlink file")
+    if integrity_verified is not True:
+        raise StartupError("signed IT-Tech source integrity verification is required before startup")
+    cfg["it_tech_source"] = source
+
     audit = AuditLog()
     trust = TrustAuthority(Integrity(key_provider), audit)
     isolation = Isolation(set(cfg["releasers"]), audit)
@@ -60,7 +76,11 @@ def build_system(config: Optional[Dict[str, Any]] = None, key_provider: Optional
             it_tech_source=cfg["it_tech_source"],
             it_tech_integrity_verified=cfg["it_tech_integrity_verified"],
         ),
-        Layer3(trust, it_tech_source=cfg["it_tech_source"]),
+        Layer3(
+            trust,
+            it_tech_source=cfg["it_tech_source"],
+            it_tech_integrity_verified=cfg["it_tech_integrity_verified"],
+        ),
         isolation,
         deception,
         audit,
