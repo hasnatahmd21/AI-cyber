@@ -145,3 +145,53 @@ def test_codespaces_start_serializes_concurrent_launches(tmp_path, monkeypatch, 
     assert codespace_start.start(tmp_path) == 3
     assert "already running in another process" in capsys.readouterr().err
 
+def test_watchdog_restarts_ui_after_unexpected_exit(tmp_path, monkeypatch, capsys):
+    from tools import codespace_watchdog
+
+    class StopAfterThreeWaits:
+        def __init__(self):
+            self.waits = 0
+            self.stopped = False
+
+        def is_set(self):
+            return self.stopped
+
+        def wait(self, _seconds):
+            self.waits += 1
+            if self.waits == 3:
+                self.stopped = True
+                return True
+            return False
+
+    class FakeChild:
+        def __init__(self, exit_code):
+            self.exit_code = exit_code
+
+        def poll(self):
+            return self.exit_code
+
+        def terminate(self):
+            if self.exit_code is None:
+                self.exit_code = -15
+
+        def wait(self, timeout=None):
+            return self.exit_code
+
+        def kill(self):
+            self.exit_code = -9
+
+    children = [FakeChild(1), FakeChild(None)]
+    launches = []
+
+    def fake_popen(command, **_kwargs):
+        launches.append(command)
+        return children.pop(0)
+
+    monkeypatch.setattr(codespace_watchdog, "_restart_block_reason", lambda _root: None)
+    monkeypatch.setattr(codespace_watchdog.subprocess, "Popen", fake_popen)
+
+    assert codespace_watchdog.run(tmp_path, stop_event=StopAfterThreeWaits()) == 0
+    assert len(launches) == 2
+    assert launches[0][1:4] == ["-m", "ai_cyber_os", "ui"]
+    assert "exited unexpectedly" in capsys.readouterr().out
+
