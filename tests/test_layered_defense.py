@@ -268,10 +268,16 @@ def test_it_tech_integrity_gate_refuses_symlink_source(tmp_path):
 
 
 def test_canonical_runtime_wires_it_tech_network_and_authority_gates(tmp_path):
-    system = _build_verified_system(tmp_path)
+    # A Layer 2 network incident intentionally latches the runtime and prevents
+    # later requests reaching Layer 3. Exercise each independent gate in a fresh,
+    # cryptographically initialized runtime so the first incident cannot mask
+    # the authority-layer assertion or encourage unsafe post-incident continuation.
+    network_root = tmp_path / "network"
+    network_root.mkdir()
+    network_system = _build_verified_system(network_root)
     try:
-        clean = _allowed_request(system)
-        allowed = system.orchestrator.handle(clean)
+        clean = _allowed_request(network_system)
+        allowed = network_system.orchestrator.handle(clean)
         assert allowed.decision is Decision.ALLOW, allowed
 
         network_risk = replace(
@@ -279,22 +285,32 @@ def test_canonical_runtime_wires_it_tech_network_and_authority_gates(tmp_path):
             request_id="req-network-risk-block",
             attributes={"network_risk": 0.9},
         )
-        blocked_network = system.orchestrator.handle(network_risk)
+        blocked_network = network_system.orchestrator.handle(network_risk)
         assert blocked_network.decision is Decision.BLOCK
         assert any(r.layer == "layer2" and r.decision is Decision.BLOCK
                    for r in blocked_network.layer_results)
+    finally:
+        network_system.shutdown()
+
+    authority_root = tmp_path / "authority"
+    authority_root.mkdir()
+    authority_system = _build_verified_system(authority_root)
+    try:
+        clean = _allowed_request(authority_system)
+        allowed = authority_system.orchestrator.handle(clean)
+        assert allowed.decision is Decision.ALLOW, allowed
 
         suspicious_posture = replace(
             clean,
             request_id="req-authority-posture-block",
             attributes={"it_tech_posture": "suspicious", "it_tech_risk": 0.8},
         )
-        blocked_authority = system.orchestrator.handle(suspicious_posture)
+        blocked_authority = authority_system.orchestrator.handle(suspicious_posture)
         assert blocked_authority.decision is Decision.BLOCK
         assert any(r.layer == "layer3" and r.decision is Decision.BLOCK
                    for r in blocked_authority.layer_results)
     finally:
-        system.shutdown()
+        authority_system.shutdown()
 
 
 @pytest.mark.parametrize(
