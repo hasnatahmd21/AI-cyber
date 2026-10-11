@@ -103,9 +103,11 @@ enable external/live cyber execution.
 ## GitHub Codespaces automatic resident defence
 
 The `.devcontainer/devcontainer.json` configuration installs the project and runs
-`tools/codespace_start.py` whenever the Codespace starts. The helper launches the
-localhost-only UI in the background; the UI starts the resident
-`DefenceSupervisor` before accepting control requests. Port 8765 is forwarded as
+`tools/codespace_start.py` whenever the Codespace starts. The helper launches a resident watchdog; that watchdog starts the
+localhost-only UI, which starts `DefenceSupervisor` before accepting control requests.
+If the UI process unexpectedly exits, the watchdog retries with exponential backoff.
+It suppresses restarts while a persistent incident latch or latch-verification error
+is present, and resumes only after the secured recovery path clears the latch. Port 8765 is forwarded as
 **private**, and startup is reported successful only after `/api/defence` says
 `active=true`, `ready=true`, and `status=healthy`.
 
@@ -135,7 +137,7 @@ curl http://127.0.0.1:8765/api/defence
 ```
 
 If startup cannot verify healthy readiness, the helper reports failure and does not
-advertise the service as healthy. Missing/invalid baselines, a persisted incident
+advertise the service as healthy; the watchdog remains resident and retries when safe. Missing/invalid baselines, a persisted incident
 latch, port conflicts, and unverified PID files are never silently bypassed. A
 Codespace that is stopped or suspended cannot keep a process running; automatic
 monitoring resumes when that Codespace starts again. Continuous protection while a
