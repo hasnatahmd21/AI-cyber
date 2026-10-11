@@ -122,8 +122,8 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
         out("defence: --defence-clear-reason is valid only with --defence-clear-latch")
         return 4
     if clear_latch:
-        if rebaseline or restore:
-            out("defence: latch clearing cannot be combined with rebaseline or restore")
+        if restore:
+            out("defence: latch clearing cannot be combined with restore")
             return 4
         unexpected = [item for item in args if item != "--json"]
         if unexpected:
@@ -133,6 +133,30 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
             out("defence: --defence-clear-latch requires --defence-clear-reason with an operator review reason")
             return 4
         from .layered_defense.supervisor import clear_defence_latch
+        if rebaseline:
+            # Explicit incident recovery after an intentional, reviewed source update.
+            # Both actions require a clean checkout and a human-supplied rationale;
+            # the command exits without running HYDRA so the operator can restart.
+            if not _git_clean(root):
+                out("defence: recovery rebaseline refused while protected source assets are dirty")
+                return 4
+            state = os.path.join(root, ".ai_cyber")
+            if os.path.islink(state):
+                out("defence: recovery refused because the security state directory is a symlink")
+                return 4
+            target = os.path.join(root, PACKAGE_REL)
+            it_tech_path = os.path.join(root, IT_TECH_REL)
+            baseline_path = os.path.join(state, "hydra_baseline.json")
+            it_tech_baseline_path = os.path.join(state, "it_tech_baseline.json")
+            provider = DefaultKeyProvider(state)
+            integrity = Integrity(provider)
+            try:
+                write_baseline(target, baseline_path, integrity)
+                write_file_baseline(it_tech_path, it_tech_baseline_path, integrity)
+            except Exception as exc:
+                out(f"defence: recovery rebaseline failed closed: {type(exc).__name__}: {exc}")
+                return 4
+            out("defence: reviewed source baselines re-established; signed incident clearance follows")
         cleared, message = clear_defence_latch(root, clear_reason)
         out("defence: " + message)
         return 0 if cleared else 4
