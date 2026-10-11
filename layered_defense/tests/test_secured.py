@@ -57,6 +57,11 @@ class TestSecured(unittest.TestCase):
         self.assertEqual(self.go("--defence-restore"), 0)
         with open(os.path.join(self.hy, "a.py")) as f: self.assertEqual(f.read(), "x=1\n")
 
+    def test_restore_with_missing_baseline_blocks_without_creating_one(self):
+        self.assertEqual(self.go("--defence-restore"), 4)
+        self.assertEqual(self.calls, [])
+        self.assertFalse(os.path.exists(os.path.join(self.root, ".ai_cyber", "hydra_baseline.json")))
+
     def test_missing_baseline_with_prior_valid_audit_history_blocks(self):
         self.assertEqual(self.go(), 0)
         state = os.path.join(self.root, ".ai_cyber")
