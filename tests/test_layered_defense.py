@@ -322,3 +322,64 @@ def test_it_tech_network_gate_fails_closed_for_malformed_or_high_risk_telemetry(
     allowed, reason = gate.evaluate(request)
     assert allowed is False
     assert reason
+
+
+
+def test_it_tech_network_engine_state_is_persistent_and_signal_history_is_bounded():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechNetworkGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    engine_identity = id(gate.engine)
+
+    for index in range(140):
+        request = Request(
+            request_id=f"req-network-persistent-{index}",
+            principal="hydra-runtime",
+            action="read",
+            resource="hydra:run",
+            payload="safe",
+            credentials="unused",
+            source="internal",
+            attributes={"network_risk": 0.0},
+        )
+        allowed, reason = gate.evaluate(request)
+        assert allowed is True, reason
+
+    snapshot = gate.snapshot()
+    assert id(gate.engine) == engine_identity
+    assert snapshot["active"] is True
+    assert snapshot["observations"] <= 2 * gate._MAX_SIGNALS_PER_SOURCE
+    assert snapshot["states"]["internal"]["label"] == "trusted"
+    healthy, reason = gate.health_check()
+    assert healthy is True, reason
+
+
+def test_it_tech_network_gate_records_and_immediately_blocks_high_risk_evidence():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechNetworkGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+
+    for index in range(2):
+        request = Request(
+            request_id=f"req-network-high-risk-{index}",
+            principal="hydra-runtime",
+            action="read",
+            resource="hydra:run",
+            payload="safe",
+            credentials="unused",
+            source="internal",
+            attributes={"network_risk": 0.95},
+        )
+        allowed, reason = gate.evaluate(request)
+        assert allowed is False
+        assert "risk threshold" in reason
+
+    snapshot = gate.snapshot()
+    assert snapshot["observations"] == 2
+    healthy, reason = gate.health_check()
+    assert healthy is False
+    assert "suspicious" in reason.lower() or "invariant" in reason.lower()
