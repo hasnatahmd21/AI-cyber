@@ -313,11 +313,28 @@ class DefenceSupervisor:
                     phase=phase,
                 )
                 if result.decision is not Decision.ALLOW:
-                    return False, f"resident defence denied HYDRA: {result.decision.value}: {result.reason}", {
+                    reason = (
+                        f"resident defence denied HYDRA: {result.decision.value}: {result.reason}"
+                    )
+                    evidence = {
                         "decision": result.decision.value,
                         "reason": result.reason,
                         "trace": list(result.trace),
                     }
+                    # A failed decision at the final control point is an incident,
+                    # not just a UI error. Latch it durably so a fresh CLI/service
+                    # process cannot regain an ALLOW decision after restart.
+                    self._latch_failure(
+                        reason,
+                        {
+                            "layered_defence_allowed": False,
+                            "barrier_and_layers": False,
+                            "decision_blocked": result.decision is Decision.BLOCK,
+                            "decision_quarantined": result.decision is Decision.QUARANTINE,
+                            "decision_error": result.decision is Decision.ERROR,
+                        },
+                    )
+                    return False, reason, evidence
                 return True, "resident IT-Tech layered defence allowed request", {
                     "decision": result.decision.value,
                     "trace": list(result.trace),
