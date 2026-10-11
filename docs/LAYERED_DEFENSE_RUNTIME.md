@@ -35,6 +35,51 @@ python -m ai_cyber_os hydra-check --run
 
 Start the local operational UI with `ai-cyber-ui`. UI execution requests are delegated through the same secured CLI path; the UI is not an alternate bypass.
 
+## Resident defence while the project is running
+
+The UI now starts a resident `DefenceSupervisor` **before** it opens the control surface. Startup fails closed if either signed source baseline is missing/invalid, the IT-Tech network engine is unavailable, the AuthorityEngine denies its startup check, or the audit chain is unhealthy. Every UI-initiated HYDRA run must first receive `ALLOW` from this resident, stateful pipeline and then pass the normal secured CLI integrity and layered-defence checks. The resident monitor rechecks signed source integrity, IT-Tech network state, authority decisions, and audit-chain health at the configured interval. On a monitor failure it latches itself blocked for the lifetime of that process; operators must investigate rather than resume execution in-place.
+
+The live monitor state is available from the UI at:
+
+```text
+GET /api/defence
+```
+
+The response includes `active`, `ready`, `status`, `last_check_at`, and per-gate check results. A `not_started` or `blocked` state is not healthy.
+
+For a headless host where the UI is not running, start the long-lived guard service after baseline initialization:
+
+```bash
+ai-cyber-guard --root /path/to/AI-cyber --interval 2
+```
+
+Use either the UI's resident monitor or the standalone guard as the resident manager for a working tree; one-shot CLI operations continue to enforce their own integrity and layered gates either way. For a durable deployment, supervise `ai-cyber-guard` with the host's service manager so it starts after reboot and restarts after unexpected process exit.
+
+Example systemd unit (replace paths and service account for the deployment):
+
+```ini
+[Unit]
+Description=AI-Cyber resident defence monitor
+After=network.target
+
+[Service]
+Type=simple
+User=ai-cyber
+WorkingDirectory=/opt/AI-cyber
+ExecStart=/opt/AI-cyber/.venv/bin/ai-cyber-guard --root /opt/AI-cyber --interval 2
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/AI-cyber/.ai_cyber
+
+[Install]
+WantedBy=multi-user.target
+```
+
+This is a deployment template, not a claim that a systemd/Codespaces host has been provisioned. The monitor is active only while the UI or guard process is running; host-level persistence requires installing and validating the appropriate service-manager configuration. The current network-state engine evaluates security telemetry delivered to the runtime; it should not be mistaken for a packet-capture sensor or a substitute for OS-level EDR/firewall telemetry until those event sources are explicitly integrated.
+
 ## Local key and state
 
 - Runtime state is stored in `.ai_cyber/`, which is ignored by Git.
