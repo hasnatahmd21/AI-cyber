@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 from .audit_telemetry import AuditLog
 from .barrier import Barrier, RateLimiter
 from .contracts import SecurityError
-from .integrity_gate import check_file
+from .integrity_gate import check, check_file
 from .crypto_integrity import EnvKeyProvider, Integrity, KeyProvider, StaticKeyProvider
 from .deception import Deception
 from .isolation import Isolation
@@ -36,7 +36,8 @@ class System:
 def build_system(config: Optional[Dict[str, Any]] = None, key_provider: Optional[KeyProvider] = None) -> System:
     cfg = {"rate_capacity": 20, "rate_refill": 5.0, "timeout_s": 2.0, "strike_limit": 3,
            "releasers": [], "ephemeral_key": False, "it_tech_source": None,
-           "it_tech_baseline_path": None, "it_tech_integrity_verified": False}
+           "package_baseline_path": None, "it_tech_baseline_path": None,
+           "it_tech_integrity_verified": False}
     cfg.update(config or {})
     if key_provider is None:
         if cfg["ephemeral_key"]:
@@ -79,8 +80,26 @@ def build_system(config: Optional[Dict[str, Any]] = None, key_provider: Optional
     source_check = check_file(source, baseline_path, Integrity(key_provider))
     if not source_check.ok:
         raise StartupError("signed IT-Tech baseline verification failed: " + source_check.reason)
+
+    package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    package_baseline_path = cfg.get("package_baseline_path")
+    if package_baseline_path is None:
+        package_baseline_path = os.path.join(os.path.dirname(source), ".ai_cyber", "hydra_baseline.json")
+    if not isinstance(package_baseline_path, str) or not package_baseline_path.strip():
+        raise StartupError("signed AI-Cyber package baseline path is required")
+    package_baseline_path = os.path.abspath(package_baseline_path)
+    package_state_dir = os.path.dirname(package_baseline_path)
+    if os.path.islink(package_state_dir) or os.path.islink(package_baseline_path):
+        raise StartupError("AI-Cyber package baseline path must not follow symlinks")
+    if not os.path.isfile(package_baseline_path):
+        raise StartupError("signed AI-Cyber package baseline is missing")
+    package_check = check(package_root, package_baseline_path, Integrity(key_provider))
+    if not package_check.ok:
+        raise StartupError("signed AI-Cyber package baseline verification failed: " + package_check.reason)
+
     cfg["it_tech_source"] = source
     cfg["it_tech_baseline_path"] = baseline_path
+    cfg["package_baseline_path"] = package_baseline_path
     # The adapters receive the result of the cryptographic check above, never just
     # the configuration value requested by a caller.
     cfg["it_tech_integrity_verified"] = True
