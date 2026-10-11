@@ -33,15 +33,15 @@ def _process_exists(pid: int) -> bool:
     return True
 
 
-def _is_ai_cyber_ui_process(pid: int) -> bool:
-    """Only adopt a PID when the Linux process command line identifies our UI."""
+def _is_codespace_watchdog_process(pid: int) -> bool:
+    """Only adopt a PID when the Linux command line identifies our watchdog."""
     try:
         command = Path(f"/proc/{pid}/cmdline").read_bytes().replace(b"\x00", b" ").decode(
             "utf-8", errors="replace"
         )
     except (OSError, ValueError):
         return False
-    return "ai_cyber_os.ui" in command and "--no-browser" in command
+    return "tools/codespace_watchdog.py" in command and "--root" in command
 
 
 def _read_health(timeout: float = 1.0) -> dict | None:
@@ -129,7 +129,7 @@ def start(root: Path, *, startup_timeout: float = 20.0) -> int:
             )
             return 2
         if _process_exists(pid):
-            if not _is_ai_cyber_ui_process(pid):
+            if not _is_codespace_watchdog_process(pid):
                 print(
                     f"AI-CYBER Codespaces startup refused: PID file points to unrelated "
                     f"or unverifiable process {pid}; no process was stopped.",
@@ -141,9 +141,9 @@ def start(root: Path, *, startup_timeout: float = 20.0) -> int:
                 print(json.dumps({"started": False, "already_running": True, "defence": status}, sort_keys=True))
                 return 0
             print(
-                "AI-CYBER UI process is already running but its defence endpoint is not healthy. "
-                "It will not be restarted automatically; inspect .ai_cyber/codespace-ui.log "
-                "and the persistent incident latch.",
+                "AI-CYBER watchdog is already running but the UI defence endpoint is not healthy. "
+                "The watchdog will retry only when restart is permitted; inspect "
+                ".ai_cyber/codespace-ui.log and the persistent incident latch.",
                 file=sys.stderr,
             )
             return 3
@@ -157,7 +157,8 @@ def start(root: Path, *, startup_timeout: float = 20.0) -> int:
         )
         return 2
 
-    command = [sys.executable, "-m", "ai_cyber_os.ui", "--no-browser"]
+    command = [sys.executable, "tools/codespace_watchdog.py", "--root", str(root)]
+    process: subprocess.Popen | None = None
     try:
         with log_path.open("a", encoding="utf-8") as log:
             process = subprocess.Popen(
@@ -171,6 +172,15 @@ def start(root: Path, *, startup_timeout: float = 20.0) -> int:
             )
         _write_pid(pid_path, process.pid)
     except Exception as exc:
+        if process is not None and process.poll() is None:
+            try:
+                process.terminate()
+                process.wait(timeout=5)
+            except (OSError, subprocess.TimeoutExpired):
+                try:
+                    process.kill()
+                except OSError:
+                    pass
         print(f"AI-CYBER Codespaces startup failed: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 2
 
@@ -204,19 +214,14 @@ def start(root: Path, *, startup_timeout: float = 20.0) -> int:
                 return 3
         time.sleep(0.25)
 
-    # A process whose readiness cannot be established must not be advertised as active.
-    try:
-        process.terminate()
-        process.wait(timeout=5)
-    except (OSError, subprocess.TimeoutExpired):
-        try:
-            process.kill()
-        except OSError:
-            pass
-    _remove_pid(pid_path)
+    # Keep the watchdog resident even when first readiness is delayed. It retries
+    # with backoff when startup is transiently broken and suppresses restart while
+    # a persistent incident latch remains active.
+    if process.poll() is not None:
+        _remove_pid(pid_path)
     print(
         f"AI-CYBER defence readiness was not confirmed within {startup_timeout:g}s; "
-        f"startup was cancelled. Inspect {log_path}.",
+        f"the watchdog remains resident and will retry safely. Inspect {log_path}.",
         file=sys.stderr,
     )
     return 3
