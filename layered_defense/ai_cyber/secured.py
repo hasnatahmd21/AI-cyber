@@ -106,7 +106,7 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None,
             clean_defence = git_clean_source(repo_root(), DEFENCE_REL)
         except Exception as e:
             out(f"defence: cannot read clean defence source from git ({type(e).__name__}); recovery unavailable")
-        os.makedirs(audit_dir, exist_ok=True)
+    os.makedirs(audit_dir, exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     try:
         rc = launcher.run(
