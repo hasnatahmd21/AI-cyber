@@ -618,3 +618,60 @@ def test_audit_save_refuses_symlinked_directory(tmp_path):
         save(audit, str(linked / "audit.jsonl"), integrity=Integrity(KEY))
     assert list(actual.iterdir()) == []
 
+def test_audit_chain_manifest_update_is_locked_across_processes(tmp_path, monkeypatch):
+    import threading
+    import time
+    from ai_cyber_os.layered_defense import audit_store
+
+    audit = AuditLog()
+    audit.record("concurrent event", outcome="safe")
+    path = tmp_path / "audit.jsonl"
+    integrity = Integrity(KEY)
+    chain_written = threading.Event()
+    allow_manifest = threading.Event()
+    reader_done = threading.Event()
+    errors = []
+    original_atomic_write = audit_store._atomic_write
+
+    def pause_between_chain_and_manifest(target, text):
+        original_atomic_write(target, text)
+        if target == str(path):
+            chain_written.set()
+            if not allow_manifest.wait(timeout=5):
+                raise TimeoutError("test did not release paused audit writer")
+
+    monkeypatch.setattr(audit_store, "_atomic_write", pause_between_chain_and_manifest)
+
+    def write_audit():
+        try:
+            save(audit, str(path), integrity=integrity)
+        except Exception as exc:
+            errors.append(exc)
+
+    def read_audit():
+        try:
+            load_verified(str(path), integrity=integrity)
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            reader_done.set()
+
+    writer = threading.Thread(target=write_audit, daemon=True)
+    writer.start()
+    assert chain_written.wait(timeout=3), "writer did not reach chain/manifest boundary"
+
+    reader = threading.Thread(target=read_audit, daemon=True)
+    reader.start()
+    # Reader must wait for the writer's cross-process directory lock rather than
+    # report the temporary chain/manifest mismatch as tampering.
+    assert not reader_done.wait(timeout=0.15)
+    allow_manifest.set()
+    writer.join(timeout=3)
+    reader.join(timeout=3)
+
+    assert not writer.is_alive()
+    assert not reader.is_alive()
+    assert errors == []
+    assert reader_done.is_set()
+    assert len(load_verified(str(path), integrity=integrity)) == 1
+
