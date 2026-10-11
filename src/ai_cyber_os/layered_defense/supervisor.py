@@ -15,6 +15,7 @@ import time
 from typing import Any, Optional
 
 from .audit_store import save
+from .audit_telemetry import AuditLog
 from .contracts import Decision, Request
 from .crypto_integrity import Integrity, KeyProvider
 from .integrity_gate import check, check_file
@@ -58,6 +59,7 @@ class DefenceSupervisor:
         self.it_tech_path = os.path.join(self.root, IT_TECH_REL)
         self.baseline_path = os.path.join(self.state_dir, "hydra_baseline.json")
         self.it_tech_baseline_path = os.path.join(self.state_dir, "it_tech_baseline.json")
+        self.latch_path = os.path.join(self.state_dir, "defence_latch.json")
         self.key_provider = key_provider or DefaultKeyProvider(self.state_dir)
         self.integrity = Integrity(self.key_provider)
 
@@ -91,6 +93,11 @@ class DefenceSupervisor:
             return json.loads(json.dumps(self._status, default=str))
 
     def _verify_source_assets(self) -> tuple[bool, str, dict[str, bool]]:
+        if os.path.islink(self.state_dir):
+            return False, "security state directory is a symlink; refusing to trust local state", {
+                "hydra_source_integrity": False,
+                "it_tech_source_integrity": False,
+            }
         if not os.path.isfile(self.baseline_path) or not os.path.isfile(self.it_tech_baseline_path):
             return False, "signed source baseline missing; explicit reviewed rebaseline required", {
                 "hydra_source_integrity": False,
@@ -107,6 +114,61 @@ class DefenceSupervisor:
         if not it_tech.ok:
             return False, "IT-Tech source integrity: " + it_tech.reason, checks
         return True, "signed source baselines verified", checks
+
+    def _persistent_latch_reason(self) -> Optional[str]:
+        if not os.path.lexists(self.latch_path):
+            return None
+        if os.path.islink(self.latch_path):
+            return "persistent defence latch is a symlink; operator review required"
+        try:
+            with open(self.latch_path, encoding="utf-8") as stream:
+                envelope = json.load(stream)
+            document = envelope["document"]
+            signature = envelope["signature"]
+            if not isinstance(document, dict) or not isinstance(signature, str):
+                return "persistent defence latch schema invalid; explicit review required"
+            canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            if not self.integrity.verify(canonical, signature):
+                return "persistent defence latch signature invalid; explicit review required"
+            if document.get("status") != "blocked":
+                return "persistent defence latch status invalid; explicit review required"
+            detail = str(document.get("reason", "unspecified incident"))
+            return (
+                "persistent defence incident latch is active: " + detail
+                + "; inspect signed audit records, remediate, then clear explicitly"
+            )
+        except Exception as exc:
+            return f"persistent defence latch unreadable ({type(exc).__name__}); explicit review required"
+
+    def _write_persistent_latch(self, reason: str, checks: dict[str, bool]) -> None:
+        os.makedirs(self.state_dir, mode=0o700, exist_ok=True)
+        if os.path.islink(self.state_dir) or os.path.islink(self.latch_path):
+            raise SupervisorStartupError("refusing to write through a symlinked defence latch path")
+        if os.path.exists(self.latch_path):
+            return
+        document = {
+            "status": "blocked",
+            "detected_at": _utc_now(),
+            "reason": str(reason)[:1200],
+            "checks": {str(key): bool(value) for key, value in checks.items()},
+        }
+        canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        envelope = {
+            "document": document,
+            "signature": self.integrity.sign(canonical),
+        }
+        temporary = self.latch_path + ".tmp"
+        if os.path.islink(temporary):
+            raise SupervisorStartupError("refusing symlinked temporary latch path")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        if hasattr(os, "O_NOFOLLOW"):
+            flags |= os.O_NOFOLLOW
+        fd = os.open(temporary, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(envelope, stream, sort_keys=True, indent=2)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, self.latch_path)
 
     def _request(self, request_id: str, payload: str, *, source: str = "external") -> Request:
         if self._system is None:
@@ -135,6 +197,13 @@ class DefenceSupervisor:
                 last_check_at=_utc_now(), checks=checks,
             )
             raise SupervisorStartupError(reason)
+        latch_reason = self._persistent_latch_reason()
+        if latch_reason:
+            self._set_status(
+                active=False, ready=False, status="blocked", reason=latch_reason,
+                last_check_at=_utc_now(), checks={**checks, "persistent_latch": False},
+            )
+            raise SupervisorStartupError(latch_reason)
 
         try:
             self._system = build_system(
@@ -212,6 +281,10 @@ class DefenceSupervisor:
             if not ok:
                 self._latch_failure(reason, checks)
                 return False, reason, self.snapshot()
+            latch_reason = self._persistent_latch_reason()
+            if latch_reason:
+                self._latch_failure(latch_reason, {"persistent_latch": False})
+                return False, latch_reason, self.snapshot()
 
             try:
                 if self._system is None:
@@ -247,11 +320,20 @@ class DefenceSupervisor:
 
     def _latch_failure(self, reason: str, checks: dict[str, bool]) -> None:
         with self._lock:
+            first_failure = not self._failed_latched
             self._failed_latched = True
             self._status.update(
                 active=True, ready=False, status="blocked", reason=reason,
                 last_check_at=_utc_now(), checks={**self._status.get("checks", {}), **checks},
             )
+        if first_failure:
+            try:
+                self._write_persistent_latch(reason, checks)
+            except Exception as exc:
+                self._set_status(
+                    ready=False, status="blocked",
+                    reason=f"{reason}; persistent latch write failed: {type(exc).__name__}",
+                )
         if self._system is not None:
             self._system.audit.record("supervisor_fail_closed", reason=reason, checks=checks)
             self._persist_audit()
@@ -260,7 +342,10 @@ class DefenceSupervisor:
         last_audit_save = time.monotonic()
         while not self._stop.wait(self.interval_s):
             ok, reason, checks = self._verify_source_assets()
-            if not ok:
+            persistent_reason = self._persistent_latch_reason()
+            if persistent_reason and not self._failed_latched:
+                self._latch_failure(persistent_reason, {"persistent_latch": False})
+            elif not ok:
                 self._latch_failure(reason, checks)
             elif not self._failed_latched and self._system is not None:
                 try:
