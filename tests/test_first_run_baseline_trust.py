@@ -35,3 +35,25 @@ def test_first_run_never_automatically_trusts_source_tree(tmp_path, monkeypatch,
     assert any("automatic first-run trust is disabled" in line for line in output)
     assert hydra_baseline.exists() is (existing == "hydra-only")
     assert it_tech_baseline.exists() is (existing == "it-tech-only")
+
+
+def test_explicit_rebaseline_refuses_dirty_source_tree(tmp_path, monkeypatch):
+    monkeypatch.setattr(secured, "_git_clean", lambda _root: False)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("dirty source must never be signed")
+
+    monkeypatch.setattr(secured, "write_baseline", unexpected_write)
+    monkeypatch.setattr(secured, "write_file_baseline", unexpected_write)
+    output = []
+
+    result = secured.main(
+        ["--defence-rebaseline", "--phase", "phase1", "--json"],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 4
+    assert any("rebaseline refused" in line for line in output)
+    assert not (tmp_path / ".ai_cyber" / "hydra_baseline.json").exists()
+    assert not (tmp_path / ".ai_cyber" / "it_tech_baseline.json").exists()
