@@ -426,3 +426,92 @@ class DefenceSupervisor:
             reason=current.get("reason") if self._failed_latched else "stopped by operator",
             last_check_at=_utc_now(),
         )
+
+
+def clear_defence_latch(root: str, reason: str) -> tuple[bool, str]:
+    """Clear a persisted incident latch only after source-integrity verification.
+
+    This function is called only by an explicit operator command. It records a
+    signed audit entry before clearing and restores the prior latch if final audit
+    persistence fails.
+    """
+    root = os.path.realpath(root)
+    state_dir = os.path.join(root, ".ai_cyber")
+    target = os.path.join(root, PACKAGE_REL)
+    it_tech_path = os.path.join(root, IT_TECH_REL)
+    baseline_path = os.path.join(state_dir, "hydra_baseline.json")
+    it_baseline_path = os.path.join(state_dir, "it_tech_baseline.json")
+    latch_path = os.path.join(state_dir, "defence_latch.json")
+
+    if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 512:
+        return False, "a non-empty operator review reason of at most 512 characters is required"
+    if os.path.islink(state_dir):
+        return False, "security state directory is a symlink; refusing latch clear"
+    if not os.path.isfile(baseline_path) or not os.path.isfile(it_baseline_path):
+        return False, "cannot clear latch without both signed source baselines"
+
+    provider = DefaultKeyProvider(state_dir)
+    integrity = Integrity(provider)
+    hydra = check(target, baseline_path, integrity)
+    if not hydra.ok:
+        return False, "cannot clear latch; HYDRA source integrity: " + hydra.reason
+    it_tech = check_file(it_tech_path, it_baseline_path, integrity)
+    if not it_tech.ok:
+        return False, "cannot clear latch; IT-Tech source integrity: " + it_tech.reason
+
+    if not os.path.lexists(latch_path):
+        return True, "no persisted defence latch is present; signed source baselines are clean"
+    if os.path.islink(latch_path):
+        return False, "persistent defence latch is a symlink; refusing to follow or remove it"
+
+    try:
+        with open(latch_path, "rb") as stream:
+            prior_bytes = stream.read()
+        prior_valid = False
+        prior_reason = "unreadable or invalid prior latch"
+        try:
+            envelope = json.loads(prior_bytes.decode("utf-8"))
+            document = envelope["document"]
+            signature = envelope["signature"]
+            canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            prior_valid = isinstance(document, dict) and isinstance(signature, str) and integrity.verify(canonical, signature)
+            if prior_valid:
+                prior_reason = str(document.get("reason", "unspecified incident"))
+        except Exception:
+            prior_valid = False
+
+        timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
+        audit_path = os.path.join(state_dir, "audit", f"supervisor-latch-clear-{timestamp}.jsonl")
+        audit = AuditLog()
+        audit.record(
+            "defence_latch_clear_requested",
+            operator_reason=reason.strip(),
+            previous_latch_valid=prior_valid,
+            previous_latch_reason=prior_reason,
+            hydra_source_integrity=True,
+            it_tech_source_integrity=True,
+        )
+        save(audit, audit_path, integrity=integrity)
+
+        os.remove(latch_path)
+        audit.record("defence_latch_cleared", operator_reason=reason.strip())
+        save(audit, audit_path, integrity=integrity)
+        return True, "persistent defence latch cleared after signed source-integrity verification; restart the service"
+    except Exception as exc:
+        # If the final, signed audit write fails after removal, restore the latch
+        # rather than leaving an unrecorded path back to service.
+        try:
+            if "prior_bytes" in locals() and not os.path.lexists(latch_path):
+                temporary = latch_path + ".restore.tmp"
+                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                if hasattr(os, "O_NOFOLLOW"):
+                    flags |= os.O_NOFOLLOW
+                fd = os.open(temporary, flags, 0o600)
+                with os.fdopen(fd, "wb") as stream:
+                    stream.write(prior_bytes)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temporary, latch_path)
+        except Exception:
+            pass
+        return False, f"latch clear failed closed: {type(exc).__name__}"
