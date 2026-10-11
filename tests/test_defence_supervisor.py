@@ -7,7 +7,11 @@ import pytest
 
 from ai_cyber_os.layered_defense import supervisor as supervisor_module
 from ai_cyber_os.layered_defense.contracts import Decision
-from ai_cyber_os.layered_defense.supervisor import DefenceSupervisor, SupervisorStartupError
+from ai_cyber_os.layered_defense.supervisor import (
+    DefenceSupervisor,
+    SupervisorStartupError,
+    clear_defence_latch,
+)
 
 
 def test_supervisor_refuses_to_start_without_explicit_signed_baselines(tmp_path):
@@ -167,3 +171,110 @@ def test_resident_monitor_latches_closed_when_network_health_fails(tmp_path, mon
         assert any(entry["event"] == "supervisor_fail_closed" for entry in system.audit.entries)
     finally:
         service.stop()
+
+
+
+def test_signed_incident_latch_blocks_automatic_service_restart(tmp_path, monkeypatch):
+    network = _FakeNetworkGate()
+    authority = _FakeAuthorityGate()
+    system = _FakeSystem(network, authority)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    _install_fake_runtime(monkeypatch, service, system)
+
+    service.start()
+    network.ok = False
+    deadline = time.monotonic() + 3.0
+    try:
+        while time.monotonic() < deadline:
+            if service.snapshot()["status"] == "blocked":
+                break
+            time.sleep(0.025)
+        assert service.snapshot()["status"] == "blocked"
+        latch_path = tmp_path / ".ai_cyber" / "defence_latch.json"
+        assert latch_path.is_file()
+    finally:
+        service.stop()
+
+    restarted = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    monkeypatch.setattr(
+        restarted,
+        "_verify_source_assets",
+        lambda: (
+            True,
+            "signed source baselines verified",
+            {"hydra_source_integrity": True, "it_tech_source_integrity": True},
+        ),
+    )
+    with pytest.raises(SupervisorStartupError, match="persistent defence incident latch"):
+        restarted.start()
+    assert restarted.snapshot()["ready"] is False
+
+
+def test_clear_defence_latch_requires_clean_signed_sources_and_audits_operator_reason(tmp_path):
+    import json
+    from ai_cyber_os.layered_defense.audit_store import load_verified
+    from ai_cyber_os.layered_defense.crypto_integrity import Integrity
+    from ai_cyber_os.layered_defense.integrity_gate import write_baseline, write_file_baseline
+    from ai_cyber_os.layered_defense.keystore import DefaultKeyProvider
+
+    package = tmp_path / "src" / "ai_cyber_os"
+    package.mkdir(parents=True)
+    (package / "module.py").write_text("trusted_value = 1\n", encoding="utf-8")
+    it_tech = tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
+    it_tech.write_text("# signed test source\n", encoding="utf-8")
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    provider = DefaultKeyProvider(str(state))
+    integrity = Integrity(provider)
+    hydra_baseline = state / "hydra_baseline.json"
+    it_baseline = state / "it_tech_baseline.json"
+    write_baseline(str(package), str(hydra_baseline), integrity)
+    write_file_baseline(str(it_tech), str(it_baseline), integrity)
+
+    document = {
+        "status": "blocked",
+        "detected_at": "2026-10-11T00:00:00+00:00",
+        "reason": "test incident requires review",
+        "checks": {"network": False},
+    }
+    canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    (state / "defence_latch.json").write_text(
+        json.dumps({"document": document, "signature": integrity.sign(canonical)}),
+        encoding="utf-8",
+    )
+
+    cleared, message = clear_defence_latch(str(tmp_path), "Reviewed incident and verified recovery")
+    assert cleared is True, message
+    assert not (state / "defence_latch.json").exists()
+
+    audit_paths = list((state / "audit").glob("supervisor-latch-clear-*.jsonl"))
+    assert len(audit_paths) == 1
+    records = load_verified(str(audit_paths[0]), integrity=integrity)
+    assert records[0]["event"] == "defence_latch_clear_requested"
+    assert records[-1]["event"] == "defence_latch_cleared"
+    assert records[-1]["fields"]["operator_reason"] == "Reviewed incident and verified recovery"
+
+
+def test_clear_defence_latch_refuses_when_source_has_drifted(tmp_path):
+    from ai_cyber_os.layered_defense.crypto_integrity import Integrity
+    from ai_cyber_os.layered_defense.integrity_gate import write_baseline, write_file_baseline
+    from ai_cyber_os.layered_defense.keystore import DefaultKeyProvider
+
+    package = tmp_path / "src" / "ai_cyber_os"
+    package.mkdir(parents=True)
+    module = package / "module.py"
+    module.write_text("trusted_value = 1\n", encoding="utf-8")
+    it_tech = tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
+    it_tech.write_text("# signed test source\n", encoding="utf-8")
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    integrity = Integrity(DefaultKeyProvider(str(state)))
+    write_baseline(str(package), str(state / "hydra_baseline.json"), integrity)
+    write_file_baseline(str(it_tech), str(state / "it_tech_baseline.json"), integrity)
+    (state / "defence_latch.json").write_text("{}", encoding="utf-8")
+    module.write_text("trusted_value = 2\n", encoding="utf-8")
+
+    cleared, message = clear_defence_latch(str(tmp_path), "Attempted reset after tamper")
+    assert cleared is False
+    assert "source integrity" in message
+    assert (state / "defence_latch.json").exists()
