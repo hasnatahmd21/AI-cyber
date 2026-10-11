@@ -1,1 +1,10 @@
 # Generated reconstruction output\n/reconstruction_artifacts/\n
+
+# Local secure-runtime state must never be committed
+.ai_cyber/
+
+# Python-generated artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/

@@ -70,3 +70,21 @@ def test_console_entrypoint_is_declared():
     text = pyproject.read_text(encoding="utf-8")
     assert "[project.scripts]" in text
     assert 'ai-cyber = "ai_cyber_os.__main__:main"' in text
+
+
+
+def test_all_cli_commands_delegate_to_the_secure_runtime(monkeypatch):
+    import ai_cyber_os.__main__ as entrypoint
+    import ai_cyber_os.secured as secured
+
+    seen = []
+    monkeypatch.setattr(secured, "main", lambda argv=None: seen.append(list(argv or [])) or 23)
+
+    assert entrypoint.main(["--phase", "phase1", "--json"]) == 23
+    assert entrypoint.main(["demo"]) == 23
+    assert entrypoint.main(["entry-points"]) == 23
+    assert seen == [
+        ["--phase", "phase1", "--json"],
+        ["demo"],
+        ["entry-points"],
+    ]

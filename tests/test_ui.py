@@ -14,24 +14,25 @@ def test_execute_rejects_invalid_phase():
         ui._execute("phase999", False)
 
 
-def test_execute_uses_canonical_runtime(monkeypatch):
+def test_execute_uses_secured_runtime(monkeypatch):
     calls = []
 
-    def fake_phase(phase):
-        calls.append(("phase", phase))
-        return {"summary": {"success": True, "phases": 27, "auxiliary_checks": 1}}
+    def fake_run(command, **kwargs):
+        calls.append((command, kwargs))
+        payload = {
+            "phase_result": {"summary": {"success": True, "phases": 27, "auxiliary_checks": 1}},
+            "hardening_result": {"verified": True, "failed": 0},
+        }
+        return ui.subprocess.CompletedProcess(command, 0, stdout="defence: allow trace=[]\\n" + json.dumps(payload, indent=2), stderr="")
 
-    def fake_hardening():
-        calls.append(("hardening",))
-        return {"verified": True, "failed": 0}
-
-    monkeypatch.setattr(ui, "run_hydra_phase", fake_phase)
-    monkeypatch.setattr(ui, "run_final_hardening_verification", fake_hardening)
-
+    monkeypatch.setattr(ui.subprocess, "run", fake_run)
     result = ui._execute("phase1", True)
 
     assert result["success"] is True
-    assert calls == [("phase", "phase1"), ("hardening",)]
+    assert len(calls) == 1
+    assert calls[0][0][1:4] == ["-m", "ai_cyber_os", "--phase"]
+    assert "--hardening" in calls[0][0]
+    assert "--json" in calls[0][0]
 
 
 def test_ui_rejects_non_local_host():

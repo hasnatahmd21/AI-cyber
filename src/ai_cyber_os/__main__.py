@@ -72,60 +72,14 @@ def _result_successful(result: dict[str, Any]) -> bool:
     return True
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    """Route every CLI invocation through the canonical security gate.
 
-    try:
-        if args.json:
-            runtime_output = StringIO()
-            with redirect_stdout(runtime_output):
-                phase_result: dict[str, Any] = run_all_extended() if args.extended_all else run_hydra_phase(args.phase)
-                payload: dict[str, Any] = {"phase_result": phase_result}
-                if args.hardening:
-                    payload["hardening_result"] = run_final_hardening_verification()
-            diagnostic_output = runtime_output.getvalue()
-            if diagnostic_output:
-                print(diagnostic_output, file=sys.stderr, end="")
-        else:
-            phase_result = run_all_extended() if args.extended_all else run_hydra_phase(args.phase)
-            payload = {"phase_result": phase_result}
-            if args.hardening:
-                payload["hardening_result"] = run_final_hardening_verification()
-
-        success = _result_successful(phase_result)
-        if args.extended_all:
-            success = bool(phase_result.get("summary", {}).get("success", False))
-        if args.hardening:
-            success = success and bool(payload["hardening_result"].get("verified", False))
-
-        if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True, default=str))
-        else:
-            summary = phase_result.get("summary", {})
-            print(
-                "AI-Cyber runtime: "
-                f"success={success} phases={summary.get('phases', 'n/a')} "
-                f"auxiliary_checks={summary.get('auxiliary_checks', 'n/a')}"
-            )
-            if args.hardening:
-                print(
-                    "Final hardening: "
-                    f"verified={payload['hardening_result'].get('verified', False)} "
-                    f"failed={payload['hardening_result'].get('failed', 'n/a')}"
-                )
-
-        return 0 if success else 1
-    except Exception as exc:
-        if args.json:
-            print(
-                json.dumps(
-                    {"success": False, "error": str(exc), "error_type": type(exc).__name__},
-                    indent=2,
-                    sort_keys=True,
-                )
-            )
-        else:
-            print(f"AI-Cyber runtime error: {type(exc).__name__}: {exc}", file=sys.stderr)
-        return 1
+    No demo, compatibility, or alternate subcommand may invoke HYDRA directly.
+    The secured dispatcher validates the command, checks signed source baselines,
+    runs the barrier and independent defence layers, then dispatches to HYDRA.
+    """
+    from .secured import main as secured_main
+    return secured_main(argv)
 
 
 if __name__ == "__main__":
