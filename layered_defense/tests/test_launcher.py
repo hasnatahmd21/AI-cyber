@@ -19,9 +19,16 @@ class TestLauncher(unittest.TestCase):
                 f.write("TRUSTED = True\\n")
             baseline = os.path.join(root, ".ai_cyber", "hydra_baseline.json")
             write_baseline(target, baseline, Integrity(KEY))
+            defence = os.path.join(root, "layered_defense", "ai_cyber")
+            os.makedirs(defence)
+            with open(os.path.join(defence, "barrier.py"), "w") as f:
+                f.write("TRUSTED = True\n")
+            defence_baseline = os.path.join(root, ".ai_cyber", "defence_baseline.json")
+            write_baseline(defence, defence_baseline, Integrity(KEY))
             rc = launcher.run(
                 argv, hydra_main=hydra, key_provider=KEY, out=out.append,
-                hydra_dir=target, baseline_path=baseline, **kw
+                hydra_dir=target, baseline_path=baseline,
+                defence_dir=defence, defence_baseline_path=defence_baseline, **kw
             )
         return rc, out
 
