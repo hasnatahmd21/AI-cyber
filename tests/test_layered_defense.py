@@ -118,3 +118,37 @@ def test_existing_it_tech_authority_engine_is_wired_as_layer3_gate():
     allowed, reason = gate.authorize(suspicious)
     assert allowed is False
     assert reason
+
+
+
+def test_existing_it_tech_network_engine_enforces_trust_and_isolation_invariants():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechNetworkGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    clean = Request(
+        request_id="req-network-clean",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="not-used-by-network-gate",
+        source="internal",
+    )
+    allowed, reason = gate.evaluate(clean)
+    assert allowed is True, reason
+
+    risky = Request(
+        request_id="req-network-risky",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="not-used-by-network-gate",
+        source="internal",
+        attributes={"network_risk": 0.9},
+    )
+    allowed, reason = gate.evaluate(risky)
+    assert allowed is False
+    assert reason
