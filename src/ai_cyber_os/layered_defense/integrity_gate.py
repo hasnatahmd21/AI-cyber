@@ -94,3 +94,48 @@ def check(target: str, baseline_path: str, integrity: Integrity, clean_source: O
             except OSError: return GateResult(False, "cannot restore file: " + rel)
     remaining = verify_tree(target, baseline)
     return GateResult(not remaining, "restored" if not remaining else "post-restore verification failed", restored)
+
+
+def write_file_baseline(target_file: str, baseline_path: str, integrity: Integrity) -> None:
+    """Sign one trusted source asset outside the Python package (e.g. IT-Tech monolith)."""
+    document = {"name": os.path.basename(target_file), "sha256": _digest(target_file)}
+    signed = {"document": document, "signature": integrity.sign(json.dumps(document, sort_keys=True).encode())}
+    os.makedirs(os.path.dirname(os.path.abspath(baseline_path)), exist_ok=True)
+    temp = baseline_path + ".tmp"
+    with open(temp, "w", encoding="utf-8") as stream:
+        json.dump(signed, stream, sort_keys=True, indent=2)
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temp, baseline_path)
+
+
+def check_file(target_file: str, baseline_path: str, integrity: Integrity,
+               clean_source: Optional[str] = None) -> GateResult:
+    """Verify a separately signed source file; restore only from a matching clean Git copy."""
+    try:
+        with open(baseline_path, encoding="utf-8") as stream:
+            signed = json.load(stream)
+        document, signature = signed["document"], signed["signature"]
+        if document.get("name") != os.path.basename(target_file):
+            return GateResult(False, "IT-Tech baseline identity mismatch")
+        if not integrity.verify(json.dumps(document, sort_keys=True).encode(), signature):
+            return GateResult(False, "IT-Tech baseline signature invalid")
+        expected = document["sha256"]
+    except Exception:
+        return GateResult(False, "IT-Tech baseline missing or unreadable")
+    try:
+        if not os.path.islink(target_file) and _digest(target_file) == expected:
+            return GateResult(True, "clean")
+    except OSError:
+        pass
+    if not clean_source:
+        return GateResult(False, "IT-Tech source drift detected")
+    try:
+        if os.path.islink(clean_source) or _digest(clean_source) != expected:
+            return GateResult(False, "trusted Git IT-Tech source does not match signed baseline")
+        shutil.copyfile(clean_source, target_file)
+        if _digest(target_file) != expected:
+            return GateResult(False, "IT-Tech post-restore verification failed")
+        return GateResult(True, "restored", [os.path.basename(target_file)])
+    except OSError:
+        return GateResult(False, "IT-Tech source cannot be verified or restored")
