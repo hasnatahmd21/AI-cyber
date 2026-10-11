@@ -166,6 +166,13 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
     from .layered_defense.supervisor import DefenceSupervisor
     latch_checker = DefenceSupervisor(root)
     latch_reason = latch_checker._persistent_latch_reason()
+    if latch_reason is None:
+        audit_reason = latch_checker._persisted_audit_reason()
+        if audit_reason:
+            latch_checker._latch_failure(
+                audit_reason, {"audit_chain": False}, persist_audit=False
+            )
+            latch_reason = audit_reason
     latch_active = latch_reason is not None
     if latch_active and not restore:
         out("defence: " + str(latch_reason) + "; direct HYDRA execution refused")
