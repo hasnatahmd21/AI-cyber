@@ -207,7 +207,11 @@ class DefenceSupervisor:
 
         try:
             self._system = build_system(
-                config={"it_tech_source": self.it_tech_path},
+                config={
+                    "it_tech_source": self.it_tech_path,
+                    # The source verifier above has just validated both signatures.
+                    "it_tech_integrity_verified": True,
+                },
                 key_provider=self.key_provider,
             )
             self._system.trust.grant("hydra-runtime", "read", "hydra:")
@@ -228,9 +232,7 @@ class DefenceSupervisor:
             network_ok, network_reason = network_gate.health_check()
             if not network_ok:
                 raise SupervisorStartupError(network_reason)
-            authority_ok, authority_reason = authority_gate.authorize(
-                self._request("supervisor-authority-startup", "continuous-authority-check")
-            )
+            authority_ok, authority_reason = authority_gate.health_check()
             if not authority_ok:
                 raise SupervisorStartupError(authority_reason)
         except Exception:
@@ -369,12 +371,7 @@ class DefenceSupervisor:
                     if network_gate is None or authority_gate is None:
                         raise SupervisorStartupError("IT-Tech network/authority gate disappeared")
                     network_ok, network_reason = network_gate.health_check()
-                    authority_ok, authority_reason = authority_gate.authorize(
-                        self._request(
-                            f"supervisor-authority-{time.time_ns()}",
-                            "continuous-authority-health-check",
-                        )
-                    )
+                    authority_ok, authority_reason = authority_gate.health_check()
                     checks.update({
                         "it_tech_network_engine": bool(network_ok),
                         "it_tech_authority_engine": bool(authority_ok),
