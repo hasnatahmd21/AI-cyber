@@ -581,3 +581,40 @@ def test_runtime_builder_rejects_missing_or_tampered_it_tech_baseline(tmp_path):
             },
             key_provider=KEY,
         )
+
+def test_audit_save_refuses_to_overwrite_tampered_chain(tmp_path):
+    import pytest
+    from ai_cyber_os.layered_defense.audit_store import AuditTamperError, save
+
+    audit = AuditLog()
+    audit.record("trusted-event", outcome="safe")
+    path = tmp_path / "audit.jsonl"
+    integrity = Integrity(KEY)
+    save(audit, str(path), integrity=integrity)
+
+    path.write_text(path.read_text(encoding="utf-8").replace("trusted-event", "forged-event"), encoding="utf-8")
+    audit.record("next-event", outcome="safe")
+    try:
+        save(audit, str(path), integrity=integrity)
+    except AuditTamperError:
+        pass
+    else:
+        raise AssertionError("save must not silently overwrite a tampered audit chain")
+
+    assert "forged-event" in path.read_text(encoding="utf-8")
+
+
+def test_audit_save_refuses_symlinked_directory(tmp_path):
+    import pytest
+    from ai_cyber_os.layered_defense.audit_store import AuditTamperError, save
+
+    actual = tmp_path / "actual-audit"
+    actual.mkdir()
+    linked = tmp_path / "audit-link"
+    linked.symlink_to(actual, target_is_directory=True)
+    audit = AuditLog()
+    audit.record("event")
+    with pytest.raises(AuditTamperError, match="symlinked"):
+        save(audit, str(linked / "audit.jsonl"), integrity=Integrity(KEY))
+    assert list(actual.iterdir()) == []
+
