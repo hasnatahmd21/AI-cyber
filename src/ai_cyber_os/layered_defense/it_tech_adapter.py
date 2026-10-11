@@ -182,6 +182,10 @@ class ITTechNetworkGate:
         self._lock = threading.RLock()
         self._sequence = 0
         self._baseline_verified = baseline_verified
+        # High-risk evidence is an incident, not merely a one-request denial.
+        # Keep this latch for the lifetime of the runtime; the resident supervisor
+        # persists it across restarts and requires reviewed operator recovery.
+        self._incident_reason: str | None = None
         self.engine = self.module.NetworkSecurityStateEngine()
         self._source_nodes = {
             "internal": "source-internal",
@@ -359,7 +363,11 @@ class ITTechNetworkGate:
                 # trust label's confidence threshold: a single high-risk request
                 # is rejected immediately, even before enough evidence accumulates.
                 if float(risk) >= 0.7:
-                    return False, "IT-Tech network risk threshold exceeded"
+                    self._incident_reason = (
+                        f"IT-Tech network risk threshold exceeded for {source} source "
+                        f"(risk={float(risk):.3f})"
+                    )
+                    return False, self._incident_reason
                 if not allowed:
                     return False, rationale
                 label = labels[source]
@@ -373,6 +381,8 @@ class ITTechNetworkGate:
             return False, "IT-Tech network source has not passed signed integrity verification"
         try:
             with self._lock:
+                if self._incident_reason is not None:
+                    return False, self._incident_reason
                 allowed, reason, labels = self._recompute_locked(datetime.now(timezone.utc))
                 if not allowed:
                     return False, reason
@@ -403,6 +413,8 @@ class ITTechNetworkGate:
                     "engine": "IT-Tech NetworkSecurityStateEngine",
                     "observations": sum(len(v) for v in signals.values() if isinstance(v, list)),
                     "observation_limit_per_source": self._MAX_SIGNALS_PER_SOURCE,
+                    "incident_latched": self._incident_reason is not None,
+                    "incident_reason": self._incident_reason,
                     "states": states,
                 }
         except Exception as exc:
