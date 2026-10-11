@@ -50,18 +50,24 @@ class Orchestrator:
             d = r.decision if r.decision is Decision.ERROR else Decision.BLOCK
             return self._final(rid, results, trace, d, f"barrier:{r.reason}")
 
-        # [2][3][4] independent defence layers; any non-authorized result short-circuits.
+        # [2][3][4] independent defence layers. Quarantine is deferred until all three
+        # have evaluated, then enforced before anything can reach the HYDRA supervisor.
+        pending_quarantine = None
         for layer in (self.l1, self.l2, self.l3):
             r = self._run(layer, req, tuple(results))
-            results.append(r); trace.append(f"{r.layer}:{r.decision.value}")
+            results.append(r)
+            trace.append(f"{r.layer}:{r.decision.value}")
             if r.decision is Decision.QUARANTINE:
-                self.isolation.quarantine(req.principal, f"{r.layer}:{r.reason}")
-                return self._final(rid, results, trace, Decision.QUARANTINE, f"{r.layer}:{r.reason}")
+                pending_quarantine = f"{r.layer}:{r.reason}"
+                continue
             if not is_authorized(r.decision):
                 return self._final(rid, results, trace, r.decision, f"{r.layer}:{r.reason}")
 
-        # [7] conditional isolation occurs only after the three layers have evaluated.
-        # Layer 2 may already quarantine a repeat offender and short-circuit above.
+        # [7] conditional isolation comes after L1, L2, and L3.
+        if pending_quarantine:
+            self.isolation.quarantine(req.principal, pending_quarantine)
+            trace.append("isolation:quarantined")
+            return self._final(rid, results, trace, Decision.QUARANTINE, pending_quarantine)
         if self.isolation.is_quarantined(req.principal):
             trace.append("isolation:quarantined")
             if self.deception.is_decoy(req.resource):
