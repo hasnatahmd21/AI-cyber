@@ -15,6 +15,21 @@ from ai_cyber_os.layered_defense.runtime import StartupError, build_system
 KEY = StaticKeyProvider({"default": b"unit-test-key-material-32-bytes!!"})
 
 
+def _build_verified_system():
+    # Unit tests exercise the gates with the repository's checked-in IT-Tech
+    # source. The secured CLI separately verifies its HMAC-signed baseline before
+    # calling the builder; this explicit test attestation prevents accidental
+    # coverage of a runtime with IT-Tech silently absent.
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
+    return build_system(
+        config={"it_tech_source": source, "it_tech_integrity_verified": True},
+        key_provider=KEY,
+    )
+
+
 def _allowed_request(system, payload="safe"):
     system.trust.grant("hydra-runtime", "read", "hydra:")
     token = system.trust.issue_token("hydra-runtime")
@@ -23,7 +38,7 @@ def _allowed_request(system, payload="safe"):
 
 
 def test_pipeline_allows_clean_internal_hydra_request():
-    system = build_system(key_provider=KEY)
+    system = _build_verified_system()
     try:
         result = system.orchestrator.handle(_allowed_request(system))
         assert result.decision is Decision.ALLOW
@@ -33,7 +48,7 @@ def test_pipeline_allows_clean_internal_hydra_request():
 
 
 def test_pipeline_blocks_shell_injection_before_hydra():
-    system = build_system(key_provider=KEY)
+    system = _build_verified_system()
     try:
         result = system.orchestrator.handle(_allowed_request(system, "; rm -rf /"))
         assert result.decision is Decision.BLOCK
@@ -94,7 +109,10 @@ def test_existing_it_tech_authority_engine_is_wired_as_layer3_gate():
     from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate
 
     root = Path(__file__).resolve().parents[1]
-    gate = ITTechAuthorityGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    gate = ITTechAuthorityGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
     request = Request(
         request_id="req-it-tech",
         principal="hydra-runtime",
@@ -128,7 +146,10 @@ def test_existing_it_tech_network_engine_enforces_trust_and_isolation_invariants
     from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
 
     root = Path(__file__).resolve().parents[1]
-    gate = ITTechNetworkGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
     clean = Request(
         request_id="req-network-clean",
         principal="hydra-runtime",
@@ -176,7 +197,7 @@ def test_audit_manifest_detects_truncation_and_requires_valid_signature(tmp_path
 
 
 def test_shutdown_event_is_included_in_persisted_audit(tmp_path):
-    system = build_system(key_provider=KEY)
+    system = _build_verified_system()
     system.shutdown()
     path = tmp_path / "shutdown-audit.jsonl"
     integrity = Integrity(KEY)
@@ -234,7 +255,10 @@ def test_canonical_runtime_wires_it_tech_network_and_authority_gates():
 
     root = Path(__file__).resolve().parents[1]
     source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
-    system = build_system(config={"it_tech_source": source}, key_provider=KEY)
+    system = build_system(
+        config={"it_tech_source": source, "it_tech_integrity_verified": True},
+        key_provider=KEY,
+    )
     try:
         clean = _allowed_request(system)
         allowed = system.orchestrator.handle(clean)
@@ -284,7 +308,10 @@ def test_it_tech_authority_gate_fails_closed_for_risky_or_malformed_posture(attr
     from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate
 
     root = Path(__file__).resolve().parents[1]
-    gate = ITTechAuthorityGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    gate = ITTechAuthorityGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
     request = Request(
         request_id="req-authority-negative",
         principal="hydra-runtime",
@@ -307,7 +334,10 @@ def test_it_tech_network_gate_fails_closed_for_malformed_or_high_risk_telemetry(
     from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
 
     root = Path(__file__).resolve().parents[1]
-    gate = ITTechNetworkGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
     request = Request(
         request_id="req-network-negative",
         principal="hydra-runtime",
@@ -330,7 +360,10 @@ def test_it_tech_network_engine_state_is_persistent_and_signal_history_is_bounde
     from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
 
     root = Path(__file__).resolve().parents[1]
-    gate = ITTechNetworkGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
     engine_identity = id(gate.engine)
 
     for index in range(140):
@@ -361,7 +394,10 @@ def test_it_tech_network_gate_records_and_immediately_blocks_high_risk_evidence(
     from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
 
     root = Path(__file__).resolve().parents[1]
-    gate = ITTechNetworkGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
 
     for index in range(2):
         request = Request(
@@ -392,7 +428,10 @@ def test_it_tech_authority_health_check_reads_live_state_without_granting_author
     from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate
 
     root = Path(__file__).resolve().parents[1]
-    gate = ITTechAuthorityGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    gate = ITTechAuthorityGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
     decision_count = len(gate.engine.decisions())
 
     healthy, reason = gate.health_check()
@@ -435,3 +474,52 @@ def test_signed_baseline_evidence_seeds_trusted_internal_network_state():
     assert snapshot["states"]["internal"]["label"] == "trusted"
     healthy, reason = gate.health_check()
     assert healthy is True, reason
+
+
+def test_runtime_builder_requires_an_explicit_verified_it_tech_source():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
+
+    with pytest.raises(StartupError, match="verified IT-Tech source is required"):
+        build_system(key_provider=KEY)
+
+    with pytest.raises(StartupError, match="signed IT-Tech source integrity verification"):
+        build_system(
+            config={"it_tech_source": source, "it_tech_integrity_verified": False},
+            key_provider=KEY,
+        )
+
+
+def test_unverified_it_tech_gates_refuse_requests_and_report_unhealthy():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate, ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
+    request = Request(
+        request_id="unverified-it-tech-source",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="unused",
+        source="internal",
+    )
+
+    network = ITTechNetworkGate(source, baseline_verified=False)
+    allowed, reason = network.evaluate(request)
+    assert allowed is False
+    assert "integrity verification" in reason
+    healthy, reason = network.health_check()
+    assert healthy is False
+    assert "integrity verification" in reason
+
+    authority = ITTechAuthorityGate(source, baseline_verified=False)
+    allowed, reason = authority.authorize(request)
+    assert allowed is False
+    assert "integrity verification" in reason
+    healthy, reason = authority.health_check()
+    assert healthy is False
+    assert "integrity verification" in reason
