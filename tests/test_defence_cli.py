@@ -17,7 +17,7 @@ def test_cli_enforces_once_before_hydra_and_strips_control_flags(monkeypatch):
     monkeypatch.setattr(
         cli,
         "_main_impl",
-        lambda argv=None: events.append(("runtime", list(argv or [])) or 0),
+        lambda argv=None: (events.append(("runtime", list(argv or []))) or 0),
     )
 
     result = cli.main(["--defence-restore", "--phase", "phase1"])
