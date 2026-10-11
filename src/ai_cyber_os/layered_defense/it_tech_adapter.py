@@ -101,3 +101,88 @@ class ITTechAuthorityGate:
             return allowed, decision.rationale
         except Exception as exc:
             return False, f"IT-Tech authority failed closed: {type(exc).__name__}"
+
+
+class ITTechNetworkGate:
+    """Run the existing IT-Tech network-state engine and enforce its invariants."""
+
+    def __init__(self, source_path: str) -> None:
+        self.module = _load_it_tech(source_path)
+
+    def evaluate(self, request: Request) -> tuple[bool, str]:
+        try:
+            module = self.module
+            attrs: Any = request.attributes
+            default_risk = 0.0 if request.source == "internal" else 0.2
+            risk = attrs.get("network_risk", default_risk)
+            if isinstance(risk, bool) or not isinstance(risk, (int, float)) or not math.isfinite(risk) or not 0.0 <= risk <= 1.0:
+                return False, "invalid network risk telemetry"
+
+            now = datetime.now(timezone.utc)
+            engine = module.NetworkSecurityStateEngine()
+            for zone_id, kind, ceiling in (
+                ("public", module.ZoneKind.PUBLIC, 0.6),
+                ("dmz", module.ZoneKind.DMZ, 0.8),
+                ("internal", module.ZoneKind.INTERNAL, 1.0),
+                ("data", module.ZoneKind.DATA, 1.0),
+            ):
+                engine.add_zone(module.Zone(zone_id, kind, ceiling))
+
+            source_is_internal = request.source == "internal"
+            source_zone = "internal" if source_is_internal else "public"
+            engine.add_node(module.NetworkNode("source", module.NodeKind.HOST, source_zone, 0.3))
+            engine.add_node(module.NetworkNode("gateway", module.NodeKind.GATEWAY, "dmz", 0.5))
+            engine.add_node(module.NetworkNode("hydra", module.NodeKind.SERVICE, "internal", 0.8))
+            engine.add_node(module.NetworkNode("protected-data", module.NodeKind.HOST, "data", 0.95))
+
+            secure_link = module.LinkSecurityState(
+                encrypted=True, authenticated=True, integrity_protected=True,
+                monitored=True, least_privilege=True,
+            )
+            if source_is_internal:
+                engine.add_link(module.NetworkLink("source-to-hydra", "source", "hydra", module.LinkKind.VIRTUAL, secure_link))
+            else:
+                engine.add_link(module.NetworkLink("source-to-gateway", "source", "gateway", module.LinkKind.VIRTUAL, secure_link))
+                engine.add_link(module.NetworkLink("gateway-to-hydra", "gateway", "hydra", module.LinkKind.VIRTUAL, secure_link))
+
+            # The protected data segment is intentionally air-gapped in the model.
+            engine.add_segment(module.NetworkSegment(
+                "isolated-data", "data", module.SegmentEnforcement.ISOLATED,
+                frozenset({"protected-data"}),
+            ))
+            polarity = 1.0 - (2.0 * float(risk))
+            if not source_is_internal:
+                polarity = min(polarity, 0.2)  # public-zone trust ceiling is 0.6
+            evidence = module.Evidence(
+                evidence_id=f"evidence-{request.request_id}",
+                source="ai-cyber-layer2",
+                confidence=1.0,
+                observed_at=now,
+                payload={"network_risk": float(risk), "request_source": request.source},
+            )
+            engine.observe_signal("source", module.NetworkTrustSignal(
+                signal_id=f"signal-{request.request_id}",
+                weight=1.0,
+                polarity=polarity,
+                at=now,
+                evidence=evidence,
+            ))
+            engine.recompute(at=now)
+            state = engine.current_state("source")
+            if state is None:
+                return False, "IT-Tech network engine produced no source state"
+            if state.label in {
+                module.NetworkLabel.SUSPICIOUS,
+                module.NetworkLabel.COMPROMISED,
+                module.NetworkLabel.QUARANTINED,
+            }:
+                return False, f"IT-Tech network trust is {state.label.value}"
+            critical = [
+                v for v in engine.violations()
+                if getattr(v.severity, "value", str(v.severity)).lower() in {"critical", "high"}
+            ]
+            if critical:
+                return False, "IT-Tech network invariant violation: " + ",".join(v.invariant_id for v in critical)
+            return True, f"network state {state.label.value}; invariants clean"
+        except Exception as exc:
+            return False, f"IT-Tech network engine failed closed: {type(exc).__name__}"
