@@ -1,6 +1,6 @@
 """Layer 2: independent detection, policy recheck and strike correlation."""
 from __future__ import annotations
-import re, time
+import math, re, time
 from collections import defaultdict, deque
 from dataclasses import replace
 from typing import Deque, Dict, Tuple
@@ -55,7 +55,7 @@ class Layer2:
                         "network_risk" in attrs and (
                             isinstance(existing_risk, bool)
                             or not isinstance(existing_risk, (int, float))
-                            or not __import__("math").isfinite(existing_risk)
+                            or not math.isfinite(existing_risk)
                             or not 0.0 <= existing_risk <= 1.0
                         )
                     )
