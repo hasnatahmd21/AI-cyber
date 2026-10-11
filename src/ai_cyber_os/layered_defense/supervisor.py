@@ -669,7 +669,11 @@ class DefenceSupervisor:
                     self._set_status(active=True, ready=False, status="blocked", last_check_at=_utc_now())
 
             if time.monotonic() - last_audit_save >= 30.0:
-                self._persist_audit()
+                audit_reason = self._persisted_audit_reason()
+                if audit_reason:
+                    self._latch_failure(audit_reason, {"audit_chain": False})
+                else:
+                    self._persist_audit()
                 last_audit_save = time.monotonic()
 
     def _persist_audit(self, *, latch_on_failure: bool = True) -> None:
