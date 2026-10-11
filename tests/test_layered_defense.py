@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 from dataclasses import replace
 
 from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
@@ -260,3 +261,64 @@ def test_canonical_runtime_wires_it_tech_network_and_authority_gates():
                    for r in blocked_authority.layer_results)
     finally:
         system.shutdown()
+
+
+@pytest.mark.parametrize(
+    "attributes",
+    [
+        {"it_tech_posture": "suspicious"},
+        {"it_tech_posture": "compromised"},
+        {"it_tech_posture": "quarantined"},
+        {"it_tech_posture": "unknown"},
+        {"it_tech_posture": "unrecognized"},
+        {"it_tech_risk": 0.7},
+        {"it_tech_risk": True},
+        {"it_tech_risk": float("nan")},
+        {"it_tech_confidence": False},
+        {"it_tech_confidence": 1.1},
+        {"it_tech_posture": ["trusted"]},
+    ],
+)
+def test_it_tech_authority_gate_fails_closed_for_risky_or_malformed_posture(attributes):
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechAuthorityGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    request = Request(
+        request_id="req-authority-negative",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="unused",
+        source="internal",
+        attributes=attributes,
+    )
+
+    allowed, reason = gate.authorize(request)
+    assert allowed is False
+    assert reason
+
+
+@pytest.mark.parametrize("risk", [True, float("nan"), -0.01, 1.01, 0.7])
+def test_it_tech_network_gate_fails_closed_for_malformed_or_high_risk_telemetry(risk):
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechNetworkGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    request = Request(
+        request_id="req-network-negative",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="unused",
+        source="internal",
+        attributes={"network_risk": risk},
+    )
+
+    allowed, reason = gate.evaluate(request)
+    assert allowed is False
+    assert reason
