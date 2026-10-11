@@ -244,8 +244,7 @@ def test_clear_defence_latch_requires_clean_signed_sources_and_audits_operator_r
     }
     canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
     envelope = json.dumps(
-        {"document": document, "signature": integrity.sign(canonical)},
-        encoding="utf-8",
+        {"document": document, "signature": integrity.sign(canonical)}
     )
     (state / "defence_latch.json").write_text(envelope, encoding="utf-8")
     # Recovery must clear both primary and fallback markers after a reviewed incident.
