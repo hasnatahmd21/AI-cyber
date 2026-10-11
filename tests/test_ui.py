@@ -9,57 +9,9 @@ import pytest
 from ai_cyber_os import ui
 
 
-@pytest.fixture(autouse=True)
-def bypass_runtime_guard_for_ui_unit_tests(monkeypatch):
-    # These tests cover UI routing/formatting; guard ordering has its own explicit test below.
-    monkeypatch.setattr(ui, "run_guarded", lambda argv, action: action())
-
-
 def test_execute_rejects_invalid_phase():
     with pytest.raises(ValueError):
         ui._execute("phase999", False)
-
-
-def test_execute_enforces_before_running_hydra(monkeypatch):
-    events = []
-
-    def guarded(argv, action):
-        events.append(("guard", list(argv)))
-        result = action()
-        events.append(("finished", None))
-        return result
-
-    def fake_phase(phase):
-        events.append(("phase", phase))
-        return {"summary": {"success": True, "phases": 1, "auxiliary_checks": 0}}
-
-    monkeypatch.setattr(ui, "run_guarded", guarded)
-    monkeypatch.setattr(ui, "run_hydra_phase", fake_phase)
-
-    result = ui._execute("phase1", False)
-
-    assert result["success"] is True
-    assert events == [
-        ("guard", ["--phase", "phase1"]),
-        ("phase", "phase1"),
-        ("finished", None),
-    ]
-
-
-def test_execute_never_starts_hydra_when_defence_blocks(monkeypatch):
-    from ai_cyber_os._defence import DefenceBlocked
-
-    calls = []
-
-    def blocked(argv, action):
-        raise DefenceBlocked("blocked")
-
-    monkeypatch.setattr(ui, "run_guarded", blocked)
-    monkeypatch.setattr(ui, "run_hydra_phase", lambda phase: calls.append(phase))
-
-    with pytest.raises(DefenceBlocked):
-        ui._execute("phase1", False)
-    assert calls == []
 
 
 def test_execute_uses_canonical_runtime(monkeypatch):

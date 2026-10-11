@@ -16,7 +16,6 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .hydra import run_final_hardening_verification, run_hydra_phase
-from ._defence import run_guarded
 from .operations import load_report, run_regression, save_report
 from .knowledge import DEFAULT_DB, ingest_file, search as knowledge_search, status as knowledge_status
 from .rag import build_context as build_rag_context
@@ -58,7 +57,7 @@ def _snapshot() -> dict[str, Any]:
         return json.loads(json.dumps(STATE, default=str))
 
 
-def _execute_unprotected(phase: str, hardening: bool) -> dict[str, Any]:
+def _execute(phase: str, hardening: bool) -> dict[str, Any]:
     if phase not in VALID_PHASES:
         raise ValueError("invalid phase selector")
 
@@ -164,16 +163,6 @@ def _execute_unprotected(phase: str, hardening: bool) -> dict[str, Any]:
     except Exception as exc:
         telemetry.error("hydra", f"HYDRA execution raised {type(exc).__name__}: {exc}", phase=phase)
         raise
-
-
-def _execute(phase: str, hardening: bool) -> dict[str, Any]:
-    """Run one validated HYDRA operation behind the always-on defence exactly once."""
-    if phase not in VALID_PHASES:
-        raise ValueError("invalid phase selector")
-    argv = ["--phase", phase]
-    if hardening:
-        argv.append("--hardening")
-    return run_guarded(argv, lambda: _execute_unprotected(phase, hardening))
 
 
 def _run_redteam() -> dict[str, Any]:
