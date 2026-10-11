@@ -387,10 +387,21 @@ class DefenceSupervisor:
                     final_reason = f"{reason}; persistent latch write failed: {type(exc).__name__}"
     
             if self._system is not None:
-                self._system.audit.record("supervisor_fail_closed", reason=final_reason, checks=checks)
+                try:
+                    self._system.audit.record(
+                        "supervisor_fail_closed", reason=final_reason, checks=checks
+                    )
+                except Exception as exc:
+                    # Audit failure must never prevent readiness withdrawal or
+                    # the terminal blocked state. Preserve the incident and expose
+                    # that the in-memory audit append itself failed.
+                    final_reason = (
+                        f"{final_reason}; audit append failed: {type(exc).__name__}"
+                    )
                 self._persist_audit()
                 audit_status = self.snapshot()
-                if "audit persistence failed" in str(audit_status.get("reason", "")).lower():
+                audit_reason = str(audit_status.get("reason", "")).lower()
+                if "audit persistence failed" in audit_reason:
                     final_reason = str(audit_status["reason"])
     
             self._set_status(
