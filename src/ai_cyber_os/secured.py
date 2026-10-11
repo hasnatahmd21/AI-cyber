@@ -95,6 +95,7 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
     restore = "--defence-restore" in argv
     clear_latch = "--defence-clear-latch" in argv
     clear_reason = None
+    saw_clear_reason = False
     args = []
     index = 0
     while index < len(argv):
@@ -103,6 +104,7 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
             index += 1
             continue
         if item == "--defence-clear-reason":
+            saw_clear_reason = True
             if index + 1 >= len(argv):
                 clear_reason = None
                 index += 1
@@ -116,7 +118,13 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
         out = _stderr
     root = root or _root()
 
+    if saw_clear_reason and not clear_latch:
+        out("defence: --defence-clear-reason is valid only with --defence-clear-latch")
+        return 4
     if clear_latch:
+        if rebaseline or restore:
+            out("defence: latch clearing cannot be combined with rebaseline or restore")
+            return 4
         unexpected = [item for item in args if item != "--json"]
         if unexpected:
             out("defence: latch clearing is an administrative operation and cannot be combined with execution")
