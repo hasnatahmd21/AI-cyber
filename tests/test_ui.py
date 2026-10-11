@@ -46,6 +46,22 @@ def test_execute_enforces_before_running_hydra(monkeypatch):
     ]
 
 
+def test_execute_never_starts_hydra_when_defence_blocks(monkeypatch):
+    from ai_cyber_os._defence import DefenceBlocked
+
+    calls = []
+
+    def blocked(argv, action):
+        raise DefenceBlocked("blocked")
+
+    monkeypatch.setattr(ui, "run_guarded", blocked)
+    monkeypatch.setattr(ui, "run_hydra_phase", lambda phase: calls.append(phase))
+
+    with pytest.raises(DefenceBlocked):
+        ui._execute("phase1", False)
+    assert calls == []
+
+
 def test_execute_uses_canonical_runtime(monkeypatch):
     calls = []
 
