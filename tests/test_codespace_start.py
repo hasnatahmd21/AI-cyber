@@ -192,6 +192,6 @@ def test_watchdog_restarts_ui_after_unexpected_exit(tmp_path, monkeypatch, capsy
 
     assert codespace_watchdog.run(tmp_path, stop_event=StopAfterThreeWaits()) == 0
     assert len(launches) == 2
-    assert launches[0][1:4] == ["-m", "ai_cyber_os", "ui"]
+    assert launches[0][1:4] == ["-m", "ai_cyber_os.ui", "--no-browser"]
     assert "exited unexpectedly" in capsys.readouterr().out
 
