@@ -16,7 +16,7 @@ ai_cyber/
   deception.py          decoys, served only to quarantined principals
   regeneration.py       signed baseline, verified-clean recovery
   audit_telemetry.py    tamper-evident hash-chain audit log, secret redaction
-  orchestrator.py       barrier -> isolation -> L1 -> L2 -> L3, timeouts/errors fail closed
+  orchestrator.py       integrity -> barrier -> L1 -> L2 -> L3 -> conditional isolation
   hydra.py              adapter for the legacy phases (integrity, lossless check, run tests)
   runtime.py            canonical startup / wiring / entry-point scan
   __main__.py           python -m ai_cyber <demo|hydra-check [--run]|entry-points>
@@ -27,14 +27,15 @@ ai_cyber/
     symbol_map.json                        legacy symbol -> module -> deps -> callers -> tests -> status
 tests/                  one test file per component + end-to-end
 docs/                   LEGACY_INVENTORY.md, GATE_REPORT.md, ARCHITECTURE.md
-run_gates.py            runs Gate 0..10 in order, stops at first failure
+run_gates.py            runs Gate 0..14 in order, stops at first failure
 ```
 
 ## Use
 ```
 python run_gates.py                 # all gates (about 10 s)
 python -m ai_cyber demo
-python -m ai_cyber hydra-check --run
+python -m ai_cyber run -- --verify
+python -m ai_cyber baseline  # explicit baseline create/rebaseline
 python -m unittest discover -s tests -t .      # (pytest also works if installed)
 ```
 Production needs a key: `export AI_CYBER_KEY_DEFAULT=$(python -c "import secrets;print(secrets.token_hex(32))")`
