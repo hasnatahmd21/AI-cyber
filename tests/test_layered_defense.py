@@ -383,3 +383,55 @@ def test_it_tech_network_gate_records_and_immediately_blocks_high_risk_evidence(
     healthy, reason = gate.health_check()
     assert healthy is False
     assert "suspicious" in reason.lower() or "invariant" in reason.lower()
+
+
+
+def test_it_tech_authority_health_check_reads_live_state_without_granting_authority():
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechAuthorityGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    decision_count = len(gate.engine.decisions())
+
+    healthy, reason = gate.health_check()
+    assert healthy is True, reason
+    assert len(gate.engine.decisions()) == decision_count
+
+    gate.engine.revoke(
+        gate.principal_id,
+        reason="unit test simulates a revoked runtime authority",
+        at=datetime.now(timezone.utc),
+    )
+    healthy, reason = gate.health_check()
+    assert healthy is False
+    assert "revoked" in reason.lower()
+
+    request = Request(
+        request_id="req-revoked-authority",
+        principal=gate.principal_id,
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="unused",
+        source="internal",
+    )
+    allowed, reason = gate.authorize(request)
+    assert allowed is False
+    assert "revoked" in reason.lower()
+
+
+def test_signed_baseline_evidence_seeds_trusted_internal_network_state():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
+    snapshot = gate.snapshot()
+    assert snapshot["states"]["internal"]["label"] == "trusted"
+    healthy, reason = gate.health_check()
+    assert healthy is True, reason
