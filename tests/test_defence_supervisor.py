@@ -659,3 +659,34 @@ def test_stopped_supervisor_instance_cannot_be_reused(tmp_path, monkeypatch):
     with pytest.raises(SupervisorStartupError, match="cannot be restarted"):
         service.start()
 
+def test_supervisor_latches_when_existing_signed_audit_is_tampered(tmp_path, monkeypatch):
+    from ai_cyber_os.layered_defense.audit_store import save
+    from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
+
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    audit = AuditLog()
+    audit.record("trusted prior event", outcome="safe")
+    audit_path = tmp_path / ".ai_cyber" / "audit" / "prior.jsonl"
+    save(audit, str(audit_path), integrity=service.integrity)
+    audit_path.write_text(
+        audit_path.read_text(encoding="utf-8").replace("trusted prior event", "forged prior event"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        service,
+        "_verify_source_assets",
+        lambda: (
+            True,
+            "signed source baselines verified",
+            {"hydra_source_integrity": True, "it_tech_source_integrity": True},
+        ),
+    )
+
+    with pytest.raises(SupervisorStartupError, match="persistent audit verification failed"):
+        service.start()
+
+    state = service.snapshot()
+    assert state["ready"] is False
+    assert state["status"] == "blocked"
+    assert (tmp_path / ".ai_cyber" / "defence_latch.json").is_file()
+
