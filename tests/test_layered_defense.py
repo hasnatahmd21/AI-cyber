@@ -675,3 +675,30 @@ def test_audit_chain_manifest_update_is_locked_across_processes(tmp_path, monkey
     assert reader_done.is_set()
     assert len(load_verified(str(path), integrity=integrity)) == 1
 
+def test_audit_loader_refuses_named_pipe_without_blocking(tmp_path):
+    import os
+
+    from ai_cyber_os.layered_defense.audit_store import AuditTamperError, load_verified
+
+    path = tmp_path / "audit.jsonl"
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("named pipes are not supported on this platform")
+    os.mkfifo(path)
+    with pytest.raises(AuditTamperError, match="single-link regular file"):
+        load_verified(str(path), integrity=Integrity(KEY))
+
+
+def test_audit_directory_lock_refuses_symlinked_lock_file(tmp_path):
+    from ai_cyber.layered_defense.audit_store import AuditTamperError, audit_directory_lock
+
+    audit_dir = tmp_path / "audit"
+    audit_dir.mkdir()
+    outside = tmp_path / "outside.lock"
+    outside.write_text("do not lock through a link", encoding="utf-8")
+    (audit_dir / ".audit-store.lock").symlink_to(outside)
+
+    with pytest.raises(AuditTamperError, match="symlinked audit directory lock"):
+        with audit_directory_lock(str(audit_dir / "target.jsonl")):
+            pytest.fail("must not acquire lock via symlink")
+    assert outside.read_text(encoding="utf-8") == "do not lock through a link"
+
