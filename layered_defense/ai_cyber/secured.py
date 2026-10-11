@@ -1,8 +1,9 @@
 """The project's real entry: defence + HYDRA as one system.   ai-cyber [--defence-*] <hydra args>
 
-  --defence-rebaseline   accept the current HYDRA code as the new trusted baseline (after you changed it on purpose)
-  --defence-restore      restore drifted HYDRA files from git HEAD (verified against the signed baseline)
-Everything else is passed to HYDRA unchanged. Key, baseline and audit logs are managed automatically in <repo>/.ai_cyber/."""
+  --defence-rebaseline   explicitly accept current HYDRA + defence files as trusted
+  --defence-restore      restore drifted files from git HEAD (verified against signed baselines)
+Recovery blocks this process after writing files; rerun without --defence-restore to load repaired code.
+Key, signed baselines and audit logs are managed in <repo>/.ai_cyber/."""
 from __future__ import annotations
 
 import datetime
@@ -21,6 +22,7 @@ from .keystore import DefaultKeyProvider
 from . import launcher
 
 HYDRA_REL = os.path.join("src", "ai_cyber_os")
+DEFENCE_REL = os.path.join("layered_defense", "ai_cyber")
 
 ACTIVE = False   # True only while this process is already vetted by the defence (in-process flag, not an env switch)
 
@@ -69,43 +71,63 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None,
     state = os.path.join(root, ".ai_cyber")
     target = os.path.join(root, HYDRA_REL)
     baseline = os.path.join(state, "hydra_baseline.json")
+    defence_target = os.path.join(repo_root(), DEFENCE_REL)
+    defence_baseline = os.path.join(state, "defence_baseline.json")
     audit_dir = os.path.join(state, "audit")
 
     if restore and rebaseline:
         out("defence: BLOCK (restore and rebaseline are mutually exclusive)")
         return 4
 
-    baseline_missing = not os.path.exists(baseline)
-    if baseline_missing and restore and not rebaseline:
-        out("defence: BLOCK (restore requires an existing signed baseline; explicit rebaseline required)")
+    missing_baselines = [p for p in (baseline, defence_baseline) if not os.path.exists(p)]
+    if missing_baselines and restore and not rebaseline:
+        out("defence: BLOCK (restore requires both signed baselines; explicit rebaseline required)")
         return 4
-    if baseline_missing and not rebaseline and _audit_history_exists(audit_dir):
-        out("defence: BLOCK (baseline missing while prior audit history exists; explicit rebaseline required)")
+    if missing_baselines and not rebaseline and _audit_history_exists(audit_dir):
+        out("defence: BLOCK (a signed baseline is missing while prior audit history exists; explicit rebaseline required)")
         return 4
 
     provider = DefaultKeyProvider(state)
-    if rebaseline or baseline_missing:
-        n = write_baseline(target, baseline, Integrity(provider))
-        out(f"defence: baseline {'updated' if rebaseline else 'initialised (first start; no prior audit history)'} - {n} HYDRA files")
+    integrity = Integrity(provider)
+    if rebaseline or missing_baselines:
+        n_hydra = write_baseline(target, baseline, integrity)
+        n_defence = write_baseline(defence_target, defence_baseline, integrity)
+        reason = "updated explicitly" if rebaseline else "initialised (first start; no prior audit history)"
+        out(f"defence: baselines {reason} - {n_hydra} HYDRA files, {n_defence} defence files")
 
-    clean = None
+    clean_hydra = None
+    clean_defence = None
     if restore:
         try:
-            clean = git_clean_source(root)
+            clean_hydra = git_clean_source(root, HYDRA_REL)
         except Exception as e:
-            out(f"defence: cannot read clean copy from git ({type(e).__name__}); restore unavailable")
-    os.makedirs(audit_dir, exist_ok=True)
+            out(f"defence: cannot read clean HYDRA source from git ({type(e).__name__}); recovery unavailable")
+        try:
+            clean_defence = git_clean_source(repo_root(), DEFENCE_REL)
+        except Exception as e:
+            out(f"defence: cannot read clean defence source from git ({type(e).__name__}); recovery unavailable")
+        os.makedirs(audit_dir, exist_ok=True)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
     try:
-        rc = launcher.run(args, hydra_main=vetted, key_provider=provider, out=out, hydra_dir=target,
-                          baseline_path=baseline, clean_source=clean,
-                          audit_file=os.path.join(audit_dir, f"{stamp}.jsonl"))
+        rc = launcher.run(
+            args, hydra_main=vetted, key_provider=provider, out=out, hydra_dir=target,
+            baseline_path=baseline, clean_source=clean_hydra,
+            defence_dir=defence_target, defence_baseline_path=defence_baseline,
+            defence_clean_source=clean_defence,
+            audit_file=os.path.join(audit_dir, f"{stamp}.jsonl"),
+        )
     finally:
-        if clean:
-            shutil.rmtree(os.path.dirname(os.path.dirname(clean)), ignore_errors=True)
-    if rc == 4:
-        out("defence: HYDRA code differs from the trusted baseline. If you changed it on purpose: "
-            "--defence-rebaseline. To undo unwanted changes: --defence-restore.")
+        clean_roots = {
+            os.path.dirname(os.path.dirname(p))
+            for p in (clean_hydra, clean_defence) if p
+        }
+        for temp_root in clean_roots:
+            shutil.rmtree(temp_root, ignore_errors=True)
+    if rc == 4 and restore:
+        out("defence: execution refused after recovery/check. If files were restored, rerun the command without --defence-restore so Python loads the verified on-disk code.")
+    elif rc == 4:
+        out("defence: code differs from the trusted baseline or a signed baseline is invalid/missing. "
+            "If you changed code intentionally use --defence-rebaseline; to undo unwanted changes use --defence-restore.")
     return rc
 
 
