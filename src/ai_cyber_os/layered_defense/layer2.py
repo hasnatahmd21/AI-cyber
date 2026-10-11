@@ -19,10 +19,16 @@ _INDEPENDENT = (
 class Layer2:
     name = "layer2"
     def __init__(self, trust: TrustAuthority, window_s: float = 60.0, strike_limit: int = 3,
-                 clock=time.monotonic, it_tech_source: str | None = None):
+                 clock=time.monotonic, it_tech_source: str | None = None,
+                 it_tech_integrity_verified: bool = False):
+        if not isinstance(it_tech_integrity_verified, bool):
+            raise ValueError("IT-Tech integrity flag must be a boolean result")
         self.trust, self.window, self.limit, self._clock = trust, window_s, strike_limit, clock
         self._strikes: Dict[str, Deque[float]] = defaultdict(deque)
-        self.it_tech_network = ITTechNetworkGate(it_tech_source) if it_tech_source else None
+        self.it_tech_network = (
+            ITTechNetworkGate(it_tech_source, baseline_verified=it_tech_integrity_verified)
+            if it_tech_source else None
+        )
 
     def evaluate(self, req: Request, prior: Tuple[LayerResult, ...] = ()) -> LayerResult:
         text = (str(req.payload) if req.payload is not None else "") + " " + req.resource
