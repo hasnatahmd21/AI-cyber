@@ -472,6 +472,7 @@ class DefenceSupervisor:
                     last_check_at=_utc_now(), checks={**self._status.get("checks", {}), **checks},
                 )
 
+            was_durable = self._durable_latch_confirmed
             latch_persisted, final_reason = self._persist_incident_latch(reason, checks)
             if not latch_persisted:
                 final_reason = (
@@ -480,19 +481,22 @@ class DefenceSupervisor:
                     "is unavailable until storage is repaired"
                 )
 
-            if first_failure and self._system is not None:
+            newly_durable = not was_durable and latch_persisted
+            if (first_failure or newly_durable) and self._system is not None:
+                event = "supervisor_fail_closed" if first_failure else "supervisor_latch_persistence_recovered"
                 try:
                     self._system.audit.record(
-                        "supervisor_fail_closed", reason=final_reason, checks=checks,
+                        event, reason=final_reason, checks=checks,
                         durable_latch=bool(latch_persisted),
                     )
                 except Exception as exc:
                     final_reason = f"{final_reason}; audit append failed: {type(exc).__name__}"
-                self._persist_audit(latch_on_failure=False)
-                audit_status = self.snapshot()
-                audit_reason = str(audit_status.get("reason", "")).lower()
-                if "audit persistence failed" in audit_reason:
-                    final_reason = f"{final_reason}; {audit_status['reason']}"
+                if persist_audit:
+                    self._persist_audit(latch_on_failure=False)
+                    audit_status = self.snapshot()
+                    audit_reason = str(audit_status.get("reason", "")).lower()
+                    if "audit persistence failed" in audit_reason:
+                        final_reason = f"{final_reason}; {audit_status['reason']}"
 
             # A previous failed write is retried by the monitor loop. A file merely
             # left behind by an exception is not counted as durable until fsync works.
