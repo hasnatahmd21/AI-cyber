@@ -194,4 +194,4 @@ class ITTechNetworkGate:
                 return False, "IT-Tech network invariant violation: " + ",".join(v.invariant_id for v in critical)
             return True, f"network state {state.label.value}; invariants clean"
         except Exception as exc:
-            return False, f"IT-Tech network engine failed closed: {type(exc).__name__}: {exc}"
+            return False, f"IT-Tech network engine failed closed: {type(exc).__name__}: {exc!r}"
