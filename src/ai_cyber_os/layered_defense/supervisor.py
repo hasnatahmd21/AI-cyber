@@ -14,7 +14,7 @@ import threading
 import time
 from typing import Any, Optional
 
-from .audit_store import save
+from .audit_store import load_verified, save
 from .audit_telemetry import AuditLog
 from .contracts import Decision, Request
 from .crypto_integrity import Integrity, KeyProvider
@@ -154,6 +154,52 @@ class DefenceSupervisor:
                 return f"persistent defence latch {label} unreadable ({type(exc).__name__}); explicit review required"
         return None
 
+    def _persisted_audit_reason(self) -> Optional[str]:
+        """Verify every prior persisted audit chain before trusting this worktree."""
+        audit_dir = os.path.join(self.state_dir, "audit")
+        if os.path.islink(self.state_dir):
+            return "security state directory is a symlink; refusing to trust audit history"
+        if not os.path.lexists(audit_dir):
+            return None
+        if os.path.islink(audit_dir):
+            return "persistent audit directory is a symlink; explicit review required"
+        if not os.path.isdir(audit_dir):
+            return "persistent audit path is not a directory; explicit review required"
+
+        # Serialize reads with this process's atomic audit writer so a reader cannot
+        # confuse the intentional chain-then-manifest update window with tampering.
+        with self._audit_save_lock:
+            try:
+                names = sorted(os.listdir(audit_dir))
+            except OSError as exc:
+                return f"persistent audit directory unreadable ({type(exc).__name__})"
+
+            chain_names = {name for name in names if name.endswith(".jsonl")}
+            manifest_names = {
+                name[:-len(".manifest.json")]
+                for name in names
+                if name.endswith(".jsonl.manifest.json")
+            }
+            for name in names:
+                path = os.path.join(audit_dir, name)
+                if os.path.islink(path):
+                    return f"persistent audit entry {name} is a symlink; explicit review required"
+                if name.endswith(".tmp"):
+                    return f"incomplete persistent audit write {name}; explicit review required"
+            if chain_names != manifest_names:
+                return "persistent audit chain/manifest inventory mismatch; explicit review required"
+
+            for name in sorted(chain_names):
+                path = os.path.join(audit_dir, name)
+                try:
+                    load_verified(path, integrity=self.integrity)
+                except Exception as exc:
+                    return (
+                        f"persistent audit verification failed for {name} "
+                        f"({type(exc).__name__}); explicit review required"
+                    )
+        return None
+
     def _write_persistent_latch(self, reason: str, checks: dict[str, bool]) -> None:
         self._write_persistent_latch_to(self.latch_path, reason, checks)
 
@@ -274,6 +320,17 @@ class DefenceSupervisor:
                 last_check_at=_utc_now(), checks={**checks, "persistent_latch": False},
             )
             raise SupervisorStartupError(latch_reason)
+        audit_reason = self._persisted_audit_reason()
+        if audit_reason:
+            self._latch_failure(audit_reason, {"audit_chain": False}, persist_audit=False)
+            durable = self._durable_latch_confirmed and self._latch_marker_present()
+            self._set_status(
+                active=False, ready=False,
+                status="blocked" if durable else "blocking",
+                reason=audit_reason,
+                last_check_at=_utc_now(),
+            )
+            raise SupervisorStartupError(audit_reason)
 
         try:
             self._system = build_system(
@@ -394,6 +451,10 @@ class DefenceSupervisor:
             if latch_reason:
                 self._latch_failure(latch_reason, {"persistent_latch": False})
                 return False, latch_reason, self.snapshot()
+            audit_reason = self._persisted_audit_reason()
+            if audit_reason:
+                self._latch_failure(audit_reason, {"audit_chain": False})
+                return False, audit_reason, self.snapshot()
 
             try:
                 if self._system is None:
