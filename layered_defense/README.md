@@ -38,7 +38,7 @@ python -m ai_cyber run -- --verify
 python -m ai_cyber baseline  # explicitly baseline both HYDRA and defence source
 python -m unittest discover -s tests -t .      # (pytest also works if installed)
 ```
-Production needs a key: `export AI_CYBER_KEY_DEFAULT=$(python -c "import secrets;print(secrets.token_hex(32))")`
+The first run automatically creates a persistent private key under `.ai_cyber/key` (directory mode `0700`, key mode `0600`). In production, a stable secret-manager value may be supplied as `AI_CYBER_KEY_DEFAULT` (hex-encoded, at least 16 bytes). Keep it stable across restarts; do not generate a new value on every run, because that invalidates existing signatures.
 
 ## Integrity and recovery
 - The first run creates two HMAC-signed inventories in `.ai_cyber/`: `hydra_baseline.json` for `src/ai_cyber_os` and `defence_baseline.json` for `layered_defense/ai_cyber`. Both are mandatory before HYDRA can run.
