@@ -1,6 +1,6 @@
 """Atomic JSONL persistence with signed count/final-hash manifests."""
 from __future__ import annotations
-import json, os
+import json, os, stat
 from contextlib import contextmanager
 from typing import Iterator, Optional
 from .audit_telemetry import AuditLog
@@ -34,11 +34,18 @@ def audit_directory_lock(path: str) -> Iterator[None]:
         raise AuditTamperError("cannot safely open audit directory lock") from exc
     unlock = None
     try:
+        lock_stat = os.fstat(fd)
+        if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+            raise AuditTamperError("audit lock is not a private regular file")
+        try:
+            os.fchmod(fd, 0o600)
+        except (AttributeError, OSError):
+            pass
         if os.name == "nt":
             import msvcrt
 
             if os.fstat(fd).st_size == 0:
-                os.write(fd, b"\\0")
+                os.write(fd, b"\0")
             os.lseek(fd, 0, os.SEEK_SET)
             msvcrt.locking(fd, msvcrt.LK_LOCK, 1)
             unlock = lambda: msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
@@ -73,6 +80,38 @@ def _has_symlink_ancestor(path: str) -> bool:
         if parent == current:
             return False
         current = parent
+
+
+def _read_regular_text(path: str) -> str:
+    """Read only an ordinary, single-link file without following symlinks/FIFOs."""
+    try:
+        before = os.lstat(path)
+    except OSError as exc:
+        raise AuditTamperError(f"audit file unreadable: {type(exc).__name__}") from exc
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        raise AuditTamperError("audit chain or manifest is not a single-link regular file")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        fd = os.open(path, flags)
+    except OSError as exc:
+        raise AuditTamperError(f"audit file cannot be opened safely: {type(exc).__name__}") from exc
+    try:
+        after = os.fstat(fd)
+        if (
+            not stat.S_ISREG(after.st_mode)
+            or after.st_nlink != 1
+            or after.st_dev != before.st_dev
+            or after.st_ino != before.st_ino
+        ):
+            raise AuditTamperError("audit file changed during safe open")
+        with os.fdopen(fd, "r", encoding="utf-8") as stream:
+            fd = -1
+            return stream.read()
+    finally:
+        if fd >= 0:
+            os.close(fd)
 
 
 def _atomic_write(path: str, text: str) -> None:
@@ -177,10 +216,12 @@ def load_verified(
                 path, expected_len, integrity=integrity, _locked=True
             )
     try:
-        with open(path, encoding="utf-8") as stream:
-            records = [json.loads(line) for line in stream if line.strip()]
-        with open(path + ".manifest.json", encoding="utf-8") as stream:
-            document = json.load(stream)
+        records = [
+            json.loads(line)
+            for line in _read_regular_text(path).splitlines()
+            if line.strip()
+        ]
+        document = json.loads(_read_regular_text(path + ".manifest.json"))
         manifest = document["manifest"]
     except Exception as exc:
         raise AuditTamperError(f"audit file or manifest unreadable: {type(exc).__name__}") from exc
