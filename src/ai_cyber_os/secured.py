@@ -93,10 +93,41 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
     argv = list(sys.argv[1:] if argv is None else argv)
     rebaseline = "--defence-rebaseline" in argv
     restore = "--defence-restore" in argv
-    args = [a for a in argv if a not in ("--defence-rebaseline", "--defence-restore")]
+    clear_latch = "--defence-clear-latch" in argv
+    clear_reason = None
+    args = []
+    index = 0
+    while index < len(argv):
+        item = argv[index]
+        if item in ("--defence-rebaseline", "--defence-restore", "--defence-clear-latch"):
+            index += 1
+            continue
+        if item == "--defence-clear-reason":
+            if index + 1 >= len(argv):
+                clear_reason = None
+                index += 1
+            else:
+                clear_reason = argv[index + 1]
+                index += 2
+            continue
+        args.append(item)
+        index += 1
     if "--json" in args and out is print:
         out = _stderr
     root = root or _root()
+
+    if clear_latch:
+        unexpected = [item for item in args if item != "--json"]
+        if unexpected:
+            out("defence: latch clearing is an administrative operation and cannot be combined with execution")
+            return 4
+        if not isinstance(clear_reason, str) or not clear_reason.strip():
+            out("defence: --defence-clear-latch requires --defence-clear-reason with an operator review reason")
+            return 4
+        from .layered_defense.supervisor import clear_defence_latch
+        cleared, message = clear_defence_latch(root, clear_reason)
+        out("defence: " + message)
+        return 0 if cleared else 4
     target = os.path.join(root, PACKAGE_REL)
     state = os.path.join(root, ".ai_cyber")
     baseline_path = os.path.join(state, "hydra_baseline.json")
