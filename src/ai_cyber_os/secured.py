@@ -19,6 +19,28 @@ def _stderr(message: str) -> None:
 
 
 def _root() -> str:
+    """Locate a checkout whether this package is editable or installed from a wheel.
+
+    Candidate roots are accepted only when the project metadata, canonical package,
+    and protected IT-Tech source all exist. The secure runtime still validates signed
+    baselines before executing any HYDRA phase.
+    """
+    candidates = [
+        os.environ.get("AI_CYBER_PROJECT_ROOT"),
+        os.getcwd(),
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        candidate = os.path.abspath(candidate)
+        if (
+            os.path.isfile(os.path.join(candidate, "pyproject.toml"))
+            and os.path.isdir(os.path.join(candidate, PACKAGE_REL))
+            and os.path.isfile(os.path.join(candidate, IT_TECH_REL))
+        ):
+            return candidate
+    # Keep a deterministic source-layout fallback; missing assets/baselines will fail closed.
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 

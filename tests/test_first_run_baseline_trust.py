@@ -259,3 +259,32 @@ def test_cli_cannot_rebaseline_over_corrupt_persisted_audit(tmp_path, monkeypatc
     assert not (state / "it_tech_baseline.json").exists()
     assert (state / "defence_latch.json").is_file()
 
+def test_secured_root_locator_prefers_explicit_valid_project_root(tmp_path, monkeypatch):
+    from ai_cyber_os import secured
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
+    package = tmp_path / "src" / "ai_cyber_os"
+    package.mkdir(parents=True)
+    (tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py").write_text(
+        "# fixture IT-Tech source\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("AI_CYBER_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.chdir("/")
+
+    assert secured._root() == str(tmp_path)
+
+
+def test_secured_root_locator_uses_valid_working_tree_for_wheel_install(tmp_path, monkeypatch):
+    from ai_cyber_os import secured
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
+    package = tmp_path / "src" / "ai_cyber_os"
+    package.mkdir(parents=True)
+    (tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py").write_text(
+        "# fixture IT-Tech source\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("AI_CYBER_PROJECT_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+
+    assert secured._root() == str(tmp_path)
+
