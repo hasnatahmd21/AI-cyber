@@ -14,7 +14,7 @@ import threading
 import time
 from typing import Any, Optional
 
-from .audit_store import load_verified, save
+from .audit_store import audit_directory_lock, load_verified, save
 from .audit_telemetry import AuditLog
 from .contracts import Decision, Request
 from .crypto_integrity import Integrity, KeyProvider
@@ -168,7 +168,7 @@ class DefenceSupervisor:
 
         # Serialize reads with this process's atomic audit writer so a reader cannot
         # confuse the intentional chain-then-manifest update window with tampering.
-        with self._audit_save_lock:
+        with self._audit_save_lock, audit_directory_lock(os.path.join(audit_dir, ".inventory")):
             try:
                 names = sorted(os.listdir(audit_dir))
             except OSError as exc:
@@ -192,7 +192,7 @@ class DefenceSupervisor:
             for name in sorted(chain_names):
                 path = os.path.join(audit_dir, name)
                 try:
-                    load_verified(path, integrity=self.integrity)
+                    load_verified(path, integrity=self.integrity, _locked=True)
                 except Exception as exc:
                     return (
                         f"persistent audit verification failed for {name} "
