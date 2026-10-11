@@ -162,45 +162,45 @@ def save(audit: AuditLog, path: str, *, integrity: Optional[Integrity] = None) -
 
 
 def _save_unlocked(
-    audit: AuditLog, path: str, *, integrity: Optional[Integrity] = None
+audit: AuditLog, path: str, *, integrity: Optional[Integrity] = None
 ) -> int:
-        """Persist a chain without overwriting a tampered or divergent prior chain."""
-        directory = os.path.dirname(os.path.abspath(path))
-        if _has_symlink_ancestor(directory):
-            raise AuditTamperError("refusing audit persistence through a symlinked directory")
-        if _has_symlink_ancestor(directory):
-            raise AuditTamperError("audit persistence directory became a symlink")
-        manifest_path = path + ".manifest.json"
-        if os.path.islink(path) or os.path.islink(manifest_path):
-            raise AuditTamperError("refusing symlinked audit chain or manifest")
-    
-        records = audit.records()
-        chain_exists = os.path.lexists(path)
-        manifest_exists = os.path.lexists(manifest_path)
-        if chain_exists or manifest_exists:
-            if not chain_exists or not manifest_exists:
-                raise AuditTamperError("persisted audit chain/manifest pair is incomplete")
-            existing = load_verified(path, integrity=integrity, _locked=True)
-            if len(existing) > len(records):
-                raise AuditTamperError("persisted audit contains records absent from memory")
-            previous_hashes = [record.get("hash") for record in existing]
-            current_hashes = [record.get("hash") for record in records[:len(existing)]]
-            if previous_hashes != current_hashes:
-                raise AuditTamperError("persisted audit history diverges from in-memory chain")
-    
-        lines = "".join(json.dumps(record, sort_keys=True, default=str) + "\n" for record in records)
-        manifest = {
-            "count": len(records),
-            "final_hash": records[-1]["hash"] if records else _GENESIS,
-        }
-        document = {"manifest": manifest}
-        if integrity is not None:
-            document["signature"] = integrity.sign(_canonical(manifest))
-        # Chain first, manifest second. A crash between these writes is detected by the
-        # next save instead of silently replacing the previous signed history.
-        _atomic_write(path, lines)
-        _atomic_write(manifest_path, json.dumps(document, sort_keys=True, indent=2))
-        return len(records)
+    """Persist a chain without overwriting a tampered or divergent prior chain."""
+    directory = os.path.dirname(os.path.abspath(path))
+    if _has_symlink_ancestor(directory):
+        raise AuditTamperError("refusing audit persistence through a symlinked directory")
+    if _has_symlink_ancestor(directory):
+        raise AuditTamperError("audit persistence directory became a symlink")
+    manifest_path = path + ".manifest.json"
+    if os.path.islink(path) or os.path.islink(manifest_path):
+        raise AuditTamperError("refusing symlinked audit chain or manifest")
+
+    records = audit.records()
+    chain_exists = os.path.lexists(path)
+    manifest_exists = os.path.lexists(manifest_path)
+    if chain_exists or manifest_exists:
+        if not chain_exists or not manifest_exists:
+            raise AuditTamperError("persisted audit chain/manifest pair is incomplete")
+        existing = load_verified(path, integrity=integrity, _locked=True)
+        if len(existing) > len(records):
+            raise AuditTamperError("persisted audit contains records absent from memory")
+        previous_hashes = [record.get("hash") for record in existing]
+        current_hashes = [record.get("hash") for record in records[:len(existing)]]
+        if previous_hashes != current_hashes:
+            raise AuditTamperError("persisted audit history diverges from in-memory chain")
+
+    lines = "".join(json.dumps(record, sort_keys=True, default=str) + "\n" for record in records)
+    manifest = {
+        "count": len(records),
+        "final_hash": records[-1]["hash"] if records else _GENESIS,
+    }
+    document = {"manifest": manifest}
+    if integrity is not None:
+        document["signature"] = integrity.sign(_canonical(manifest))
+    # Chain first, manifest second. A crash between these writes is detected by the
+    # next save instead of silently replacing the previous signed history.
+    _atomic_write(path, lines)
+    _atomic_write(manifest_path, json.dumps(document, sort_keys=True, indent=2))
+    return len(records)
 
 
 def load_verified(
@@ -223,6 +223,8 @@ def load_verified(
         ]
         document = json.loads(_read_regular_text(path + ".manifest.json"))
         manifest = document["manifest"]
+    except AuditTamperError:
+        raise
     except Exception as exc:
         raise AuditTamperError(f"audit file or manifest unreadable: {type(exc).__name__}") from exc
     if not AuditLog.verify(records, expected_len=expected_len):
