@@ -1,6 +1,6 @@
 # Architecture
 
-Request flow (`orchestrator.py`): Barrier -> isolation/decoy gate -> Layer 1 -> Layer 2 -> Layer 3 -> decision -> audit.
+Request flow (`orchestrator.py`): integrity check -> barrier (authentication/token verification included) -> Layer 1 -> Layer 2 -> Layer 3 -> conditional isolation/decoy handling -> decision -> audit.
 
 * Authentication/authorization is enforced at the barrier AND re-checked independently by Layer 2 and Layer 3
   (no layer trusts an earlier "pass").
