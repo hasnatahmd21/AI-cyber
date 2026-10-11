@@ -12,7 +12,7 @@ on:
       - repair/forensic-reconstruction
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 concurrency:
@@ -67,20 +67,3 @@ jobs:
         run: |
           find layered_defense -type d -name __pycache__ -prune -exec rm -rf {} +
           find layered_defense -type f -name '*.py[co]' -delete
-
-      - name: Commit verified imported project to source branch
-        if: success()
-        env:
-          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add layered_defense
-          if git diff --cached --quiet; then
-            echo "No imported-project changes to commit."
-            exit 0
-          fi
-          git commit -m "Import verified layered defense project into AI-cyber"
-          git push origin "HEAD:${SOURCE_BRANCH}"
