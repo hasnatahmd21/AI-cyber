@@ -25,6 +25,9 @@ def _restart_block_reason(root: Path) -> str | None:
         latch_reason = service._persistent_latch_reason()
         if latch_reason:
             return latch_reason
+        audit_reason = service._persisted_audit_reason()
+        if audit_reason:
+            return audit_reason
         ok, reason, _checks = service._verify_source_assets()
         if not ok:
             return "signed source integrity is not healthy: " + reason
