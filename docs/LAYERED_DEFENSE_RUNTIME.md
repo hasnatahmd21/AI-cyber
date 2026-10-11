@@ -62,4 +62,12 @@ Recovery proceeds only when the Git source matches the signed baseline. After a 
 
 ## Verification status
 
-The GitHub Actions run for the current integration branch passed the full test suite (217 tests) and the standalone Phase 13 security evaluation. This verifies the repository CI environment. A first-start/rebaseline/restore smoke test in the target Codespaces deployment remains a deployment-level check; do not treat CI as proof that a specific Codespaces workspace has been exercised.
+GitHub Actions passed on commit `7f3372820e1a2836a087de797a590c260a1e5fa8`:
+
+- Python compile step: PASS
+- Full test suite: **221 passed in 52.24 seconds**
+- Phase 13 standalone security/RAG evaluation: PASS
+- Phase 13 tamper detection and end-to-end evaluation: PASS
+- Retrieval/evidence metrics reported by the evaluator: precision@k, recall@k, MRR, nDCG@k, evidence quality, and output grounding all `1.0`
+
+This verifies the repository's automated CI environment. It does not prove that a particular Codespaces workspace has been smoke-tested with its own provisioned key, persisted baseline, and recovery workflow.
