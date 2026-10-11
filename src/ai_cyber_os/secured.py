@@ -121,7 +121,20 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
             system.audit.record("hydra_not_started", decision=result.decision.value)
             rc = 3
             return rc
-        rc = _hydra(args)
+        if args[:1] == ["hydra-check"]:
+            from .hydra import Hydra
+            verifier = Hydra()
+            problems = verifier.verify_files()
+            lossless = verifier.verify_lossless()
+            print(f"HYDRA integrity: files_intact={not problems} lossless_vs_original={lossless}")
+            rc = 0 if not problems and lossless else 1
+            if rc == 0 and "--run" in args:
+                from .intelligence_hydra import run_hydra_phase
+                result = run_hydra_phase("all")
+                print(json.dumps(result, indent=2, sort_keys=True, default=str))
+                rc = 0 if _success(result) else 1
+        else:
+            rc = _hydra(args)
         system.audit.record("hydra_finished", exit_code=rc)
         return rc
     except StartupError as exc:
