@@ -6,7 +6,7 @@ from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
 from ai_cyber_os.layered_defense.audit_store import load_verified, save, AuditTamperError
 from ai_cyber_os.layered_defense.contracts import Decision, Request
 from ai_cyber_os.layered_defense.crypto_integrity import Integrity, StaticKeyProvider
-from ai_cyber_os.layered_defense.integrity_gate import build_baseline, check, write_baseline
+from ai_cyber_os.layered_defense.integrity_gate import build_baseline, check, check_file, write_baseline, write_file_baseline
 from ai_cyber_os.layered_defense.runtime import StartupError, build_system
 
 
@@ -181,3 +181,46 @@ def test_shutdown_event_is_included_in_persisted_audit(tmp_path):
     save(system.audit, str(path), integrity=integrity)
     records = load_verified(str(path), integrity=integrity)
     assert records[-1]["event"] == "shutdown"
+
+
+
+def test_integrity_restore_refuses_symlink_destination(tmp_path):
+    target = tmp_path / "target"
+    clean = tmp_path / "clean"
+    target.mkdir()
+    clean.mkdir()
+    (target / "module.py").write_text("trusted = True\n")
+    (clean / "module.py").write_text("trusted = True\n")
+    baseline = tmp_path / ".ai_cyber" / "baseline.json"
+    integrity = Integrity(KEY)
+    write_baseline(str(target), str(baseline), integrity)
+
+    outside = tmp_path / "outside.txt"
+    outside.write_text("do not overwrite\n")
+    (target / "module.py").unlink()
+    (target / "module.py").symlink_to(outside)
+
+    result = check(str(target), str(baseline), integrity, str(clean))
+    assert result.ok is False
+    assert "symlink" in result.reason
+    assert outside.read_text() == "do not overwrite\n"
+
+
+def test_it_tech_integrity_gate_refuses_symlink_source(tmp_path):
+    target = tmp_path / "IT_tech.py"
+    clean = tmp_path / "clean_IT_tech.py"
+    baseline = tmp_path / ".ai_cyber" / "it-tech.json"
+    clean.write_text("trusted_source = True\n")
+    target.write_text("trusted_source = True\n")
+    integrity = Integrity(KEY)
+    write_file_baseline(str(target), str(baseline), integrity)
+
+    outside = tmp_path / "outside.py"
+    outside.write_text("do not overwrite\n")
+    target.unlink()
+    target.symlink_to(outside)
+
+    result = check_file(str(target), str(baseline), integrity, str(clean))
+    assert result.ok is False
+    assert "symlink" in result.reason
+    assert outside.read_text() == "do not overwrite\n"
