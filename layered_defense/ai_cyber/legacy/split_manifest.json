@@ -1,0 +1,654 @@
+{
+ "source_sha256": "7cad46a475a5eaa3005f0be353ccda9a6f898a893ccea15a8e386c088417a11b",
+ "source_bytes": 2903885,
+ "source_lines": 87018,
+ "segments": [
+  {
+   "order": 0,
+   "phase": 1,
+   "title": "OPERATING SYSTEM SECURITY DEPTH",
+   "file": "phase_01_operating_system_security_depth.py",
+   "sha256": "c9da9ec5f47b8160ca8e2685b42080639f9402b62426805b383a759a3524f513",
+   "src_start_line": 1,
+   "src_end_line": 1992,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 1,
+   "phase": 2,
+   "title": "NETWORK SECURITY STATE DEPTH",
+   "file": "phase_02_network_security_state_depth.py",
+   "sha256": "3b184e81ffd3f67175919a130fcb4c30cff237d9f9aa04c43ecea9c6ab1c025b",
+   "src_start_line": 1993,
+   "src_end_line": 3856,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 2,
+   "phase": 3,
+   "title": "IDENTITY + DYNAMIC AUTHORITY",
+   "file": "phase_03_identity_dynamic_authority.py",
+   "sha256": "5c22e35cc806d50475a3bc731e2ab07762ab4304564f53a1740feb1b181ad14b",
+   "src_start_line": 3857,
+   "src_end_line": 5779,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 3,
+   "phase": 3,
+   "title": "IDENTITY + DYNAMIC AUTHORITY",
+   "file": "phase_03_identity_dynamic_authority.py",
+   "sha256": "5c22e35cc806d50475a3bc731e2ab07762ab4304564f53a1740feb1b181ad14b",
+   "src_start_line": 5780,
+   "src_end_line": 7702,
+   "duplicate_of_previous": true
+  },
+  {
+   "order": 4,
+   "phase": 4,
+   "title": "APPLICATION + API TRUST STATE",
+   "file": "phase_04_application_api_trust_state.py",
+   "sha256": "f1b567b45543a8a9e1df70c137bbf11b4a82e8a6a3588146fd6549fb601f43a3",
+   "src_start_line": 7703,
+   "src_end_line": 9566,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 5,
+   "phase": 5,
+   "title": "CONTAINER / VIRTUALIZATION / CLOUD STATE",
+   "file": "phase_05_container_virtualization_cloud_state.py",
+   "sha256": "f4137681394817ecf8276021a0aed3a577de053fbb58d51e4e2fbf9ec35eef3a",
+   "src_start_line": 9567,
+   "src_end_line": 11480,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 6,
+   "phase": 6,
+   "title": "DISTRIBUTED SECURITY STATE",
+   "file": "phase_06_distributed_security_state.py",
+   "sha256": "9e260120829d3d1cb263eb5a1e14aee39cb281aa13eca0df4e263d92fdfd22e1",
+   "src_start_line": 11481,
+   "src_end_line": 13214,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 7,
+   "phase": 7,
+   "title": "SOFTWARE SUPPLY-CHAIN TRUST CONTINUITY",
+   "file": "phase_07_software_supply_chain_trust_continuity.py",
+   "sha256": "49c0b31bebcdd6e43fa6ab8e48eaa93e3a6d56d9c2d983cd3f20f690f4517c97",
+   "src_start_line": 13215,
+   "src_end_line": 15368,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 8,
+   "phase": 8,
+   "title": "AI SUPPLY-CHAIN TRUST",
+   "file": "phase_08_ai_supply_chain_trust.py",
+   "sha256": "ce1472f4a2742b59bb9626dc06db1e959b8a2b3577c5f6092d30e16a709eb4bd",
+   "src_start_line": 15369,
+   "src_end_line": 17904,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 9,
+   "phase": 9,
+   "title": "STORAGE + DATABASE SECURITY STATE",
+   "file": "phase_09_storage_database_security_state.py",
+   "sha256": "e06ddd27bec2de2294502bbb27fdeb209c5a7070deb0551deb2688bfe88b6502",
+   "src_start_line": 17905,
+   "src_end_line": 20195,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 10,
+   "phase": 10,
+   "title": "HARDWARE / FIRMWARE / BOOT TRUST",
+   "file": "phase_10_hardware_firmware_boot_trust.py",
+   "sha256": "bc4c3b60b017d1f40321a348c25ccdac014d5ec3794bb143275c2f0a61d64d9a",
+   "src_start_line": 20196,
+   "src_end_line": 22514,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 11,
+   "phase": 11,
+   "title": "STATISTICAL SECURITY FOUNDATION",
+   "file": "phase_11_statistical_security_foundation.py",
+   "sha256": "8d79edcbad32cc36b19c442469e69ecd6a8dffa2fc89baed0c1c95a504c415d4",
+   "src_start_line": 22515,
+   "src_end_line": 24434,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 12,
+   "phase": 12,
+   "title": "ADAPTIVE BEHAVIORAL SECURITY",
+   "file": "phase_12_adaptive_behavioral_security.py",
+   "sha256": "f6cb349e360b40ff27fad34d8aa6a0ab2ae5e028bfa7249d2185251c5b47d02f",
+   "src_start_line": 24435,
+   "src_end_line": 26573,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 13,
+   "phase": 13,
+   "title": "MULTIVARIATE SECURITY STATE ANALYTICS",
+   "file": "phase_13_multivariate_security_state_analytics.py",
+   "sha256": "be808cb9b8ff68fb5b4c3dae46f88c90aee378f38ea1b38339d3804034ef725d",
+   "src_start_line": 26574,
+   "src_end_line": 28457,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 14,
+   "phase": 14,
+   "title": "TIME-SERIES + EARLY-WARNING EXTENSION",
+   "file": "phase_14_time_series_early_warning_extension.py",
+   "sha256": "787ab8df2270f49a38b7ace214bd1ffe41ffe4eceed41061135e8773a40b807c",
+   "src_start_line": 28458,
+   "src_end_line": 30045,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 15,
+   "phase": 15,
+   "title": "PROBABILISTIC SECURITY EXTENSION",
+   "file": "phase_15_probabilistic_security_extension.py",
+   "sha256": "9e65d0b4c9f5acbb6f56130be699230d8669da9a64f891c1bdd5234a33489dd5",
+   "src_start_line": 30046,
+   "src_end_line": 32210,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 16,
+   "phase": 16,
+   "title": "DETECTION ERROR SCIENCE",
+   "file": "phase_16_detection_error_science.py",
+   "sha256": "53c244cc17b6c3ba7c93613371b92b440cfd863c3701615f5001d8326c485a47",
+   "src_start_line": 32211,
+   "src_end_line": 34390,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 17,
+   "phase": 17,
+   "title": "CAUSAL SECURITY EXTENSION",
+   "file": "phase_17_causal_security_extension.py",
+   "sha256": "2f666e46e3e053c16acee090e82af09ad1b43363bdb62eb268073fdbc0abfddf",
+   "src_start_line": 34391,
+   "src_end_line": 36223,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 18,
+   "phase": 18,
+   "title": "COUNTERFACTUAL SECURITY EXTENSION",
+   "file": "phase_18_counterfactual_security_extension.py",
+   "sha256": "8cadd8862d408dd872a34b997c9dcaefd06be762a667a7b2b428e9e519518c94",
+   "src_start_line": 36224,
+   "src_end_line": 38068,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 19,
+   "phase": 19,
+   "title": "DEFENSIVE INTERVENTION OPTIMIZATION",
+   "file": "phase_19_defensive_intervention_optimization.py",
+   "sha256": "86130a982eef5ce0c565b1c56912deba671759198e0899e7c7c18d5dd576ed08",
+   "src_start_line": 38069,
+   "src_end_line": 39836,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 20,
+   "phase": 20,
+   "title": "CYBER CONTROL THEORY EXTENSION",
+   "file": "phase_20_cyber_control_theory_extension.py",
+   "sha256": "7a300e875f6e2444351716c9777e6c5aa16b3b79313802b8097bff1c02056225",
+   "src_start_line": 39837,
+   "src_end_line": 41595,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 21,
+   "phase": 21,
+   "title": "SECURITY INVARIANTS + FORMAL VERIFICATION",
+   "file": "phase_21_security_invariants_formal_verification.py",
+   "sha256": "57dd67c77c11efdd2fe6079bb6161ec3346c99340281ce7ccf95a39fbbad72a0",
+   "src_start_line": 41596,
+   "src_end_line": 43252,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 22,
+   "phase": 22,
+   "title": "RELIABILITY + FAILURE ENGINEERING",
+   "file": "phase_22_reliability_failure_engineering.py",
+   "sha256": "368d4272ac22d835d5968569a196a61678b694485ed6fffc5e9490b89bfae75f",
+   "src_start_line": 43253,
+   "src_end_line": 45048,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 23,
+   "phase": 23,
+   "title": "ADVERSARIAL RESILIENCE",
+   "file": "phase_23_adversarial_resilience.py",
+   "sha256": "1868517733131f6203ae868e419df2ca3216c35f896c6e19ab04f90b671f2f0d",
+   "src_start_line": 45049,
+   "src_end_line": 47488,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 24,
+   "phase": 24,
+   "title": "CROSS-LAYER SECURITY CAUSALITY",
+   "file": "phase_24_cross_layer_security_causality.py",
+   "sha256": "c98781be7e04da10b3e184425a1e434cce0990d18806645da520c12b86719ae8",
+   "src_start_line": 47489,
+   "src_end_line": 49450,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 25,
+   "phase": 25,
+   "title": "CYBER DIGITAL-TWIN EXTENSION",
+   "file": "phase_25_cyber_digital_twin_extension.py",
+   "sha256": "9dd71fe78b3715b90a7628d31f55494e716b853154dced864d8d89ef93115171",
+   "src_start_line": 49451,
+   "src_end_line": 51199,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 26,
+   "phase": 26,
+   "title": "AUTONOMOUS SYSTEM / AI-AGENT SECURITY",
+   "file": "phase_26_autonomous_system_ai_agent_security.py",
+   "sha256": "4070b16dac455097dede34b77cb772d3aaf3dd47f3c028aa37fdeee8df5d1419",
+   "src_start_line": 51200,
+   "src_end_line": 53557,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 27,
+   "phase": 27,
+   "title": "AI GOVERNANCE + TECHNICAL ENFORCEMENT",
+   "file": "phase_27_ai_governance_technical_enforcement.py",
+   "sha256": "1b624495a6fb1ce758c4b22611e178758d7bd8f316628d2173e157e55e76d569",
+   "src_start_line": 53558,
+   "src_end_line": 55641,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 28,
+   "phase": 28,
+   "title": "AI DEPENDENCY / SOVEREIGNTY / CONCENTRATION",
+   "file": "phase_28_ai_dependency_sovereignty_concentration.py",
+   "sha256": "975552b3c631a84da55d6b9b24253964ace80cc1edc5e24d7e2783bba98d9d42",
+   "src_start_line": 55642,
+   "src_end_line": 57696,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 29,
+   "phase": 29,
+   "title": "NOVEL ATTACK-SURFACE DISCOVERY",
+   "file": "phase_29_novel_attack_surface_discovery.py",
+   "sha256": "9b4d64d7253144b4c8eccfc8bb4d4353db5ea525191b55145639b1eecaec36bc",
+   "src_start_line": 57697,
+   "src_end_line": 59933,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 30,
+   "phase": 30,
+   "title": "EMERGENT THREAT DISCOVERY",
+   "file": "phase_30_emergent_threat_discovery.py",
+   "sha256": "982b4f4bac1c2c86659e0c9e4e4cb1c3f6e8ba2b8a188cb8c6af2f764a4e9207",
+   "src_start_line": 59934,
+   "src_end_line": 62336,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 31,
+   "phase": 31,
+   "title": "CRYPTOGRAPHIC FUTURE RESILIENCE",
+   "file": "phase_31_cryptographic_future_resilience.py",
+   "sha256": "a0b1fc5f65a9f83b88bc9f9967638cce7ad3725ca53a5aa10ab0b9a5e6caa918",
+   "src_start_line": 62337,
+   "src_end_line": 64718,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 32,
+   "phase": 32,
+   "title": "EMERGING TECHNOLOGY SECURITY FORECASTING",
+   "file": "phase_32_emerging_technology_security_forecasting.py",
+   "sha256": "c457a2eb3a7462ed7303aba17baf3f39ba94c14cd9161a36496e2781dd76e12c",
+   "src_start_line": 64719,
+   "src_end_line": 66833,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 33,
+   "phase": 33,
+   "title": "FUTURE THREAT SCENARIO ENGINEERING",
+   "file": "phase_33_future_threat_scenario_engineering.py",
+   "sha256": "ab3014382d2d33c534f81f8db94c7e55a4507fc29eadd3b82a21888faaa4e483",
+   "src_start_line": 66834,
+   "src_end_line": 69100,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 34,
+   "phase": 34,
+   "title": "DEFENSIVE TECHNOLOGY INVENTION PIPELINE",
+   "file": "phase_34_defensive_technology_invention_pipeline.py",
+   "sha256": "341f946ddb7a4184b50b9a64222ed06804721ad318430e77ab05130a63f14f8e",
+   "src_start_line": 69101,
+   "src_end_line": 71325,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 35,
+   "phase": 35,
+   "title": "CROSS-DOMAIN SECURITY FABRIC",
+   "file": "phase_35_cross_domain_security_fabric.py",
+   "sha256": "ae6fd8e44d9f12ce278800335be8c7450ce4bdb35203eb4d357c51d7546aec75",
+   "src_start_line": 71326,
+   "src_end_line": 73055,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 36,
+   "phase": 36,
+   "title": "MULTI-MODEL ASSURANCE",
+   "file": "phase_36_multi_model_assurance.py",
+   "sha256": "d53bd14769894eb0ea244e4d5b45f01b5e39d500a36f327024bbed7e2cf17605",
+   "src_start_line": 73056,
+   "src_end_line": 74979,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 37,
+   "phase": 37,
+   "title": "SECURITY OUTCOME / CONTROL EFFECTIVENESS SCIENCE",
+   "file": "phase_37_security_outcome_control_effectiveness_s.py",
+   "sha256": "c04094c72c5d59d76047eee44c8d014ab12316b2bf7ad57fe44a61358f16ed9f",
+   "src_start_line": 74980,
+   "src_end_line": 77274,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 38,
+   "phase": 38,
+   "title": "ADVERSARIAL VALIDATION",
+   "file": "phase_38_adversarial_validation.py",
+   "sha256": "b7f8b88ed48794ef26fca8c1d7801670d8c1da38c98941ce82bf1fba22c42a7f",
+   "src_start_line": 77275,
+   "src_end_line": 79025,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 39,
+   "phase": 39,
+   "title": "GLOBAL INTEGRATION VALIDATION",
+   "file": "phase_39_global_integration_validation.py",
+   "sha256": "1512cb3395abba8ed50ba730a2ef55e7e8459fa3c2057cffc0b7a22b28af418d",
+   "src_start_line": 79026,
+   "src_end_line": 80684,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 40,
+   "phase": 40,
+   "title": "COMPLETE TESTING",
+   "file": "phase_40_complete_testing.py",
+   "sha256": "65179bb06c12965c2e2a67d6df0eaa88e2a69ca791f4f737caeacd25be4a3d28",
+   "src_start_line": 80685,
+   "src_end_line": 82981,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 41,
+   "phase": 41,
+   "title": "STATIC + RUNTIME QUALITY",
+   "file": "phase_41_static_runtime_quality.py",
+   "sha256": "820e230d393a82ee2c92c4423f9d91dfdf0aaa7496d2a56f4adb2353637f567b",
+   "src_start_line": 82982,
+   "src_end_line": 85140,
+   "duplicate_of_previous": false
+  },
+  {
+   "order": 42,
+   "phase": 42,
+   "title": "FINAL HARDENING + TECHNOLOGY VERIFICATION",
+   "file": "phase_42_final_hardening_technology_verification.py",
+   "sha256": "f84b3d428d3a0427b1f35b5c3724afcdff849cfb31ff9bbf8ef4ced6258ad406",
+   "src_start_line": 85141,
+   "src_end_line": 87019,
+   "duplicate_of_previous": false
+  }
+ ],
+ "future_import_patch": {
+  "note": "Monolith has ONE 'from __future__ import annotations' (module-wide). Split files need it per file to keep identical lazy-annotation semantics. Line inserted right after docstring; strip it to recover the exact original segment.",
+  "files": {
+   "phase_01_operating_system_security_depth.py": {
+    "inserted_line": null,
+    "original_sha256": "c9da9ec5f47b8160ca8e2685b42080639f9402b62426805b383a759a3524f513"
+   },
+   "phase_02_network_security_state_depth.py": {
+    "inserted_line": 26,
+    "original_sha256": "3b184e81ffd3f67175919a130fcb4c30cff237d9f9aa04c43ecea9c6ab1c025b"
+   },
+   "phase_03_identity_dynamic_authority.py": {
+    "inserted_line": 26,
+    "original_sha256": "5c22e35cc806d50475a3bc731e2ab07762ab4304564f53a1740feb1b181ad14b"
+   },
+   "phase_04_application_api_trust_state.py": {
+    "inserted_line": 27,
+    "original_sha256": "f1b567b45543a8a9e1df70c137bbf11b4a82e8a6a3588146fd6549fb601f43a3"
+   },
+   "phase_05_container_virtualization_cloud_state.py": {
+    "inserted_line": 31,
+    "original_sha256": "f4137681394817ecf8276021a0aed3a577de053fbb58d51e4e2fbf9ec35eef3a"
+   },
+   "phase_06_distributed_security_state.py": {
+    "inserted_line": 33,
+    "original_sha256": "9e260120829d3d1cb263eb5a1e14aee39cb281aa13eca0df4e263d92fdfd22e1"
+   },
+   "phase_07_software_supply_chain_trust_continuity.py": {
+    "inserted_line": 35,
+    "original_sha256": "49c0b31bebcdd6e43fa6ab8e48eaa93e3a6d56d9c2d983cd3f20f690f4517c97"
+   },
+   "phase_08_ai_supply_chain_trust.py": {
+    "inserted_line": 39,
+    "original_sha256": "ce1472f4a2742b59bb9626dc06db1e959b8a2b3577c5f6092d30e16a709eb4bd"
+   },
+   "phase_09_storage_database_security_state.py": {
+    "inserted_line": 34,
+    "original_sha256": "e06ddd27bec2de2294502bbb27fdeb209c5a7070deb0551deb2688bfe88b6502"
+   },
+   "phase_10_hardware_firmware_boot_trust.py": {
+    "inserted_line": 42,
+    "original_sha256": "bc4c3b60b017d1f40321a348c25ccdac014d5ec3794bb143275c2f0a61d64d9a"
+   },
+   "phase_11_statistical_security_foundation.py": {
+    "inserted_line": 39,
+    "original_sha256": "8d79edcbad32cc36b19c442469e69ecd6a8dffa2fc89baed0c1c95a504c415d4"
+   },
+   "phase_12_adaptive_behavioral_security.py": {
+    "inserted_line": 33,
+    "original_sha256": "f6cb349e360b40ff27fad34d8aa6a0ab2ae5e028bfa7249d2185251c5b47d02f"
+   },
+   "phase_13_multivariate_security_state_analytics.py": {
+    "inserted_line": 38,
+    "original_sha256": "be808cb9b8ff68fb5b4c3dae46f88c90aee378f38ea1b38339d3804034ef725d"
+   },
+   "phase_14_time_series_early_warning_extension.py": {
+    "inserted_line": 42,
+    "original_sha256": "787ab8df2270f49a38b7ace214bd1ffe41ffe4eceed41061135e8773a40b807c"
+   },
+   "phase_15_probabilistic_security_extension.py": {
+    "inserted_line": 39,
+    "original_sha256": "9e65d0b4c9f5acbb6f56130be699230d8669da9a64f891c1bdd5234a33489dd5"
+   },
+   "phase_16_detection_error_science.py": {
+    "inserted_line": 35,
+    "original_sha256": "53c244cc17b6c3ba7c93613371b92b440cfd863c3701615f5001d8326c485a47"
+   },
+   "phase_17_causal_security_extension.py": {
+    "inserted_line": 37,
+    "original_sha256": "2f666e46e3e053c16acee090e82af09ad1b43363bdb62eb268073fdbc0abfddf"
+   },
+   "phase_18_counterfactual_security_extension.py": {
+    "inserted_line": 38,
+    "original_sha256": "8cadd8862d408dd872a34b997c9dcaefd06be762a667a7b2b428e9e519518c94"
+   },
+   "phase_19_defensive_intervention_optimization.py": {
+    "inserted_line": 35,
+    "original_sha256": "86130a982eef5ce0c565b1c56912deba671759198e0899e7c7c18d5dd576ed08"
+   },
+   "phase_20_cyber_control_theory_extension.py": {
+    "inserted_line": 40,
+    "original_sha256": "7a300e875f6e2444351716c9777e6c5aa16b3b79313802b8097bff1c02056225"
+   },
+   "phase_21_security_invariants_formal_verification.py": {
+    "inserted_line": 35,
+    "original_sha256": "57dd67c77c11efdd2fe6079bb6161ec3346c99340281ce7ccf95a39fbbad72a0"
+   },
+   "phase_22_reliability_failure_engineering.py": {
+    "inserted_line": 35,
+    "original_sha256": "368d4272ac22d835d5968569a196a61678b694485ed6fffc5e9490b89bfae75f"
+   },
+   "phase_23_adversarial_resilience.py": {
+    "inserted_line": 42,
+    "original_sha256": "1868517733131f6203ae868e419df2ca3216c35f896c6e19ab04f90b671f2f0d"
+   },
+   "phase_24_cross_layer_security_causality.py": {
+    "inserted_line": 39,
+    "original_sha256": "c98781be7e04da10b3e184425a1e434cce0990d18806645da520c12b86719ae8"
+   },
+   "phase_25_cyber_digital_twin_extension.py": {
+    "inserted_line": 38,
+    "original_sha256": "9dd71fe78b3715b90a7628d31f55494e716b853154dced864d8d89ef93115171"
+   },
+   "phase_26_autonomous_system_ai_agent_security.py": {
+    "inserted_line": 42,
+    "original_sha256": "4070b16dac455097dede34b77cb772d3aaf3dd47f3c028aa37fdeee8df5d1419"
+   },
+   "phase_27_ai_governance_technical_enforcement.py": {
+    "inserted_line": 44,
+    "original_sha256": "1b624495a6fb1ce758c4b22611e178758d7bd8f316628d2173e157e55e76d569"
+   },
+   "phase_28_ai_dependency_sovereignty_concentration.py": {
+    "inserted_line": 38,
+    "original_sha256": "975552b3c631a84da55d6b9b24253964ace80cc1edc5e24d7e2783bba98d9d42"
+   },
+   "phase_29_novel_attack_surface_discovery.py": {
+    "inserted_line": 50,
+    "original_sha256": "9b4d64d7253144b4c8eccfc8bb4d4353db5ea525191b55145639b1eecaec36bc"
+   },
+   "phase_30_emergent_threat_discovery.py": {
+    "inserted_line": 43,
+    "original_sha256": "982b4f4bac1c2c86659e0c9e4e4cb1c3f6e8ba2b8a188cb8c6af2f764a4e9207"
+   },
+   "phase_31_cryptographic_future_resilience.py": {
+    "inserted_line": 39,
+    "original_sha256": "a0b1fc5f65a9f83b88bc9f9967638cce7ad3725ca53a5aa10ab0b9a5e6caa918"
+   },
+   "phase_32_emerging_technology_security_forecasting.py": {
+    "inserted_line": 42,
+    "original_sha256": "c457a2eb3a7462ed7303aba17baf3f39ba94c14cd9161a36496e2781dd76e12c"
+   },
+   "phase_33_future_threat_scenario_engineering.py": {
+    "inserted_line": 43,
+    "original_sha256": "ab3014382d2d33c534f81f8db94c7e55a4507fc29eadd3b82a21888faaa4e483"
+   },
+   "phase_34_defensive_technology_invention_pipeline.py": {
+    "inserted_line": 58,
+    "original_sha256": "341f946ddb7a4184b50b9a64222ed06804721ad318430e77ab05130a63f14f8e"
+   },
+   "phase_35_cross_domain_security_fabric.py": {
+    "inserted_line": 61,
+    "original_sha256": "ae6fd8e44d9f12ce278800335be8c7450ce4bdb35203eb4d357c51d7546aec75"
+   },
+   "phase_36_multi_model_assurance.py": {
+    "inserted_line": 52,
+    "original_sha256": "d53bd14769894eb0ea244e4d5b45f01b5e39d500a36f327024bbed7e2cf17605"
+   },
+   "phase_37_security_outcome_control_effectiveness_s.py": {
+    "inserted_line": 45,
+    "original_sha256": "c04094c72c5d59d76047eee44c8d014ab12316b2bf7ad57fe44a61358f16ed9f"
+   },
+   "phase_38_adversarial_validation.py": {
+    "inserted_line": 38,
+    "original_sha256": "b7f8b88ed48794ef26fca8c1d7801670d8c1da38c98941ce82bf1fba22c42a7f"
+   },
+   "phase_39_global_integration_validation.py": {
+    "inserted_line": 43,
+    "original_sha256": "1512cb3395abba8ed50ba730a2ef55e7e8459fa3c2057cffc0b7a22b28af418d"
+   },
+   "phase_40_complete_testing.py": {
+    "inserted_line": 43,
+    "original_sha256": "65179bb06c12965c2e2a67d6df0eaa88e2a69ca791f4f737caeacd25be4a3d28"
+   },
+   "phase_41_static_runtime_quality.py": {
+    "inserted_line": 54,
+    "original_sha256": "820e230d393a82ee2c92c4423f9d91dfdf0aaa7496d2a56f4adb2353637f567b"
+   },
+   "phase_42_final_hardening_technology_verification.py": {
+    "inserted_line": 63,
+    "original_sha256": "f84b3d428d3a0427b1f35b5c3724afcdff849cfb31ff9bbf8ef4ced6258ad406"
+   }
+  }
+ },
+ "file_sha256": {
+  "phase_01_operating_system_security_depth.py": "c9da9ec5f47b8160ca8e2685b42080639f9402b62426805b383a759a3524f513",
+  "phase_02_network_security_state_depth.py": "5cd79218ac7b5220a2f245d36f8e30bb0a7199f78f2897a58a5afd06f03987db",
+  "phase_03_identity_dynamic_authority.py": "d0b05665bd6fdc66edf45548e3bfa426930f7fb07d57a391e300b4ed1a5d7a64",
+  "phase_04_application_api_trust_state.py": "4126e1e9d56e8419ee9bd216eef6d5fcf6df0cfc527916b9fd470bccfe04e7fe",
+  "phase_05_container_virtualization_cloud_state.py": "116bcd50a8dee9fa77f1c0acd9f39659dfcc72a242333c0a3303300d9604ad0f",
+  "phase_06_distributed_security_state.py": "a53cea50bf92fe91e037d15835985bbdc133f996b247d813186e84ec84c11534",
+  "phase_07_software_supply_chain_trust_continuity.py": "055c7b3234671ee28fc7dc437690c932625c3f96ae54ec334249bc3ec0d262f7",
+  "phase_08_ai_supply_chain_trust.py": "43c043ff0df8c9cd813fa0e66f847e2ae463dd70f94076dd308bb8330d3b9f79",
+  "phase_09_storage_database_security_state.py": "d5144a8333b2fb449b13fb35814b7e60cf043045ef84afaa65e6cfecc2c00e63",
+  "phase_10_hardware_firmware_boot_trust.py": "0ad07215af1a4ef3c087bde606b8b966e87f655a58fbf23a5045103e1321b5a3",
+  "phase_11_statistical_security_foundation.py": "3a6281de4d4fa9c7143519396d7dbc787eacd38e98561f6b9428f1ccfba3a107",
+  "phase_12_adaptive_behavioral_security.py": "162bb1bc2243fc69d78650e7e6f160a76159108f8e2ef6b6e9327c3d5e633ef6",
+  "phase_13_multivariate_security_state_analytics.py": "8b072794b0406e0bc23ba868db1cc566b315a97773a6648d58b4c17e24eae0d5",
+  "phase_14_time_series_early_warning_extension.py": "34e0e3778097a695f326e38c2f796bef2c1b1793607033b4b3ba72e1094e1012",
+  "phase_15_probabilistic_security_extension.py": "da4227627cac88808a9fbb1abdd0a8ba709052766fc9aba3c0ebf6357f504625",
+  "phase_16_detection_error_science.py": "b860bfdfe7f777818bde0cd8276ceaac4a7875caac3c9822ac6c1712c5297275",
+  "phase_17_causal_security_extension.py": "1e72efe8453c14a40b82f0e25ad3f455b8835aab05b8f26acb6739a7a48b937e",
+  "phase_18_counterfactual_security_extension.py": "9a33ac69d9a1f205d11455f778a259d71cd2bcdf44a9492f31b5a27b1d9b2093",
+  "phase_19_defensive_intervention_optimization.py": "65357f5a5055add68939e3a98ec95f958cef0e691230dfb8d298eab188c94863",
+  "phase_20_cyber_control_theory_extension.py": "9eb89a735472ebdaf69dd954d304f67e3ad091769d278a79e5d03087a6000bd1",
+  "phase_21_security_invariants_formal_verification.py": "32882ecdac7ba74c4048ec4f0f7d018bb1e5ba637eb51885af0a184a83f5265f",
+  "phase_22_reliability_failure_engineering.py": "0982620d1c292f8c84b811fb03eba2084343c7f6d1b708d5da42d041d7cb156d",
+  "phase_23_adversarial_resilience.py": "5cd3688f5b0cdde3539b0e488f54152e3cd428223b0437234a5aeb824925f911",
+  "phase_24_cross_layer_security_causality.py": "38855c1fb6cc9086c717fb8eb05c393639c50e50f695f4b1aafab6c0636affbc",
+  "phase_25_cyber_digital_twin_extension.py": "fedde3c5a0d112e0bee16ffa9d772f2863a577557218da77095b98457ea5f76f",
+  "phase_26_autonomous_system_ai_agent_security.py": "ecdd18e0880ab968b8bae882ada96406841c27a374d7de68f34ac9d98dd17581",
+  "phase_27_ai_governance_technical_enforcement.py": "4c91d2970d58b515bbcd136b1b83d1eb13398278eac8cfca15a1658c812aa165",
+  "phase_28_ai_dependency_sovereignty_concentration.py": "55b6b50f00d007c2cd281f79b02d2a79c86a2a432c8152853e13e90a9ed185d0",
+  "phase_29_novel_attack_surface_discovery.py": "16997ce12048656c1680d2970effab33c152858e2bfd9fec1870f3aa01960ac9",
+  "phase_30_emergent_threat_discovery.py": "fcf034ebeca1a45b850827bcfc71585236912769beccc23fb95915efece2dad8",
+  "phase_31_cryptographic_future_resilience.py": "32c8d533e02d86c64e7b1f6d6bb349da6a6b97564cad17ae631b38f27521750e",
+  "phase_32_emerging_technology_security_forecasting.py": "b43d81a66bd2eb68dfd215d0023efd65b183f6bbaa732869824846da7d61f491",
+  "phase_33_future_threat_scenario_engineering.py": "6caa11e598506451a5f238efefb6693d928614b30d30c94e28d9187c29e8748f",
+  "phase_34_defensive_technology_invention_pipeline.py": "f85c78cf0efab00032d92f8718a486c3f405986506e1a30276a9f3c01f451561",
+  "phase_35_cross_domain_security_fabric.py": "55943264348c1aeab8e25caeb01af71761c1f138941e1e4e5474f51e8ddd68c0",
+  "phase_36_multi_model_assurance.py": "376acffaacefa40646f2f17112cfb32f2f0374a16a5e8b371db403d8e54d11ae",
+  "phase_37_security_outcome_control_effectiveness_s.py": "ba6b5a5e2fe6003b8342e9aeda475140981f6b81ababadc42e17fb19843d7398",
+  "phase_38_adversarial_validation.py": "389be7e152099773cf6ddf145b57146d0aaeb8f3f5be763cfca6a04fbb064871",
+  "phase_39_global_integration_validation.py": "21bcebb73f3d48174a1428943f3dee0556709283a74e4bb791a63ccd2215254e",
+  "phase_40_complete_testing.py": "dae0b2a35cb68b0352fa43dc8957715395337e486bb635e0116cb99a00a62d5e",
+  "phase_41_static_runtime_quality.py": "df5bcad58f7ffaa3b02f992c10934fad55f11c41c7ee51b387261b7bf59c076b",
+  "phase_42_final_hardening_technology_verification.py": "3cdef2509212782f4f8b6eb2bcae3c36900d2b0ca758d154c5b00c194af9d403"
+ }
+}
