@@ -72,6 +72,12 @@ def _result_successful(result: dict[str, Any]) -> bool:
     return True
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    # Read-only/demo utilities retain their existing behavior. Every actual
+    # HYDRA execution command goes through the canonical defence gate.
+    if argv[:1] not in (["demo"], ["entry-points"]):
+        from .secured import main as secured_main
+        return secured_main(argv)
     args = _build_parser().parse_args(argv)
 
     try:
