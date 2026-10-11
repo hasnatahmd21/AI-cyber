@@ -63,12 +63,13 @@ class ITTechAuthorityGate:
             tenant_id="ai-cyber",
         )
         self.engine.register_principal(principal)
-        self.engine.grant_root(
+        grant = self.engine.grant_root(
             principal_id=principal_id,
             capabilities={"execute:hydra"},
             targets={"hydra:run"},
             issued_at=now,
         )
+        self._grant_id = grant.grant_id
 
     def authorize(self, request: Request) -> tuple[bool, str]:
         # AuthorityEngine is stateful. Serialize its transitions so concurrent UI
@@ -112,6 +113,43 @@ class ITTechAuthorityGate:
             return False, f"IT-Tech authority failed closed: {type(exc).__name__}"
 
 
+    def health_check(self) -> tuple[bool, str]:
+        """Inspect the live AuthorityEngine state without issuing synthetic ALLOW requests."""
+        with self._lock:
+            try:
+                now = datetime.now(timezone.utc)
+                state = self.engine.state(self.principal_id)
+                if state is None:
+                    return False, "IT-Tech authority state missing"
+                status = getattr(state.status, "value", str(state.status)).lower()
+                if status != "active":
+                    return False, f"IT-Tech authority state is {status}"
+                decay = getattr(state, "decay_score", None)
+                if (
+                    isinstance(decay, bool)
+                    or not isinstance(decay, (int, float))
+                    or not math.isfinite(decay)
+                    or not 0.6 <= float(decay) <= 1.0
+                ):
+                    return False, "IT-Tech authority decay is below the allow threshold or malformed"
+                grant = self.engine.grant(self._grant_id)
+                if grant is None:
+                    return False, "IT-Tech runtime authority grant missing"
+                if not grant.active_at(now):
+                    return False, "IT-Tech runtime authority grant expired or inactive"
+                high = [
+                    violation for violation in self.engine.violations()
+                    if getattr(violation.severity, "value", str(violation.severity)).lower()
+                    in {"critical", "high"}
+                ]
+                if high:
+                    ids = ",".join(str(v.invariant_id) for v in high)
+                    return False, "IT-Tech authority invariant violation: " + ids
+                return True, "IT-Tech AuthorityEngine state active; grant valid; invariants clean"
+            except Exception as exc:
+                return False, f"IT-Tech authority health check failed closed: {type(exc).__name__}"
+
+
 
 class ITTechNetworkGate:
     """Persistent adapter around IT-Tech's real network-state and invariant engine.
@@ -124,10 +162,13 @@ class ITTechNetworkGate:
 
     _MAX_SIGNALS_PER_SOURCE = 128
 
-    def __init__(self, source_path: str) -> None:
+    def __init__(self, source_path: str, *, baseline_verified: bool = False) -> None:
+        if not isinstance(baseline_verified, bool):
+            raise ValueError("baseline_verified must be a boolean signed-integrity result")
         self.module = _load_it_tech(source_path)
         self._lock = threading.RLock()
         self._sequence = 0
+        self._baseline_verified = baseline_verified
         self.engine = self.module.NetworkSecurityStateEngine()
         self._source_nodes = {
             "internal": "source-internal",
@@ -179,7 +220,30 @@ class ITTechNetworkGate:
             "isolated-data", "data", module.SegmentEnforcement.ISOLATED,
             frozenset({"protected-data"}),
         ))
-        engine.recompute(at=datetime.now(timezone.utc))
+        now = datetime.now(timezone.utc)
+        if self._baseline_verified:
+            # The signed package and signed IT-Tech source are two independent,
+            # current integrity observations. They establish initial confidence for
+            # the protected internal runtime; external sources still start unknown.
+            for suffix, baseline_name in (
+                ("package", "signed-ai-cyber-package-baseline"),
+                ("it-tech", "signed-it-tech-source-baseline"),
+            ):
+                evidence = SimpleNamespace(
+                    evidence_id=f"startup-integrity-{suffix}",
+                    source="ai-cyber-signed-integrity-gate",
+                    confidence=1.0,
+                    observed_at=now,
+                    payload={"baseline": baseline_name, "verified": True},
+                )
+                engine.observe_signal(self._source_nodes["internal"], module.NetworkTrustSignal(
+                    signal_id=f"startup-integrity-{suffix}",
+                    weight=1.0,
+                    polarity=1.0,
+                    at=now,
+                    evidence=evidence,
+                ))
+        engine.recompute(at=now)
 
     @staticmethod
     def _request_source(request: Request) -> str:
