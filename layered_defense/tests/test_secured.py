@@ -48,7 +48,7 @@ class TestSecured(unittest.TestCase):
         self.go()
         with open(os.path.join(self.hy, "a.py"), "a") as f: f.write("evil()\n")
         self.calls.clear(); self.assertEqual(self.go(), 4); self.assertEqual(self.calls, [])
-        with open(os.path.join(self.hy, "a.py")) as f: self.assertEqual(f.read(), "x=1\\nevil()\\n")
+        with open(os.path.join(self.hy, "a.py")) as f: self.assertEqual(f.read(), "x=1\nevil()\n")
         self.assertEqual(self.go("--defence-rebaseline"), 0); self.assertEqual(len(self.calls), 1)
 
     def test_restore_from_git_head(self):
