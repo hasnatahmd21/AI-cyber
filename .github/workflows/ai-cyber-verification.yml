@@ -2,7 +2,7 @@ name: AI-CYBER verification
 
 on:
   push:
-    branches: ["repair/forensic-reconstruction", "feature-layered-defense-wiring"]
+    branches: ["repair/forensic-reconstruction", "feature-layered-defense-wiring", "feature/secure-hydra-layered-defense"]
   pull_request:
 
 permissions:
