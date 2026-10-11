@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 
 def _ensure_explicit_test_baseline() -> None:
