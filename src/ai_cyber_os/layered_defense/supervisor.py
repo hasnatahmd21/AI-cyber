@@ -319,24 +319,39 @@ class DefenceSupervisor:
                 return False, reason, self.snapshot()
 
     def _latch_failure(self, reason: str, checks: dict[str, bool]) -> None:
+        # Withdraw readiness immediately so no new request can pass. Publish the
+        # terminal "blocked" state only after the incident latch and audit attempt
+        # have completed; observers can treat that state as a completed transition.
         with self._lock:
             first_failure = not self._failed_latched
             self._failed_latched = True
             self._status.update(
-                active=True, ready=False, status="blocked", reason=reason,
+                active=True, ready=False, status="blocking", reason=reason,
                 last_check_at=_utc_now(), checks={**self._status.get("checks", {}), **checks},
             )
+
+        final_reason = reason
         if first_failure:
             try:
                 self._write_persistent_latch(reason, checks)
             except Exception as exc:
-                self._set_status(
-                    ready=False, status="blocked",
-                    reason=f"{reason}; persistent latch write failed: {type(exc).__name__}",
-                )
+                final_reason = f"{reason}; persistent latch write failed: {type(exc).__name__}"
+
         if self._system is not None:
-            self._system.audit.record("supervisor_fail_closed", reason=reason, checks=checks)
+            self._system.audit.record("supervisor_fail_closed", reason=final_reason, checks=checks)
             self._persist_audit()
+            audit_status = self.snapshot()
+            if "audit persistence failed" in str(audit_status.get("reason", "")).lower():
+                final_reason = str(audit_status["reason"])
+
+        self._set_status(
+            active=True,
+            ready=False,
+            status="blocked",
+            reason=final_reason,
+            last_check_at=_utc_now(),
+            checks={**self.snapshot().get("checks", {}), **checks},
+        )
 
     def _monitor_loop(self) -> None:
         last_audit_save = time.monotonic()
