@@ -26,6 +26,18 @@ class TestIntegrityGate(unittest.TestCase):
     def test_clean_tree_runs(self):
         rc, out = self._run(); self.assertEqual((rc, len(self.calls)), (0, 1)); self.assertIn("integrity: OK", out)
 
+    def test_unlisted_hydra_file_refuses_to_start(self):
+        with open(os.path.join(self.hy, "unlisted.py"), "w") as f: f.write("import evil\\n")
+        rc, out = self._run()
+        self.assertEqual((rc, self.calls), (4, []))
+        self.assertIn("HYDRA code changed", out)
+
+    def test_symlinked_hydra_entry_refuses_cleanly(self):
+        os.symlink(os.path.join(self.hy, "a.py"), os.path.join(self.hy, "alias.py"))
+        rc, out = self._run()
+        self.assertEqual((rc, self.calls), (4, []))
+        self.assertIn("could not be safely inspected", out)
+
     def test_modified_hydra_file_refuses_to_start(self):
         with open(os.path.join(self.hy, "a.py"), "a") as f: f.write("evil()\n")
         rc, _ = self._run(); self.assertEqual((rc, self.calls), (4, []))
