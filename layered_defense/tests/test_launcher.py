@@ -3,6 +3,8 @@ import os, tempfile, unittest
 from ai_cyber import launcher
 from ai_cyber.adapters.audit_store import load_verified
 from ai_cyber.contracts import Decision
+from ai_cyber.crypto_integrity import Integrity
+from ai_cyber.integrity_gate import write_baseline
 from ai_cyber.runtime import StartupError, build_system
 from tests.helpers import KEY
 
@@ -10,7 +12,17 @@ from tests.helpers import KEY
 class TestLauncher(unittest.TestCase):
     def _run(self, argv, hydra, **kw):
         out = []
-        rc = launcher.run(argv, hydra_main=hydra, key_provider=KEY, out=out.append, check_integrity=False, **kw)
+        with tempfile.TemporaryDirectory() as root:
+            target = os.path.join(root, "src", "ai_cyber_os")
+            os.makedirs(target)
+            with open(os.path.join(target, "runtime.py"), "w") as f:
+                f.write("TRUSTED = True\\n")
+            baseline = os.path.join(root, ".ai_cyber", "hydra_baseline.json")
+            write_baseline(target, baseline, Integrity(KEY))
+            rc = launcher.run(
+                argv, hydra_main=hydra, key_provider=KEY, out=out.append,
+                hydra_dir=target, baseline_path=baseline, **kw
+            )
         return rc, out
 
     def test_clean_run_goes_through_every_layer_then_hydra(self):
@@ -38,6 +50,10 @@ class TestLauncher(unittest.TestCase):
             self.assertEqual(rc, 1)
             events = [r["event"] for r in load_verified(p)]
             self.assertIn("hydra_crashed", events)
+
+    def test_integrity_cannot_be_disabled_by_runtime_flag(self):
+        import inspect
+        self.assertNotIn("check_integrity", inspect.signature(launcher.run).parameters)
 
     def test_no_key_refuses_to_start(self):
         old = os.environ.pop("AI_CYBER_KEY_DEFAULT", None)
