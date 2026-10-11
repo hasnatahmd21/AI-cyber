@@ -134,8 +134,8 @@ class ITTechNetworkGate:
 
             source_is_internal = request.source == "internal"
             source_zone = "internal" if source_is_internal else "public"
-            engine.add_node(module.NetworkNode("source", module.NodeKind.HOST, source_zone, 0.3))
-            engine.add_node(module.NetworkNode("gateway", module.NodeKind.GATEWAY, "dmz", 0.5))
+            engine.add_node(module.NetworkNode("source", module.NodeKind.DEVICE, source_zone, 0.3))
+            engine.add_node(module.NetworkNode("gateway", module.NodeKind.CONTROL, "dmz", 0.5))
             engine.add_node(module.NetworkNode("hydra", module.NodeKind.SERVICE, "internal", 0.8))
             engine.add_node(module.NetworkNode("protected-data", module.NodeKind.HOST, "data", 0.95))
 
@@ -189,4 +189,4 @@ class ITTechNetworkGate:
                 return False, "IT-Tech network invariant violation: " + ",".join(v.invariant_id for v in critical)
             return True, f"network state {state.label.value}; invariants clean"
         except Exception as exc:
-            return False, f"IT-Tech network engine failed closed: {type(exc).__name__}"
+            return False, f"IT-Tech network engine failed closed: {type(exc).__name__}: {exc}"
