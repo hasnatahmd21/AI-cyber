@@ -137,10 +137,10 @@ class ITTechNetworkGate:
 
             source_is_internal = request.source == "internal"
             source_zone = "internal" if source_is_internal else "public"
-            engine.add_node(module.NetworkNode("source", module.NodeKind.HOST, source_zone, 0.3))
-            engine.add_node(module.NetworkNode("gateway", module.NodeKind.GATEWAY, "dmz", 0.5))
+            engine.add_node(module.NetworkNode("source", module.NodeKind.DEVICE, source_zone, 0.3))
+            engine.add_node(module.NetworkNode("gateway", module.NodeKind.CONTROL, "dmz", 0.5))
             engine.add_node(module.NetworkNode("hydra", module.NodeKind.SERVICE, "internal", 0.8))
-            engine.add_node(module.NetworkNode("protected-data", module.NodeKind.HOST, "data", 0.95))
+            engine.add_node(module.NetworkNode("protected-data", module.NodeKind.DEVICE, "data", 0.95))
 
             secure_link = module.LinkSecurityState(
                 encrypted=True, authenticated=True, integrity_protected=True,
