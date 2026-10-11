@@ -391,3 +391,48 @@ def test_real_supervisor_stays_live_and_latches_after_it_tech_network_attack(tmp
     with pytest.raises(SupervisorStartupError, match="persistent defence incident latch"):
         restarted.start()
     assert restarted.snapshot()["ready"] is False
+
+
+def test_final_layer_quarantine_is_persistently_latched_before_ui_returns(tmp_path, monkeypatch):
+    network = _FakeNetworkGate()
+    authority = _FakeAuthorityGate()
+    system = _FakeSystem(network, authority)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    _install_fake_runtime(monkeypatch, service, system)
+    service.start()
+
+    def quarantine(_request):
+        return SimpleNamespace(
+            decision=Decision.QUARANTINE,
+            reason="decoy touched; attacker quarantined",
+            trace=("barrier:allow", "layer1:allow", "layer2:block", "layer3:quarantine"),
+        )
+
+    system.orchestrator.handle = quarantine
+    try:
+        allowed, reason, evidence = service.authorize_hydra("phase1")
+        assert allowed is False
+        assert "quarantine" in reason.lower()
+        assert evidence["decision"] == Decision.QUARANTINE.value
+        assert service.snapshot()["status"] == "blocked"
+        assert service.snapshot()["ready"] is False
+        assert (tmp_path / ".ai_cyber" / "defence_latch.json").is_file()
+        assert any(
+            entry["event"] == "supervisor_fail_closed"
+            for entry in system.audit.entries
+        )
+    finally:
+        service.stop()
+
+    restarted = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    monkeypatch.setattr(
+        restarted,
+        "_verify_source_assets",
+        lambda: (
+            True,
+            "signed source baselines verified",
+            {"hydra_source_integrity": True, "it_tech_source_integrity": True},
+        ),
+    )
+    with pytest.raises(SupervisorStartupError, match="persistent defence incident latch"):
+        restarted.start()
