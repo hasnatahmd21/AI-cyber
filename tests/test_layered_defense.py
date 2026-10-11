@@ -15,17 +15,30 @@ from ai_cyber_os.layered_defense.runtime import StartupError, build_system
 KEY = StaticKeyProvider({"default": b"unit-test-key-material-32-bytes!!"})
 
 
-def _build_verified_system():
-    # Unit tests exercise the gates with the repository's checked-in IT-Tech
-    # source. The secured CLI separately verifies its HMAC-signed baseline before
-    # calling the builder; this explicit test attestation prevents accidental
-    # coverage of a runtime with IT-Tech silently absent.
+def _test_signed_it_tech_source(tmp_path):
     from pathlib import Path
+    import shutil
 
     root = Path(__file__).resolve().parents[1]
-    source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
+    source = tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
+    shutil.copy2(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py", source)
+    state = tmp_path / ".ai_cyber"
+    state.mkdir(exist_ok=True)
+    baseline = state / "it_tech_baseline.json"
+    write_file_baseline(str(source), str(baseline), Integrity(KEY))
+    return source, baseline
+
+
+def _build_verified_system(tmp_path):
+    # Sign the exact source fixture with the test key, then exercise the same
+    # cryptographic check performed by the production runtime builder.
+    source, baseline = _test_signed_it_tech_source(tmp_path)
     return build_system(
-        config={"it_tech_source": source, "it_tech_integrity_verified": True},
+        config={
+            "it_tech_source": str(source),
+            "it_tech_baseline_path": str(baseline),
+            "it_tech_integrity_verified": True,
+        },
         key_provider=KEY,
     )
 
@@ -37,8 +50,8 @@ def _allowed_request(system, payload="safe"):
                    credentials=token, source="internal")
 
 
-def test_pipeline_allows_clean_internal_hydra_request():
-    system = _build_verified_system()
+def test_pipeline_allows_clean_internal_hydra_request(tmp_path):
+    system = _build_verified_system(tmp_path)
     try:
         result = system.orchestrator.handle(_allowed_request(system))
         assert result.decision is Decision.ALLOW
@@ -47,8 +60,8 @@ def test_pipeline_allows_clean_internal_hydra_request():
         system.shutdown()
 
 
-def test_pipeline_blocks_shell_injection_before_hydra():
-    system = _build_verified_system()
+def test_pipeline_blocks_shell_injection_before_hydra(tmp_path):
+    system = _build_verified_system(tmp_path)
     try:
         result = system.orchestrator.handle(_allowed_request(system, "; rm -rf /"))
         assert result.decision is Decision.BLOCK
@@ -197,7 +210,7 @@ def test_audit_manifest_detects_truncation_and_requires_valid_signature(tmp_path
 
 
 def test_shutdown_event_is_included_in_persisted_audit(tmp_path):
-    system = _build_verified_system()
+    system = _build_verified_system(tmp_path)
     system.shutdown()
     path = tmp_path / "shutdown-audit.jsonl"
     integrity = Integrity(KEY)
@@ -250,15 +263,8 @@ def test_it_tech_integrity_gate_refuses_symlink_source(tmp_path):
 
 
 
-def test_canonical_runtime_wires_it_tech_network_and_authority_gates():
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
-    system = build_system(
-        config={"it_tech_source": source, "it_tech_integrity_verified": True},
-        key_provider=KEY,
-    )
+def test_canonical_runtime_wires_it_tech_network_and_authority_gates(tmp_path):
+    system = _build_verified_system(tmp_path)
     try:
         clean = _allowed_request(system)
         allowed = system.orchestrator.handle(clean)
@@ -523,3 +529,33 @@ def test_unverified_it_tech_gates_refuse_requests_and_report_unhealthy():
     healthy, reason = authority.health_check()
     assert healthy is False
     assert "integrity verification" in reason
+
+
+def test_runtime_builder_rejects_missing_or_tampered_it_tech_baseline(tmp_path):
+    import shutil
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
+    shutil.copy2(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py", source)
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+
+    with pytest.raises(StartupError, match="signed IT-Tech baseline is missing"):
+        build_system(
+            config={"it_tech_source": str(source), "it_tech_integrity_verified": True},
+            key_provider=KEY,
+        )
+
+    baseline = state / "it_tech_baseline.json"
+    write_file_baseline(str(source), str(baseline), Integrity(KEY))
+    source.write_text("# source tampered after signing\n", encoding="utf-8")
+    with pytest.raises(StartupError, match="signed IT-Tech baseline verification failed"):
+        build_system(
+            config={
+                "it_tech_source": str(source),
+                "it_tech_baseline_path": str(baseline),
+                "it_tech_integrity_verified": True,
+            },
+            key_provider=KEY,
+        )
