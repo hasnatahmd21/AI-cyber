@@ -243,14 +243,18 @@ def test_clear_defence_latch_requires_clean_signed_sources_and_audits_operator_r
         "checks": {"network": False},
     }
     canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    (state / "defence_latch.json").write_text(
-        json.dumps({"document": document, "signature": integrity.sign(canonical)}),
+    envelope = json.dumps(
+        {"document": document, "signature": integrity.sign(canonical)},
         encoding="utf-8",
     )
+    (state / "defence_latch.json").write_text(envelope, encoding="utf-8")
+    # Recovery must clear both primary and fallback markers after a reviewed incident.
+    (state / "defence_latch_fallback.json").write_text(envelope, encoding="utf-8")
 
     cleared, message = clear_defence_latch(str(tmp_path), "Reviewed incident and verified recovery")
     assert cleared is True, message
     assert not (state / "defence_latch.json").exists()
+    assert not (state / "defence_latch_fallback.json").exists()
 
     audit_paths = list((state / "audit").glob("supervisor-latch-clear-*.jsonl"))
     assert len(audit_paths) == 1
