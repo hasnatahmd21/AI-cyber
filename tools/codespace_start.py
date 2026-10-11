@@ -91,7 +91,7 @@ def _remove_pid(pid_path: Path) -> None:
         pass
 
 
-def start(root: Path, *, startup_timeout: float = 20.0) -> int:
+def _start_unlocked(root: Path, *, startup_timeout: float = 20.0) -> int:
     root = root.resolve()
     state_dir = root / ".ai_cyber"
     pid_path = state_dir / "codespace-ui.pid"
@@ -225,6 +225,60 @@ def start(root: Path, *, startup_timeout: float = 20.0) -> int:
         file=sys.stderr,
     )
     return 3
+
+
+
+def start(root: Path, *, startup_timeout: float = 20.0) -> int:
+    """Serialize lifecycle invocations so two starts cannot spawn competing watchdogs."""
+    root = root.resolve()
+    state_dir = root / ".ai_cyber"
+    if state_dir.is_symlink():
+        print("AI-CYBER Codespaces startup refused: .ai_cyber is a symlink.", file=sys.stderr)
+        return 2
+    for baseline in ("hydra_baseline.json", "it_tech_baseline.json"):
+        path = state_dir / baseline
+        if path.is_symlink() or not path.is_file():
+            print(
+                "AI-CYBER defence NOT started: reviewed signed source baselines are missing "
+                "or unsafe. Review the checked-out commit, then run "
+                "'python -m ai_cyber_os --defence-rebaseline --phase phase1 --json' "
+                "once from a clean checkout. This script will not auto-trust/rebaseline source.",
+                file=sys.stderr,
+            )
+            return 2
+
+    lock_path = state_dir / "codespace-ui.start.lock"
+    if lock_path.is_symlink():
+        print("AI-CYBER Codespaces startup refused: startup lock is a symlink.", file=sys.stderr)
+        return 2
+    flags = os.O_CREAT | os.O_RDWR
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        lock_fd = os.open(lock_path, flags, 0o600)
+    except OSError as exc:
+        print(
+            f"AI-CYBER Codespaces startup refused: cannot safely open startup lock "
+            f"({type(exc).__name__}).",
+            file=sys.stderr,
+        )
+        return 2
+
+    import fcntl
+
+    try:
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(
+                "AI-CYBER Codespaces startup is already running in another process; "
+                "no duplicate watchdog was launched.",
+                file=sys.stderr,
+            )
+            return 3
+        return _start_unlocked(root, startup_timeout=startup_timeout)
+    finally:
+        os.close(lock_fd)
 
 
 def main(argv: list[str] | None = None) -> int:
