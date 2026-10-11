@@ -87,7 +87,7 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
     integrity = Integrity(provider)
     system = None
     clean = None
-    audit_path = os.path.join(state, "audit", datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".jsonl")
+    audit_path = os.path.join(state, "audit", datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ") + ".jsonl")
     rc = 2
     try:
         if rebaseline:
@@ -107,6 +107,11 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
         system = build_system(key_provider=provider)
         gate = check(target, baseline_path, integrity, clean)
         out(f"integrity: {'OK' if gate.ok else 'FAILED'} ({gate.reason})")
+        if gate.ok and gate.restored:
+            system.audit.record("source_restored", files=gate.restored)
+            out("integrity: source restored from trusted Git HEAD; restart the command to load the restored code")
+            rc = 4
+            return rc
         if not gate.ok:
             system.audit.record("hydra_not_started", decision="integrity_failed", reason=gate.reason)
             rc = 4
