@@ -533,3 +533,77 @@ def test_supervisor_remains_blocking_if_primary_and_fallback_latch_writes_fail(
     finally:
         service.stop()
 
+def test_audit_persistence_failure_latches_and_never_returns_to_healthy(
+    tmp_path, monkeypatch
+):
+    network = _FakeNetworkGate()
+    authority = _FakeAuthorityGate()
+    system = _FakeSystem(network, authority)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    _install_fake_runtime(monkeypatch, service, system)
+    service.start()
+
+    def fail_save(*_args, **_kwargs):
+        raise OSError("simulated audit disk failure")
+
+    monkeypatch.setattr(supervisor_module, "save", fail_save)
+    try:
+        service._persist_audit()
+        state = service.snapshot()
+        assert state["status"] == "blocked"
+        assert state["ready"] is False
+        assert "audit persistence failed" in state["reason"]
+        assert (tmp_path / ".ai_cyber" / "defence_latch.json").is_file()
+
+        time.sleep(0.35)
+        state = service.snapshot()
+        assert state["status"] == "blocked"
+        assert state["ready"] is False
+        allowed, _reason, _evidence = service.authorize_hydra("phase1")
+        assert allowed is False
+    finally:
+        service.stop()
+
+
+def test_failed_latch_write_is_retried_and_audited_when_storage_recovers(
+    tmp_path, monkeypatch
+):
+    network = _FakeNetworkGate()
+    authority = _FakeAuthorityGate()
+    system = _FakeSystem(network, authority)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    _install_fake_runtime(monkeypatch, service, system)
+    service.start()
+    # Remove polling-thread races so this test controls the transient storage fault.
+    service._stop.set()
+    if service._thread is not None:
+        service._thread.join(timeout=1)
+
+    original_primary = service._write_persistent_latch
+    original_marker = service._write_persistent_latch_to
+
+    def fail_write(*_args, **_kwargs):
+        raise OSError("simulated temporary storage failure")
+
+    monkeypatch.setattr(service, "_write_persistent_latch", fail_write)
+    monkeypatch.setattr(service, "_write_persistent_latch_to", fail_write)
+    try:
+        service._latch_failure("simulated incident during storage outage", {"network": False})
+        assert service.snapshot()["status"] == "blocking"
+        assert service.snapshot()["ready"] is False
+
+        monkeypatch.setattr(service, "_write_persistent_latch", original_primary)
+        monkeypatch.setattr(service, "_write_persistent_latch_to", original_marker)
+        service._latch_failure("simulated incident during storage outage", {"network": False})
+
+        state = service.snapshot()
+        assert state["status"] == "blocked"
+        assert state["ready"] is False
+        assert (tmp_path / ".ai_cyber" / "defence_latch.json").is_file()
+        assert any(
+            entry["event"] == "supervisor_latch_persistence_recovered"
+            for entry in system.audit.entries
+        )
+    finally:
+        service.stop()
+
