@@ -136,6 +136,17 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
         cleared, message = clear_defence_latch(root, clear_reason)
         out("defence: " + message)
         return 0 if cleared else 4
+    # A resident incident latch applies to every launcher, not only the UI
+    # supervisor. A fresh one-shot CLI process must not forget a prior confirmed
+    # incident and execute HYDRA with a new, clean in-memory trust context.
+    from .layered_defense.supervisor import DefenceSupervisor
+    latch_checker = DefenceSupervisor(root)
+    latch_reason = latch_checker._persistent_latch_reason()
+    latch_active = latch_reason is not None
+    if latch_active and not restore:
+        out("defence: " + str(latch_reason) + "; direct HYDRA execution refused")
+        return 4
+
     target = os.path.join(root, PACKAGE_REL)
     state = os.path.join(root, ".ai_cyber")
     baseline_path = os.path.join(state, "hydra_baseline.json")
@@ -186,6 +197,13 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
             return 4
         if not it_gate.ok:
             out("integrity: IT-Tech defence will not be loaded; HYDRA will not start")
+            return 4
+
+        if latch_active and restore:
+            out(
+                "defence: restore checks completed, but the persistent incident latch remains active; "
+                "HYDRA execution refused until signed sources are reviewed and the latch is explicitly cleared"
+            )
             return 4
 
         # Import the existing IT-Tech engine only after both signed source gates pass.
