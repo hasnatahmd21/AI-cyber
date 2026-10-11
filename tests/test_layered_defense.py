@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
 from ai_cyber_os.layered_defense.audit_store import load_verified, save, AuditTamperError
@@ -224,3 +225,38 @@ def test_it_tech_integrity_gate_refuses_symlink_source(tmp_path):
     assert result.ok is False
     assert "symlink" in result.reason
     assert outside.read_text() == "do not overwrite\n"
+
+
+
+def test_canonical_runtime_wires_it_tech_network_and_authority_gates():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
+    system = build_system(config={"it_tech_source": source}, key_provider=KEY)
+    try:
+        clean = _allowed_request(system)
+        allowed = system.orchestrator.handle(clean)
+        assert allowed.decision is Decision.ALLOW, allowed
+
+        network_risk = replace(
+            clean,
+            request_id="req-network-risk-block",
+            attributes={"network_risk": 0.9},
+        )
+        blocked_network = system.orchestrator.handle(network_risk)
+        assert blocked_network.decision is Decision.BLOCK
+        assert any(r.layer == "layer2" and r.decision is Decision.BLOCK
+                   for r in blocked_network.layer_results)
+
+        suspicious_posture = replace(
+            clean,
+            request_id="req-authority-posture-block",
+            attributes={"it_tech_posture": "suspicious", "it_tech_risk": 0.8},
+        )
+        blocked_authority = system.orchestrator.handle(suspicious_posture)
+        assert blocked_authority.decision is Decision.BLOCK
+        assert any(r.layer == "layer3" and r.decision is Decision.BLOCK
+                   for r in blocked_authority.layer_results)
+    finally:
+        system.shutdown()
