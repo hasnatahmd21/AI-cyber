@@ -16,14 +16,21 @@ import time
 from pathlib import Path
 
 
-def _incident_reason(root: Path) -> str | None:
-    """Treat any latch-verification problem as a reason not to restart the UI."""
+def _restart_block_reason(root: Path) -> str | None:
+    """Return a fail-closed reason when trust or incident state blocks a UI start."""
     try:
         from ai_cyber_os.layered_defense.supervisor import DefenceSupervisor
 
-        return DefenceSupervisor(str(root))._persistent_latch_reason()
+        service = DefenceSupervisor(str(root))
+        latch_reason = service._persistent_latch_reason()
+        if latch_reason:
+            return latch_reason
+        ok, reason, _checks = service._verify_source_assets()
+        if not ok:
+            return "signed source integrity is not healthy: " + reason
+        return None
     except Exception as exc:
-        return f"unable to verify persistent incident state ({type(exc).__name__}); fail-closed"
+        return f"unable to verify source/incident state ({type(exc).__name__}); fail-closed"
 
 
 def _terminate(child: subprocess.Popen) -> None:
@@ -61,7 +68,7 @@ def run(root: Path, *, stop_event: threading.Event | None = None) -> int:
     delay = 1.0
     try:
         while not stop.is_set():
-            incident = _incident_reason(root)
+            incident = _restart_block_reason(root)
             if incident:
                 print(
                     "Codespaces watchdog: persistent incident is active; UI restart suppressed: "
@@ -101,7 +108,7 @@ def run(root: Path, *, stop_event: threading.Event | None = None) -> int:
                     break
                 exit_code = child.poll()
                 uptime = time.monotonic() - started_at
-                incident = _incident_reason(root)
+                incident = _restart_block_reason(root)
                 if incident:
                     print(
                         "Codespaces watchdog: UI exited with an incident latch present; "
