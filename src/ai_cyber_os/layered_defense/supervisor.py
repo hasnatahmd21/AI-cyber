@@ -326,7 +326,14 @@ class DefenceSupervisor:
             try:
                 system.shutdown()
             finally:
-                self._persist_audit()
+                try:
+                    with self._audit_save_lock:
+                        save(system.audit, self.audit_path, integrity=self.integrity)
+                except Exception as exc:
+                    self._set_status(
+                        ready=False, status="blocked",
+                        reason=f"audit persistence failed during shutdown: {type(exc).__name__}",
+                    )
         current = self.snapshot()
         self._set_status(
             active=False, ready=False,
