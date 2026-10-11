@@ -74,6 +74,9 @@ class DefenceSupervisor:
         self._latch_lock = threading.Lock()
         self._audit_save_lock = threading.Lock()
         self._failed_latched = False
+        # True only after a signed primary or fallback marker write returned and
+        # the marker was still present. A mere path-exists check is insufficient.
+        self._durable_latch_confirmed = False
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
         self.audit_path = os.path.join(self.state_dir, "audit", f"supervisor-{timestamp}.jsonl")
         self._status: dict[str, Any] = {
@@ -162,6 +165,25 @@ class DefenceSupervisor:
         if os.path.islink(self.state_dir) or os.path.islink(latch_path):
             raise SupervisorStartupError("refusing to write through a symlinked defence latch path")
         if os.path.exists(latch_path):
+            # A prior attempt may have linked the complete file but failed while
+            # fsyncing the directory. Re-sync both file and parent before confirming
+            # durability on a retry.
+            flags = os.O_RDONLY
+            if hasattr(os, "O_NOFOLLOW"):
+                flags |= os.O_NOFOLLOW
+            marker_fd = os.open(latch_path, flags)
+            try:
+                os.fsync(marker_fd)
+            finally:
+                os.close(marker_fd)
+            directory_flags = os.O_RDONLY
+            if hasattr(os, "O_DIRECTORY"):
+                directory_flags |= os.O_DIRECTORY
+            directory_fd = os.open(self.state_dir, directory_flags)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
             return
         document = {
             "status": "blocked",
@@ -374,9 +396,62 @@ class DefenceSupervisor:
                 self._latch_failure(reason, {"resident_defence": False})
                 return False, reason, self.snapshot()
 
+    def _latch_marker_present(self) -> bool:
+        return any(
+            os.path.lexists(path) and not os.path.islink(path)
+            for path in (self.latch_path, self.fallback_latch_path)
+        )
+
+    def _persist_incident_latch(
+        self, reason: str, checks: dict[str, bool]
+    ) -> tuple[bool, str]:
+        """Persist a signed primary/fallback marker and report only confirmed writes."""
+        if self._durable_latch_confirmed and self._latch_marker_present():
+            return True, reason
+
+        final_reason = reason
+        primary_error: Exception | None = None
+        try:
+            self._write_persistent_latch(reason, checks)
+        except Exception as exc:
+            primary_error = exc
+        else:
+            if os.path.lexists(self.latch_path) and not os.path.islink(self.latch_path):
+                self._durable_latch_confirmed = True
+                return True, final_reason
+            primary_error = SupervisorStartupError(
+                "primary latch writer returned without a usable marker"
+            )
+
+        try:
+            self._write_persistent_latch_to(self.fallback_latch_path, reason, checks)
+        except Exception as fallback_error:
+            final_reason = (
+                f"{reason}; primary latch write failed: {type(primary_error).__name__}; "
+                f"fallback latch write failed: {type(fallback_error).__name__}"
+            )
+        else:
+            if (
+                os.path.lexists(self.fallback_latch_path)
+                and not os.path.islink(self.fallback_latch_path)
+            ):
+                self._durable_latch_confirmed = True
+                final_reason = (
+                    f"{reason}; primary latch write failed: {type(primary_error).__name__}; "
+                    "signed fallback latch persisted"
+                )
+                return True, final_reason
+            final_reason = (
+                f"{reason}; primary latch write failed: {type(primary_error).__name__}; "
+                "fallback latch writer returned without a usable marker"
+            )
+
+        self._durable_latch_confirmed = False
+        return False, final_reason
+
     def _latch_failure(self, reason: str, checks: dict[str, bool]) -> None:
-        # Readiness is withdrawn before disk or audit I/O. The fallback marker gives
-        # startup a second signed location to check if the primary latch write fails.
+        # Readiness is withdrawn before disk or audit I/O. Do not publish the terminal
+        # blocked state until a signed marker write and its fsync sequence succeeded.
         with self._latch_lock:
             with self._lock:
                 first_failure = not self._failed_latched
@@ -386,44 +461,15 @@ class DefenceSupervisor:
                     last_check_at=_utc_now(), checks={**self._status.get("checks", {}), **checks},
                 )
 
-            final_reason = reason
-            if first_failure:
-                try:
-                    self._write_persistent_latch(reason, checks)
-                except Exception as primary_exc:
-                    try:
-                        self._write_persistent_latch_to(
-                            self.fallback_latch_path, reason, checks
-                        )
-                    except Exception as fallback_exc:
-                        final_reason = (
-                            f"{reason}; primary latch write failed: {type(primary_exc).__name__}; "
-                            f"fallback latch write failed: {type(fallback_exc).__name__}"
-                        )
-                    else:
-                        if os.path.lexists(self.fallback_latch_path):
-                            final_reason = (
-                                f"{reason}; primary latch write failed: "
-                                f"{type(primary_exc).__name__}; signed fallback latch persisted"
-                            )
-                        else:
-                            final_reason = (
-                                f"{reason}; primary latch write failed and fallback latch "
-                                "could not be confirmed durable"
-                            )
-
-            latch_persisted = any(
-                os.path.lexists(path) and not os.path.islink(path)
-                for path in (self.latch_path, self.fallback_latch_path)
-            )
+            latch_persisted, final_reason = self._persist_incident_latch(reason, checks)
             if not latch_persisted:
                 final_reason = (
-                    f"{final_reason}; no durable incident latch could be confirmed; "
-                    "service remains unready and fail-closed in this process, but restart "
-                    "persistence is unavailable until storage is repaired"
+                    f"{final_reason}; no durable incident latch could be confirmed; service "
+                    "remains unready and fail-closed in this process, but restart persistence "
+                    "is unavailable until storage is repaired"
                 )
 
-            if self._system is not None:
+            if first_failure and self._system is not None:
                 try:
                     self._system.audit.record(
                         "supervisor_fail_closed", reason=final_reason, checks=checks,
@@ -435,10 +481,10 @@ class DefenceSupervisor:
                 audit_status = self.snapshot()
                 audit_reason = str(audit_status.get("reason", "")).lower()
                 if "audit persistence failed" in audit_reason:
-                    final_reason = str(audit_status["reason"])
+                    final_reason = f"{final_reason}; {audit_status['reason']}"
 
-            # "blocked" means a restart-enforced incident marker exists. Without one,
-            # keep the visible state at "blocking" rather than implying durable safety.
+            # A previous failed write is retried by the monitor loop. A file merely
+            # left behind by an exception is not counted as durable until fsync works.
             self._set_status(
                 active=True,
                 ready=False,
@@ -489,10 +535,21 @@ class DefenceSupervisor:
                         {**checks, "monitor": False},
                     )
             else:
-                # Do not upgrade an incident with failed persistence from "blocking"
-                # to "blocked" on the next monitor tick; keep its status truthful.
                 if self._failed_latched:
-                    self._set_status(active=True, ready=False, last_check_at=_utc_now())
+                    # Retry persistence after a transient filesystem failure, and
+                    # recreate the marker if external tampering removed it in-process.
+                    if not self._durable_latch_confirmed or not self._latch_marker_present():
+                        self._durable_latch_confirmed = False
+                        current = self.snapshot()
+                        self._latch_failure(
+                            str(current.get("reason", "previous defence incident")),
+                            current.get("checks", {}),
+                        )
+                    else:
+                        self._set_status(
+                            active=True, ready=False, status="blocked",
+                            last_check_at=_utc_now(),
+                        )
                 else:
                     self._set_status(active=True, ready=False, status="blocked", last_check_at=_utc_now())
 
