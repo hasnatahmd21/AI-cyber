@@ -54,13 +54,13 @@ def test_audit_jsonl_persistence_and_tamper_detection(tmp_path):
     audit = AuditLog()
     audit.record("started", principal="safe", token="do-not-persist")
     path = tmp_path / "audit.jsonl"
-    assert save(audit, str(path)) == 1
-    records = load_verified(str(path))
+    assert save(audit, str(path), integrity=Integrity(KEY)) == 1
+    records = load_verified(str(path), integrity=Integrity(KEY))
     assert AuditLog.verify(records)
     assert "[REDACTED]" in path.read_text()
     path.write_text(path.read_text().replace('"started"', '"forged"'))
     try:
-        load_verified(str(path))
+        load_verified(str(path), integrity=Integrity(KEY))
     except AuditTamperError:
         pass
     else:
@@ -152,3 +152,32 @@ def test_existing_it_tech_network_engine_enforces_trust_and_isolation_invariants
     allowed, reason = gate.evaluate(risky)
     assert allowed is False
     assert reason
+
+
+
+def test_audit_manifest_detects_truncation_and_requires_valid_signature(tmp_path):
+    audit = AuditLog()
+    audit.record("started")
+    audit.record("phase_completed", status="PASS")
+    path = tmp_path / "audit.jsonl"
+    integrity = Integrity(KEY)
+    assert save(audit, str(path), integrity=integrity) == 2
+    assert len(load_verified(str(path), integrity=integrity)) == 2
+
+    path.write_text(path.read_text().splitlines()[0] + "\\n", encoding="utf-8")
+    try:
+        load_verified(str(path), integrity=integrity)
+    except AuditTamperError:
+        pass
+    else:
+        raise AssertionError("truncated audit must be rejected")
+
+
+def test_shutdown_event_is_included_in_persisted_audit(tmp_path):
+    system = build_system(key_provider=KEY)
+    system.shutdown()
+    path = tmp_path / "shutdown-audit.jsonl"
+    integrity = Integrity(KEY)
+    save(system.audit, str(path), integrity=integrity)
+    records = load_verified(str(path), integrity=integrity)
+    assert records[-1]["event"] == "shutdown"
