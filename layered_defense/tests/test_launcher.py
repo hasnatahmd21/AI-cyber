@@ -55,6 +55,39 @@ class TestLauncher(unittest.TestCase):
         import inspect
         self.assertNotIn("check_integrity", inspect.signature(launcher.run).parameters)
 
+    def test_hydra_check_run_is_guarded_before_phase_execution(self):
+        from types import SimpleNamespace
+        from ai_cyber import __main__ as cli
+        from ai_cyber import secured
+        import ai_cyber.hydra as hydra_module
+
+        events = []
+
+        class FakeHydra:
+            def verify_files(self):
+                return []
+            def verify_lossless(self):
+                return True
+            def phase_numbers(self):
+                return [1]
+            def run_all(self):
+                events.append("hydra")
+                return [SimpleNamespace(phase=1, passed=1, failed=0, ok=True, detail="")]
+
+        original_active = secured.ACTIVE
+        secured.ACTIVE = False
+        self.addCleanup(setattr, secured, "ACTIVE", original_active)
+        self.patch_hydra = hydra_module.Hydra
+        hydra_module.Hydra = FakeHydra
+        self.addCleanup(setattr, hydra_module, "Hydra", self.patch_hydra)
+        self.patch_enforce = secured.enforce
+        secured.enforce = lambda argv=None: events.append(("enforce", list(argv or [])))
+        self.addCleanup(setattr, secured, "enforce", self.patch_enforce)
+
+        self.assertEqual(cli.main(["hydra-check", "--run"]), 0)
+        self.assertEqual(events, [("enforce", ["hydra-check", "--run"]), "hydra"])
+        self.assertFalse(secured.ACTIVE)
+
     def test_no_key_refuses_to_start(self):
         old = os.environ.pop("AI_CYBER_KEY_DEFAULT", None)
         try:
