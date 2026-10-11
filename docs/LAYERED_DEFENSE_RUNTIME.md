@@ -4,12 +4,12 @@ This branch routes HYDRA execution through one canonical defence path. It keeps 
 
 ## Execution order
 
-1. Verify the signed source baseline for `src/ai_cyber_os/` and `IT_tech__MERGED_ALL_FIXES_APPLIED.py`.
-2. Initialize the local signing key if neither a valid environment key nor a local key exists.
+1. Require a persistent signing key and signed source baselines for `src/ai_cyber_os/` and `IT_tech__MERGED_ALL_FIXES_APPLIED.py`.
+2. Fail closed when either baseline is missing, invalid, or mismatched; first-run trust is never initialized automatically.
 3. Run the request through the perimeter barrier, isolation checks, Layer 1, Layer 2 and Layer 3.
 4. Layer 2 evaluates the IT-Tech network-state engine; Layer 3 evaluates the IT-Tech authority engine. Invalid or high-risk telemetry is denied.
 5. Start the existing HYDRA phase runner only when the defence decision is `ALLOW`.
-6. Persist the hash-chained audit log and a manifest containing the record count and final hash. The manifest is HMAC-signed when the runtime key is available.
+6. Persist the hash-chained audit log and a signed manifest containing the record count and final hash.
 
 Any non-`ALLOW` decision prevents HYDRA execution. Defence and integrity failures fail closed.
 
@@ -20,6 +20,14 @@ Install from the repository root:
 ```bash
 python -m pip install -e .
 ```
+
+On a new trusted checkout, review the commit/source first, then explicitly create its baseline (this command also runs `phase1` as a smoke test):
+
+```bash
+python -m ai_cyber_os --defence-rebaseline --phase phase1 --json
+```
+
+Only after that succeeds, run the full HYDRA verification.
 
 Run all HYDRA phases and final hardening through the secured entry point:
 
@@ -37,7 +45,7 @@ Start the local operational UI with `ai-cyber-ui`. UI execution requests are del
 
 ## Local key and state
 
-- Runtime state is stored in `.ai_cyber/`, which is ignored by Git.
+- Runtime state is stored in `.ai_cyber/`, which is ignored by Git. A missing baseline causes startup to fail; the operator must explicitly run `--defence-rebaseline` after reviewing the checked-out source.
 - The default local key is `.ai_cyber/key`; the key provider creates it with restrictive file permissions. Keep the entire state directory private and backed up according to your operational policy.
 - An environment key can be supplied as `AI_CYBER_KEY_DEFAULT` using hex-encoded key material (at least 16 bytes). Changing key material invalidates existing signed baselines and audit-manifest signatures.
 - Signed source baselines and persistent audit records live under `.ai_cyber/`. Audit JSONL files have matching `.manifest.json` files; a missing or mismatched manifest is treated as an integrity failure by `load_verified`.
@@ -62,11 +70,13 @@ Recovery proceeds only when the Git source matches the signed baseline. After a 
 
 ## Verification status
 
-GitHub Actions passed on commit `7f3372820e1a2836a087de797a590c260a1e5fa8`:
+GitHub Actions passed on code commit `35690416bfccdbf483db45f92ada9d55b595ffa5`:
 
 - Python compile step: PASS
-- Full test suite: **221 passed in 52.24 seconds**
+- Full test suite: **225 passed in 53.16 seconds**
 - Phase 13 standalone security/RAG evaluation: PASS
+- Stage 0 forensic audit workflow: PASS
+- Reconstruction workflow, including distributable-wheel smoke test, controlled red-team check, 27-phase verification and final hardening: PASS
 - Phase 13 tamper detection and end-to-end evaluation: PASS
 - Retrieval/evidence metrics reported by the evaluator: precision@k, recall@k, MRR, nDCG@k, evidence quality, and output grounding all `1.0`
 
