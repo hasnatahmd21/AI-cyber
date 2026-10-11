@@ -76,6 +76,9 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None,
         return 4
 
     baseline_missing = not os.path.exists(baseline)
+    if baseline_missing and restore and not rebaseline:
+        out("defence: BLOCK (restore requires an existing signed baseline; explicit rebaseline required)")
+        return 4
     if baseline_missing and not rebaseline and _audit_history_exists(audit_dir):
         out("defence: BLOCK (baseline missing while prior audit history exists; explicit rebaseline required)")
         return 4
