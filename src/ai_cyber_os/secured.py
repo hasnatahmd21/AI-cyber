@@ -13,14 +13,28 @@ from .layered_defense.audit_store import save
 PACKAGE_REL = os.path.join("src", "ai_cyber_os")
 
 
+def _stderr(message: str) -> None:
+    print(message, file=sys.stderr)
+
+
 def _root() -> str:
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def _git_clean(root: str) -> bool:
-    result = subprocess.run(["git", "-C", root, "status", "--porcelain", "--untracked-files=all", "--", PACKAGE_REL],
-                            capture_output=True, text=True)
-    return result.returncode == 0 and not result.stdout.strip()
+    result = subprocess.run(
+        ["git", "-C", root, "status", "--porcelain", "--untracked-files=all", "--", PACKAGE_REL],
+        capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        return False
+    # Python imports/compileall create disposable cache files; they are not source drift.
+    for line in result.stdout.splitlines():
+        path = line[3:].strip().replace("\\", "/")
+        if "/__pycache__/" in f"/{path}/" or path.endswith((".pyc", ".pyo")):
+            continue
+        return False
+    return True
 
 
 def _clean_source(root: str) -> str:
@@ -79,6 +93,8 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
     rebaseline = "--defence-rebaseline" in argv
     restore = "--defence-restore" in argv
     args = [a for a in argv if a not in ("--defence-rebaseline", "--defence-restore")]
+    if "--json" in args and out is print:
+        out = _stderr
     root = root or _root()
     target = os.path.join(root, PACKAGE_REL)
     state = os.path.join(root, ".ai_cyber")
