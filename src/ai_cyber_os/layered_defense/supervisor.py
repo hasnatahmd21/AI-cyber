@@ -213,6 +213,8 @@ class DefenceSupervisor:
             self._system = build_system(
                 config={
                     "it_tech_source": self.it_tech_path,
+                    "package_baseline_path": self.baseline_path,
+                    "it_tech_baseline_path": self.it_tech_baseline_path,
                     # The source verifier above has just validated both signatures.
                     "it_tech_integrity_verified": True,
                 },
