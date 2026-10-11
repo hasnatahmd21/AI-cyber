@@ -162,18 +162,37 @@ class DefenceSupervisor:
             "document": document,
             "signature": self.integrity.sign(canonical),
         }
-        temporary = self.latch_path + ".tmp"
-        if os.path.islink(temporary):
-            raise SupervisorStartupError("refusing symlinked temporary latch path")
-        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+        temporary = (
+            self.latch_path + f".{os.getpid()}.{threading.get_ident()}.tmp"
+        )
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_NOFOLLOW"):
             flags |= os.O_NOFOLLOW
         fd = os.open(temporary, flags, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as stream:
-            json.dump(envelope, stream, sort_keys=True, indent=2)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, self.latch_path)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as stream:
+                json.dump(envelope, stream, sort_keys=True, indent=2)
+                stream.flush()
+                os.fsync(stream.fileno())
+            # A hard-link install is atomic and never overwrites a concurrent
+            # incident's latch. The complete file is fsynced before publication.
+            try:
+                os.link(temporary, self.latch_path)
+            except FileExistsError:
+                return
+            directory_flags = os.O_RDONLY
+            if hasattr(os, "O_DIRECTORY"):
+                directory_flags |= os.O_DIRECTORY
+            directory_fd = os.open(self.state_dir, directory_flags)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
+        finally:
+            try:
+                os.unlink(temporary)
+            except FileNotFoundError:
+                pass
 
     def _request(self, request_id: str, payload: str, *, source: str = "external") -> Request:
         if self._system is None:
