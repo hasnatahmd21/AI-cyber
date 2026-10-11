@@ -60,6 +60,9 @@ class DefenceSupervisor:
         self.baseline_path = os.path.join(self.state_dir, "hydra_baseline.json")
         self.it_tech_baseline_path = os.path.join(self.state_dir, "it_tech_baseline.json")
         self.latch_path = os.path.join(self.state_dir, "defence_latch.json")
+        # A separate signed fallback keeps restart enforcement durable if the primary
+        # latch path fails for a path-specific or transient filesystem reason.
+        self.fallback_latch_path = os.path.join(self.state_dir, "defence_latch_fallback.json")
         self.key_provider = key_provider or DefaultKeyProvider(self.state_dir)
         self.integrity = Integrity(self.key_provider)
 
@@ -117,39 +120,48 @@ class DefenceSupervisor:
         return True, "signed source baselines verified", checks
 
     def _persistent_latch_reason(self) -> Optional[str]:
-        # Do not follow the runtime-state directory even when a latch file is not
-        # present there. The state directory also stores signing keys and baselines.
+        # Do not follow the runtime-state directory even when no latch is present.
+        # Both the primary and fallback markers are restart-enforced.
         if os.path.islink(self.state_dir):
             return "security state directory is a symlink; refusing to trust local state"
-        if not os.path.lexists(self.latch_path):
-            return None
-        if os.path.islink(self.latch_path):
-            return "persistent defence latch is a symlink; operator review required"
-        try:
-            with open(self.latch_path, encoding="utf-8") as stream:
-                envelope = json.load(stream)
-            document = envelope["document"]
-            signature = envelope["signature"]
-            if not isinstance(document, dict) or not isinstance(signature, str):
-                return "persistent defence latch schema invalid; explicit review required"
-            canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
-            if not self.integrity.verify(canonical, signature):
-                return "persistent defence latch signature invalid; explicit review required"
-            if document.get("status") != "blocked":
-                return "persistent defence latch status invalid; explicit review required"
-            detail = str(document.get("reason", "unspecified incident"))
-            return (
-                "persistent defence incident latch is active: " + detail
-                + "; inspect signed audit records, remediate, then clear explicitly"
-            )
-        except Exception as exc:
-            return f"persistent defence latch unreadable ({type(exc).__name__}); explicit review required"
+        for latch_path in (self.latch_path, self.fallback_latch_path):
+            if not os.path.lexists(latch_path):
+                continue
+            label = os.path.basename(latch_path)
+            if os.path.islink(latch_path):
+                return f"persistent defence latch {label} is a symlink; operator review required"
+            try:
+                with open(latch_path, encoding="utf-8") as stream:
+                    envelope = json.load(stream)
+                document = envelope["document"]
+                signature = envelope["signature"]
+                if not isinstance(document, dict) or not isinstance(signature, str):
+                    return f"persistent defence latch {label} schema invalid; explicit review required"
+                canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                if not self.integrity.verify(canonical, signature):
+                    return f"persistent defence latch {label} signature invalid; explicit review required"
+                if document.get("status") != "blocked":
+                    return f"persistent defence latch {label} status invalid; explicit review required"
+                detail = str(document.get("reason", "unspecified incident"))
+                return (
+                    f"persistent defence incident latch ({label}) is active: " + detail
+                    + "; inspect signed audit records, remediate, then clear explicitly"
+                )
+            except Exception as exc:
+                return f"persistent defence latch {label} unreadable ({type(exc).__name__}); explicit review required"
+        return None
 
     def _write_persistent_latch(self, reason: str, checks: dict[str, bool]) -> None:
+        self._write_persistent_latch_to(self.latch_path, reason, checks)
+
+    def _write_persistent_latch_to(
+        self, latch_path: str, reason: str, checks: dict[str, bool]
+    ) -> None:
+        """Atomically write a signed incident marker at the requested path."""
         os.makedirs(self.state_dir, mode=0o700, exist_ok=True)
-        if os.path.islink(self.state_dir) or os.path.islink(self.latch_path):
+        if os.path.islink(self.state_dir) or os.path.islink(latch_path):
             raise SupervisorStartupError("refusing to write through a symlinked defence latch path")
-        if os.path.exists(self.latch_path):
+        if os.path.exists(latch_path):
             return
         document = {
             "status": "blocked",
@@ -163,7 +175,7 @@ class DefenceSupervisor:
             "signature": self.integrity.sign(canonical),
         }
         temporary = (
-            self.latch_path + f".{os.getpid()}.{threading.get_ident()}.tmp"
+            latch_path + f".{os.getpid()}.{threading.get_ident()}.tmp"
         )
         flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
         if hasattr(os, "O_NOFOLLOW"):
@@ -174,10 +186,9 @@ class DefenceSupervisor:
                 json.dump(envelope, stream, sort_keys=True, indent=2)
                 stream.flush()
                 os.fsync(stream.fileno())
-            # A hard-link install is atomic and never overwrites a concurrent
-            # incident's latch. The complete file is fsynced before publication.
+            # Atomic link installation does not overwrite another incident marker.
             try:
-                os.link(temporary, self.latch_path)
+                os.link(temporary, latch_path)
             except FileExistsError:
                 return
             directory_flags = os.O_RDONLY
@@ -364,13 +375,9 @@ class DefenceSupervisor:
                 return False, reason, self.snapshot()
 
     def _latch_failure(self, reason: str, checks: dict[str, bool]) -> None:
-        # Serialize incident publication across request and monitor threads. Readiness
-        # is withdrawn first; terminal "blocked" is published only once the signed
-        # latch and audit attempt complete, even if multiple checks fail at once.
+        # Readiness is withdrawn before disk or audit I/O. The fallback marker gives
+        # startup a second signed location to check if the primary latch write fails.
         with self._latch_lock:
-            # Withdraw readiness immediately so no new request can pass. Publish the
-            # terminal "blocked" state only after the incident latch and audit attempt
-            # have completed; observers can treat that state as a completed transition.
             with self._lock:
                 first_failure = not self._failed_latched
                 self._failed_latched = True
@@ -378,39 +385,68 @@ class DefenceSupervisor:
                     active=True, ready=False, status="blocking", reason=reason,
                     last_check_at=_utc_now(), checks={**self._status.get("checks", {}), **checks},
                 )
-    
+
             final_reason = reason
             if first_failure:
                 try:
                     self._write_persistent_latch(reason, checks)
-                except Exception as exc:
-                    final_reason = f"{reason}; persistent latch write failed: {type(exc).__name__}"
-    
+                except Exception as primary_exc:
+                    try:
+                        self._write_persistent_latch_to(
+                            self.fallback_latch_path, reason, checks
+                        )
+                    except Exception as fallback_exc:
+                        final_reason = (
+                            f"{reason}; primary latch write failed: {type(primary_exc).__name__}; "
+                            f"fallback latch write failed: {type(fallback_exc).__name__}"
+                        )
+                    else:
+                        if os.path.lexists(self.fallback_latch_path):
+                            final_reason = (
+                                f"{reason}; primary latch write failed: "
+                                f"{type(primary_exc).__name__}; signed fallback latch persisted"
+                            )
+                        else:
+                            final_reason = (
+                                f"{reason}; primary latch write failed and fallback latch "
+                                "could not be confirmed durable"
+                            )
+
+            latch_persisted = any(
+                os.path.lexists(path) and not os.path.islink(path)
+                for path in (self.latch_path, self.fallback_latch_path)
+            )
+            if not latch_persisted:
+                final_reason = (
+                    f"{final_reason}; no durable incident latch could be confirmed; "
+                    "service remains unready and fail-closed in this process, but restart "
+                    "persistence is unavailable until storage is repaired"
+                )
+
             if self._system is not None:
                 try:
                     self._system.audit.record(
-                        "supervisor_fail_closed", reason=final_reason, checks=checks
+                        "supervisor_fail_closed", reason=final_reason, checks=checks,
+                        durable_latch=bool(latch_persisted),
                     )
                 except Exception as exc:
-                    # Audit failure must never prevent readiness withdrawal or
-                    # the terminal blocked state. Preserve the incident and expose
-                    # that the in-memory audit append itself failed.
-                    final_reason = (
-                        f"{final_reason}; audit append failed: {type(exc).__name__}"
-                    )
+                    final_reason = f"{final_reason}; audit append failed: {type(exc).__name__}"
                 self._persist_audit()
                 audit_status = self.snapshot()
                 audit_reason = str(audit_status.get("reason", "")).lower()
                 if "audit persistence failed" in audit_reason:
                     final_reason = str(audit_status["reason"])
-    
+
+            # "blocked" means a restart-enforced incident marker exists. Without one,
+            # keep the visible state at "blocking" rather than implying durable safety.
             self._set_status(
                 active=True,
                 ready=False,
-                status="blocked",
+                status="blocked" if latch_persisted else "blocking",
                 reason=final_reason,
                 last_check_at=_utc_now(),
-                checks={**self.snapshot().get("checks", {}), **checks},
+                checks={**self.snapshot().get("checks", {}), **checks,
+                        "persistent_latch": bool(latch_persisted)},
             )
 
     def _monitor_loop(self) -> None:
@@ -453,7 +489,12 @@ class DefenceSupervisor:
                         {**checks, "monitor": False},
                     )
             else:
-                self._set_status(active=True, ready=False, status="blocked", last_check_at=_utc_now())
+                # Do not upgrade an incident with failed persistence from "blocking"
+                # to "blocked" on the next monitor tick; keep its status truthful.
+                if self._failed_latched:
+                    self._set_status(active=True, ready=False, last_check_at=_utc_now())
+                else:
+                    self._set_status(active=True, ready=False, status="blocked", last_check_at=_utc_now())
 
             if time.monotonic() - last_audit_save >= 30.0:
                 self._persist_audit()
@@ -499,11 +540,10 @@ class DefenceSupervisor:
 
 
 def clear_defence_latch(root: str, reason: str) -> tuple[bool, str]:
-    """Clear a persisted incident latch only after source-integrity verification.
+    """Clear persisted incident markers only after clean signed-source verification.
 
-    This function is called only by an explicit operator command. It records a
-    signed audit entry before clearing and restores the prior latch if final audit
-    persistence fails.
+    Every marker is audited before removal. If final audit persistence fails, removed
+    marker bytes are restored so an incomplete recovery cannot reopen the service.
     """
     root = os.path.realpath(root)
     state_dir = os.path.join(root, ".ai_cyber")
@@ -511,7 +551,10 @@ def clear_defence_latch(root: str, reason: str) -> tuple[bool, str]:
     it_tech_path = os.path.join(root, IT_TECH_REL)
     baseline_path = os.path.join(state_dir, "hydra_baseline.json")
     it_baseline_path = os.path.join(state_dir, "it_tech_baseline.json")
-    latch_path = os.path.join(state_dir, "defence_latch.json")
+    latch_paths = [
+        os.path.join(state_dir, "defence_latch.json"),
+        os.path.join(state_dir, "defence_latch_fallback.json"),
+    ]
 
     if not isinstance(reason, str) or not reason.strip() or len(reason.strip()) > 512:
         return False, "a non-empty operator review reason of at most 512 characters is required"
@@ -529,26 +572,37 @@ def clear_defence_latch(root: str, reason: str) -> tuple[bool, str]:
     if not it_tech.ok:
         return False, "cannot clear latch; IT-Tech source integrity: " + it_tech.reason
 
-    if not os.path.lexists(latch_path):
+    existing = [path for path in latch_paths if os.path.lexists(path)]
+    if not existing:
         return True, "no persisted defence latch is present; signed source baselines are clean"
-    if os.path.islink(latch_path):
+    if any(os.path.islink(path) for path in existing):
         return False, "persistent defence latch is a symlink; refusing to follow or remove it"
 
+    prior_bytes: dict[str, bytes] = {}
+    prior_metadata: list[dict[str, Any]] = []
+    removed: list[str] = []
     try:
-        with open(latch_path, "rb") as stream:
-            prior_bytes = stream.read()
-        prior_valid = False
-        prior_reason = "unreadable or invalid prior latch"
-        try:
-            envelope = json.loads(prior_bytes.decode("utf-8"))
-            document = envelope["document"]
-            signature = envelope["signature"]
-            canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
-            prior_valid = isinstance(document, dict) and isinstance(signature, str) and integrity.verify(canonical, signature)
-            if prior_valid:
-                prior_reason = str(document.get("reason", "unspecified incident"))
-        except Exception:
-            prior_valid = False
+        for path in existing:
+            with open(path, "rb") as stream:
+                payload = stream.read()
+            prior_bytes[path] = payload
+            valid = False
+            prior_reason = "unreadable or invalid prior latch"
+            try:
+                envelope = json.loads(payload.decode("utf-8"))
+                document = envelope["document"]
+                signature = envelope["signature"]
+                canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode("utf-8")
+                valid = isinstance(document, dict) and isinstance(signature, str) and integrity.verify(canonical, signature)
+                if valid:
+                    prior_reason = str(document.get("reason", "unspecified incident"))
+            except Exception:
+                valid = False
+            prior_metadata.append({
+                "path": os.path.basename(path),
+                "previous_latch_valid": valid,
+                "previous_latch_reason": prior_reason,
+            })
 
         timestamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
         audit_path = os.path.join(state_dir, "audit", f"supervisor-latch-clear-{timestamp}.jsonl")
@@ -556,32 +610,38 @@ def clear_defence_latch(root: str, reason: str) -> tuple[bool, str]:
         audit.record(
             "defence_latch_clear_requested",
             operator_reason=reason.strip(),
-            previous_latch_valid=prior_valid,
-            previous_latch_reason=prior_reason,
+            latches=prior_metadata,
             hydra_source_integrity=True,
             it_tech_source_integrity=True,
         )
         save(audit, audit_path, integrity=integrity)
 
-        os.remove(latch_path)
-        audit.record("defence_latch_cleared", operator_reason=reason.strip())
+        for path in existing:
+            os.remove(path)
+            removed.append(path)
+        audit.record(
+            "defence_latch_cleared",
+            operator_reason=reason.strip(),
+            cleared_latches=[os.path.basename(path) for path in removed],
+        )
         save(audit, audit_path, integrity=integrity)
-        return True, "persistent defence latch cleared after signed source-integrity verification; restart the service"
+        return True, "all persistent defence latches cleared after signed source-integrity verification; restart the service"
     except Exception as exc:
-        # If the final, signed audit write fails after removal, restore the latch
-        # rather than leaving an unrecorded path back to service.
-        try:
-            if "prior_bytes" in locals() and not os.path.lexists(latch_path):
-                temporary = latch_path + ".restore.tmp"
-                flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-                if hasattr(os, "O_NOFOLLOW"):
-                    flags |= os.O_NOFOLLOW
-                fd = os.open(temporary, flags, 0o600)
-                with os.fdopen(fd, "wb") as stream:
-                    stream.write(prior_bytes)
-                    stream.flush()
-                    os.fsync(stream.fileno())
-                os.replace(temporary, latch_path)
-        except Exception:
-            pass
+        # If final audit persistence fails after a marker was removed, restore its
+        # exact prior bytes; the runtime remains closed until audited recovery succeeds.
+        for path in removed:
+            try:
+                if not os.path.lexists(path) and path in prior_bytes:
+                    temporary = path + ".restore.tmp"
+                    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                    if hasattr(os, "O_NOFOLLOW"):
+                        flags |= os.O_NOFOLLOW
+                    fd = os.open(temporary, flags, 0o600)
+                    with os.fdopen(fd, "wb") as stream:
+                        stream.write(prior_bytes[path])
+                        stream.flush()
+                        os.fsync(stream.fileno())
+                    os.replace(temporary, path)
+            except Exception:
+                pass
         return False, f"latch clear failed closed: {type(exc).__name__}"
