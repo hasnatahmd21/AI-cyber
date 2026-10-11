@@ -4,6 +4,7 @@ import json
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 
 def _assert_successful_json(result: subprocess.CompletedProcess[str]) -> dict:
@@ -23,7 +24,36 @@ def _assert_successful_json(result: subprocess.CompletedProcess[str]) -> dict:
     return payload
 
 
+def _ensure_explicit_test_baseline() -> None:
+    root = Path(__file__).resolve().parents[1]
+    state = root / ".ai_cyber"
+    hydra = state / "hydra_baseline.json"
+    it_tech = state / "it_tech_baseline.json"
+    if hydra.is_file() and it_tech.is_file():
+        return
+    if hydra.exists() or it_tech.exists():
+        raise AssertionError(
+            "incomplete local signing baseline; do not auto-rebaseline test state"
+        )
+    result = subprocess.run(
+        [
+            sys.executable, "-m", "ai_cyber_os",
+            "--defence-rebaseline", "--phase", "phase1", "--json",
+        ],
+        cwd=str(root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, (
+        "explicit test baseline provisioning failed: "
+        f"stdout={result.stdout[-1000:]} stderr={result.stderr[-1000:]}"
+    )
+    assert hydra.is_file() and it_tech.is_file()
+
+
 def test_module_entrypoint_runs():
+    _ensure_explicit_test_baseline()
     result = subprocess.run(
         [sys.executable, "-m", "ai_cyber_os", "--phase", "all", "--json"],
         capture_output=True,
@@ -36,6 +66,7 @@ def test_module_entrypoint_runs():
 
 
 def test_individual_phase_entrypoint_returns_success():
+    _ensure_explicit_test_baseline()
     executable = shutil.which("ai-cyber")
     assert executable is not None, "installed console entrypoint is missing"
     result = subprocess.run(
@@ -50,6 +81,7 @@ def test_individual_phase_entrypoint_returns_success():
 
 
 def test_installed_console_entrypoint_runs():
+    _ensure_explicit_test_baseline()
     executable = shutil.which("ai-cyber")
     assert executable is not None, "installed console entrypoint is missing"
     result = subprocess.run(
