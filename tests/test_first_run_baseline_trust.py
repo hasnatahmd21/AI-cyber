@@ -181,3 +181,81 @@ def test_explicit_recovery_rebaseline_refuses_dirty_sources(tmp_path, monkeypatc
 
     assert result == 4
     assert any("rebaseline refused" in line.lower() for line in output)
+
+def test_cli_refuses_hydra_and_latches_when_persisted_audit_is_corrupt(
+    tmp_path, monkeypatch
+):
+    from ai_cyber_os.layered_defense.audit_store import save
+    from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
+    from ai_cyber_os.layered_defense.supervisor import DefenceSupervisor
+
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    audit = AuditLog()
+    audit.record("trusted prior event")
+    path = state / "audit" / "prior.jsonl"
+    save(audit, str(path), integrity=service.integrity)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("trusted prior event", "forged prior event"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        secured,
+        "build_system",
+        lambda **_kwargs: pytest.fail("HYDRA must not start with corrupt persisted audit history"),
+    )
+    output = []
+    result = secured.main(
+        ["--phase", "phase1", "--json"],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 4
+    assert any("persistent audit verification failed" in line for line in output)
+    assert (state / "defence_latch.json").is_file()
+
+
+def test_cli_cannot_rebaseline_over_corrupt_persisted_audit(tmp_path, monkeypatch):
+    from ai_cyber_os.layered_defense.audit_store import save
+    from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
+    from ai_cyber_os.layered_defense.supervisor import DefenceSupervisor
+
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    audit = AuditLog()
+    audit.record("trusted prior event")
+    path = state / "audit" / "prior.jsonl"
+    save(audit, str(path), integrity=service.integrity)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("trusted prior event", "forged prior event"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(secured, "_git_clean", lambda _root: True)
+    monkeypatch.setattr(
+        secured,
+        "write_baseline",
+        lambda *_args, **_kwargs: pytest.fail("corrupt audit must block rebaseline"),
+    )
+    monkeypatch.setattr(
+        secured,
+        "write_file_baseline",
+        lambda *_args, **_kwargs: pytest.fail("corrupt audit must block rebaseline"),
+    )
+
+    output = []
+    result = secured.main(
+        ["--defence-rebaseline", "--phase", "phase1", "--json"],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 4
+    assert any("persistent audit verification failed" in line for line in output)
+    assert not (state / "hydra_baseline.json").exists()
+    assert not (state / "it_tech_baseline.json").exists()
+    assert (state / "defence_latch.json").is_file()
+
