@@ -109,7 +109,7 @@ def test_watchdog_does_not_restart_ui_while_persistent_latch_is_active(tmp_path,
         raise AssertionError("watchdog must suppress UI launch while incident latch is active")
 
     monkeypatch.setattr(
-        codespace_watchdog, "_incident_reason", lambda _root: "persistent incident latch active"
+        codespace_watchdog, "_restart_block_reason", lambda _root: "persistent incident latch active"
     )
     monkeypatch.setattr(codespace_watchdog.subprocess, "Popen", forbidden_launch)
     stop = StopAfterWait()
@@ -127,3 +127,21 @@ def test_watchdog_refuses_symlinked_state_directory(tmp_path, monkeypatch, capsy
     assert codespace_watchdog.run(tmp_path) == 2
     assert "symlinked" in capsys.readouterr().err
 
+def test_codespaces_start_serializes_concurrent_launches(tmp_path, monkeypatch, capsys):
+    import fcntl
+
+    _workspace(tmp_path)
+    monkeypatch.setattr(
+        fcntl,
+        "flock",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(BlockingIOError()),
+    )
+    monkeypatch.setattr(
+        codespace_start.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not launch")),
+    )
+
+    assert codespace_start.start(tmp_path) == 3
+    assert "already running in another process" in capsys.readouterr().err
+\n
