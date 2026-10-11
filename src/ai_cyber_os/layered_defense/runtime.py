@@ -34,7 +34,8 @@ class System:
 
 def build_system(config: Optional[Dict[str, Any]] = None, key_provider: Optional[KeyProvider] = None) -> System:
     cfg = {"rate_capacity": 20, "rate_refill": 5.0, "timeout_s": 2.0, "strike_limit": 3,
-           "releasers": [], "ephemeral_key": False, "it_tech_source": None}
+           "releasers": [], "ephemeral_key": False, "it_tech_source": None,
+           "it_tech_integrity_verified": False}
     cfg.update(config or {})
     if key_provider is None:
         if cfg["ephemeral_key"]:
@@ -50,7 +51,20 @@ def build_system(config: Optional[Dict[str, Any]] = None, key_provider: Optional
     isolation = Isolation(set(cfg["releasers"]), audit)
     deception = Deception(isolation, audit)
     barrier = Barrier(trust, RateLimiter(cfg["rate_capacity"], cfg["rate_refill"]), audit)
-    orchestrator = Orchestrator(barrier, Layer1(), Layer2(trust, strike_limit=cfg["strike_limit"], it_tech_source=cfg["it_tech_source"]),
-                                Layer3(trust, it_tech_source=cfg["it_tech_source"]), isolation, deception, audit, cfg["timeout_s"])
+    orchestrator = Orchestrator(
+        barrier,
+        Layer1(),
+        Layer2(
+            trust,
+            strike_limit=cfg["strike_limit"],
+            it_tech_source=cfg["it_tech_source"],
+            it_tech_integrity_verified=cfg["it_tech_integrity_verified"],
+        ),
+        Layer3(trust, it_tech_source=cfg["it_tech_source"]),
+        isolation,
+        deception,
+        audit,
+        cfg["timeout_s"],
+    )
     audit.record("startup", version="ai-cyber-layered-defence")
     return System(orchestrator, audit, trust, isolation, deception)
