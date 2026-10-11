@@ -19,7 +19,31 @@ def _stderr(message: str) -> None:
 
 
 def _root() -> str:
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    """Locate the project checkout, including when this package came from a wheel.
+
+    In an installed wheel, __file__ points into site-packages, not the project
+    root. Prefer an explicit project root or the current working project tree;
+    fall back to the source-layout root for editable installs. Integrity checks
+    still verify every protected asset before any HYDRA code is executed.
+    """
+    candidates = [
+        os.environ.get("AI_CYBER_PROJECT_ROOT"),
+        os.getcwd(),
+        os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        candidate = os.path.abspath(candidate)
+        if (
+            os.path.isfile(os.path.join(candidate, "pyproject.toml"))
+            and os.path.isdir(os.path.join(candidate, PACKAGE_REL))
+            and os.path.isfile(os.path.join(candidate, IT_TECH_REL))
+        ):
+            return candidate
+    # Return the source-layout location so the normal signed-baseline check
+    # fails closed with a clear diagnostic if no project checkout is available.
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def _git_clean(root: str) -> bool:
