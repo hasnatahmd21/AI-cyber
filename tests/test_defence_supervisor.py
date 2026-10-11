@@ -690,3 +690,50 @@ def test_supervisor_latches_when_existing_signed_audit_is_tampered(tmp_path, mon
     assert state["status"] == "blocked"
     assert (tmp_path / ".ai_cyber" / "defence_latch.json").is_file()
 
+def test_clear_latch_refuses_when_persisted_audit_history_is_tampered(tmp_path):
+    from ai_cyber_os.layered_defense.audit_store import save
+    from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
+    from ai_cyber_os.layered_defense.integrity_gate import write_baseline, write_file_baseline
+    from ai_cyber_os.layered_defense.keystore import DefaultKeyProvider
+
+    package = tmp_path / "src" / "ai_cyber_os"
+    package.mkdir(parents=True)
+    (package / "module.py").write_text("trusted = True\n", encoding="utf-8")
+    it_tech = tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
+    it_tech.write_text("# trusted IT-Tech source\n", encoding="utf-8")
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    integrity = Integrity(DefaultKeyProvider(str(state)))
+    write_baseline(str(package), str(state / "hydra_baseline.json"), integrity)
+    write_file_baseline(str(it_tech), str(state / "it_tech_baseline.json"), integrity)
+
+    document = {
+        "status": "blocked",
+        "detected_at": "2026-10-11T00:00:00+00:00",
+        "reason": "audit tamper requires review",
+        "checks": {"audit_chain": False},
+    }
+    canonical = __import__("json").dumps(
+        document, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    (state / "defence_latch.json").write_text(
+        __import__("json").dumps(
+            {"document": document, "signature": integrity.sign(canonical)}
+        ),
+        encoding="utf-8",
+    )
+
+    audit = AuditLog()
+    audit.record("trusted prior event")
+    audit_path = state / "audit" / "prior.jsonl"
+    save(audit, str(audit_path), integrity=integrity)
+    audit_path.write_text(
+        audit_path.read_text(encoding="utf-8").replace("trusted prior event", "forged prior event"),
+        encoding="utf-8",
+    )
+
+    cleared, message = clear_defence_latch(str(tmp_path), "Reviewed, but audit history is corrupt")
+    assert cleared is False
+    assert "persistent audit verification failed" in message
+    assert (state / "defence_latch.json").is_file()
+
