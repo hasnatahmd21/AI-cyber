@@ -64,6 +64,7 @@ button,input,select{font:inherit}button{cursor:pointer}
 <div class="stat"><small>EVIDENCE RECORDS</small><b id="sevidence">0</b></div>
 <div class="stat"><small>DATASET FAMILIES</small><b id="sdatasets">0</b></div>
 <div class="stat"><small>SCOPE</small><b>LOCAL ONLY</b></div>
+<div class="stat"><small>IT-TECH RESIDENT DEFENCE</small><b id="guardState" style="color:var(--muted)">CHECKING</b><small id="guardDetail">Waiting for live supervisor status.</small></div>
 </div>
 <div class="events" id="events">[SITUATION] No execution has been requested yet.
 [TELEMETRY] This panel updates from real backend/test events only.</div>
@@ -147,7 +148,12 @@ if(s==="all"&&state.last_success===true)PHASES.forEach(n=>document.getElementByI
 else if(/^phase\d+$/.test(s||"")){const n=+s.slice(5);document.getElementById("p"+n).classList.add(state.last_success===true?"ok":"bad")}
 }
 function applyState(s){
-lastState=s||{};const q=s.last_summary||{},h=s.last_hardening,k=s.knowledge||{};
+lastState=s||{};
+if(s&&s.defence_monitor&&typeof s.defence_monitor==="object"){
+const d=s.defence_monitor;
+lastDefenceHealthy=d.active===true&&d.ready===true&&d.status==="healthy";
+}
+const q=s.last_summary||{},h=s.last_hardening,k=s.knowledge||{};
 document.getElementById("mrun").textContent=s.last_phase?(s.last_success?"PASS":"FAIL"):"—";
 document.getElementById("mfail").textContent=Array.isArray(q.failed_phases)?q.failed_phases.length:"—";
 document.getElementById("mrecords").textContent=(k.records??"—").toLocaleString?.()??k.records??"—";
@@ -158,20 +164,57 @@ document.getElementById("sevidence").textContent=(k.records??0).toLocaleString?.
 document.getElementById("sdatasets").textContent=(k.datasets||[]).length;
 document.getElementById("sceneState").textContent=s.last_phase?(s.last_success?"VERIFIED":"FAILED"):"STANDBY";
 document.getElementById("sitState").textContent=s.last_phase?(s.last_success?"STABLE":"ATTENTION"):"WAITING";
-document.getElementById("live").textContent=s.last_success===false?"RUNTIME ATTENTION":"SYSTEM ONLINE";
-document.getElementById("live").classList.toggle("bad",s.last_success===false);
+refreshHealthIndicator();
 mark(s);
 if(h&&Array.isArray(h.checks)){document.getElementById("controls").innerHTML=h.checks.map(c=>'<div class="control '+(c.status==="PASS"?"pass":"fail")+'"><b>'+esc(c.name)+'</b><em>'+esc(c.status)+'</em></div>').join("");document.getElementById("hstate").textContent=h.verified?"VERIFIED":"FAILED"}
 if(s.last_result){const pr=s.last_result.phase_result||s.last_result;document.getElementById("detailResult").textContent=JSON.stringify(pr,null,2)}
 const ev=s.events||[];if(!liveEventId){document.getElementById("events").textContent=ev.length?ev.map(e=>"["+e.timestamp+"] "+e.phase+" :: "+(e.success?"SUCCESS":"FAILED")+(e.hardening?" :: HARDENING":"")).join("\n"):"[SITUATION] No execution has been requested yet.";}
 }
 async function sync(){try{const r=await fetch("/api/situation");const s=await r.json();applyState(s);if(s.report)document.getElementById("detailResult").textContent=JSON.stringify(s.report,null,2)}catch(e){log("Situation sync failed: "+e,false)}}
+let lastState = {};
+let lastDefenceStatus = null;
+let lastDefenceHealthy = false;
+let lastTelemetryActive = false;
+function refreshHealthIndicator(){
+  const element=document.getElementById("live");
+  if(!element)return;
+  const failed=!lastDefenceHealthy||lastState?.last_success===false;
+  element.textContent=!lastDefenceHealthy?"DEFENCE UNHEALTHY":lastState?.last_success===false?"RUNTIME ATTENTION":lastTelemetryActive?"LIVE TELEMETRY":"SYSTEM ONLINE";
+  element.classList.toggle("bad",failed);
+}
+async function pollDefence(){
+  const stateEl=document.getElementById("guardState");
+  const detailEl=document.getElementById("guardDetail");
+  try{
+    const response=await fetch("/api/defence",{cache:"no-store"});
+    const state=await response.json();
+    const healthy=response.ok&&state.active===true&&state.ready===true&&state.status==="healthy";
+    lastDefenceHealthy=healthy;
+    stateEl.textContent=healthy?"ACTIVE":String(state.status||"BLOCKED").replaceAll("_"," ").toUpperCase();
+    stateEl.style.color=healthy?"var(--green)":"var(--red)";
+    const checks=Object.entries(state.checks||{}).map(([key,value])=>key+"="+(value?"PASS":"FAIL")).join(" · ");
+    detailEl.textContent=(state.reason||"No monitor reason reported")+(checks?" · "+checks:"")+(state.last_check_at?" · checked "+state.last_check_at:"");
+    if(lastDefenceStatus!==state.status){
+      log(healthy?"IT-Tech resident defence healthy":"IT-Tech resident defence "+(state.status||"unavailable")+": "+(state.reason||"no reason provided"),healthy);
+    }
+    lastDefenceStatus=state.status||"unknown";
+    refreshHealthIndicator();
+  }catch(error){
+    lastDefenceHealthy=false;
+    stateEl.textContent="UNAVAILABLE";
+    stateEl.style.color="var(--red)";
+    detailEl.textContent="Cannot read resident defence health. HYDRA must remain blocked.";
+    if(lastDefenceStatus!=="unavailable")log("IT-Tech defence status endpoint unavailable; treat monitor as unhealthy.",false);
+    lastDefenceStatus="unavailable";
+    refreshHealthIndicator();
+  }
+}
 function renderTelemetry(items,runState){
 if(!items.length)return;
 const box=document.getElementById("events");
 const lines=items.map(e=>{const ev=e.evidence?" | evidence="+JSON.stringify(e.evidence):"";return "["+e.timestamp+"] "+e.status+" :: "+(e.operation||"runtime")+" :: "+(e.phase||"-")+" :: "+e.message+ev});
 box.textContent=lines.join("\n");box.scrollTop=box.scrollHeight;
-if(runState){const active=!!runState.active;document.getElementById("sitState").textContent=active?"LIVE / EXECUTING":(runState.status||"IDLE");document.getElementById("srun").textContent=active?"EXECUTING":(runState.status||"IDLE");document.getElementById("live").textContent=active?"LIVE TELEMETRY":"SYSTEM ONLINE";document.getElementById("live").classList.toggle("bad",runState.status==="FAIL"||runState.status==="ERROR");}
+if(runState){const active=!!runState.active;lastTelemetryActive=active;document.getElementById("sitState").textContent=active?"LIVE / EXECUTING":(runState.status||"IDLE");document.getElementById("srun").textContent=active?"EXECUTING":(runState.status||"IDLE");refreshHealthIndicator();}
 }
 async function runTest(kind){
 const labels={"red-team":"LOCAL RED-TEAM","regression":"REGRESSION TESTS","full":"FULL HYDRA","hardening":"FULL HYDRA + HARDENING"};
@@ -214,6 +257,6 @@ canvas.addEventListener("pointermove",e=>{const dx=e.clientX-lastX,dy=e.clientY-
 canvas.addEventListener("pointerup",e=>{if(drag&&!moved){const n=drag.userData.n;selectPhase(n);selectedPhase()}drag=null;moved=false});
 canvas.addEventListener("wheel",e=>{CMR.position.z=Math.max(3,Math.min(25,CMR.position.z+e.deltaY*.012))},{passive:true});
 function frame(t){requestAnimationFrame(frame);CMR.rotation.set(pitch,yaw,0);orb.rotation.x=t*.00015;orb.rotation.y=t*.00022;rings.forEach((r,i)=>r.rotation.z+=.0007*(i%2?1:-1));panels.forEach((p,i)=>{if(!drag||drag!==p)p.position.y=p.userData.base.y+Math.sin(t*.001+i)*.18;p.scale.setScalar(p.userData.n===selected?1.25:1)});const a=pg.attributes.position.array;for(let i=0;i<N;i++){a[i*3+2]+=.018;if(a[i*3+2]>35)a[i*3+2]=-35}pg.attributes.position.needsUpdate=true;R.render(S,CMR)}requestAnimationFrame(frame)}
-init3D();selectPhase(1);sync();kstatus();pollEvents();setInterval(pollEvents,500);
+init3D();selectPhase(1);sync();kstatus();pollEvents();pollDefence();setInterval(pollEvents,500);setInterval(pollDefence,2000);
 </script>
 </body></html>

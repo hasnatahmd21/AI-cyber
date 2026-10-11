@@ -99,3 +99,47 @@ It exposes live runtime status, the 27 phase selectors, selected-phase
 execution, and full runtime + hardening execution. The UI binds only to
 localhost and delegates execution to the canonical HYDRA runtime. It does not
 enable external/live cyber execution.
+
+## GitHub Codespaces automatic resident defence
+
+The `.devcontainer/devcontainer.json` configuration installs the project and runs
+`tools/codespace_start.py` whenever the Codespace starts. The helper launches a resident watchdog; that watchdog starts the
+localhost-only UI, which starts `DefenceSupervisor` before accepting control requests.
+If the UI process unexpectedly exits, the watchdog retries with exponential backoff.
+It suppresses restarts while a persistent incident latch or latch-verification error
+is present, and resumes only after the secured recovery path clears the latch. Port 8765 is forwarded as
+**private**, and startup is reported successful only after `/api/defence` says
+`active=true`, `ready=true`, and `status=healthy`.
+
+**First-time trust bootstrap is intentionally not automatic.** A fresh Codespace
+does not contain the ignored local `.ai_cyber/` state, and silently signing whatever
+source happens to be checked out would defeat the explicit trust decision. Review
+the checked-out commit and confirm the protected source tree is clean first:
+
+```bash
+git status --short
+python -m ai_cyber_os --defence-rebaseline --phase phase1 --json
+python tools/codespace_start.py
+```
+
+The rebaseline command itself refuses dirty protected source assets. Run it only
+after reviewing the source you intend to trust. Later Codespace starts launch the
+resident UI automatically; no per-attack approval is requested for configured
+defensive blocks, containment decisions, incident recording, or HYDRA denial.
+A saved incident latch remains blocking across restart and must be reviewed and
+cleared through the documented secured recovery command.
+
+Check startup and runtime details with:
+
+```bash
+cat .ai_cyber/codespace-ui.log
+curl http://127.0.0.1:8765/api/defence
+```
+
+If startup cannot verify healthy readiness, the helper reports failure and does not
+advertise the service as healthy; the watchdog remains resident and retries when safe. Missing/invalid baselines, a persisted incident
+latch, port conflicts, and unverified PID files are never silently bypassed. A
+Codespace that is stopped or suspended cannot keep a process running; automatic
+monitoring resumes when that Codespace starts again. Continuous protection while a
+Codespace is stopped requires a separately deployed, supervised host service.
+

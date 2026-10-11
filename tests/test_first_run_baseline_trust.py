@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 import ai_cyber_os.secured as secured
@@ -39,13 +37,254 @@ def test_first_run_never_automatically_trusts_source_tree(tmp_path, monkeypatch,
     assert it_tech_baseline.exists() is (existing == "it-tech-only")
 
 
-def test_installed_runtime_prefers_project_checkout_over_site_packages(tmp_path, monkeypatch):
-    (tmp_path / "pyproject.toml").write_text("[project]\nname='test-project'\n", encoding="utf-8")
+def test_explicit_rebaseline_refuses_dirty_source_tree(tmp_path, monkeypatch):
+    monkeypatch.setattr(secured, "_git_clean", lambda _root: False)
+
+    def unexpected_write(*_args, **_kwargs):
+        raise AssertionError("dirty source must never be signed")
+
+    monkeypatch.setattr(secured, "write_baseline", unexpected_write)
+    monkeypatch.setattr(secured, "write_file_baseline", unexpected_write)
+    output = []
+
+    result = secured.main(
+        ["--defence-rebaseline", "--phase", "phase1", "--json"],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 4
+    assert any("rebaseline refused" in line for line in output)
+    assert not (tmp_path / ".ai_cyber" / "hydra_baseline.json").exists()
+    assert not (tmp_path / ".ai_cyber" / "it_tech_baseline.json").exists()
+
+
+
+@pytest.mark.parametrize(
+    "args",
+    [
+        ["--phase", "all", "--json"],
+        ["--defence-rebaseline", "--phase", "all", "--json"],
+    ],
+)
+def test_cli_refuses_execution_and_rebaseline_while_incident_latch_exists(
+    tmp_path, monkeypatch, args
+):
+    import json
+
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    # Even a malformed latch is a fail-closed incident state; it is never
+    # silently ignored or replaced by a fresh clean trust context.
+    (state / "defence_latch.json").write_text(
+        json.dumps({"unexpected": "schema"}), encoding="utf-8"
+    )
+    monkeypatch.setattr(secured, "build_system", lambda **_kwargs: pytest.fail(
+        "HYDRA runtime must not be built while incident latch is present"
+    ))
+    monkeypatch.setattr(
+        secured, "write_baseline", lambda *_args, **_kwargs: pytest.fail(
+            "source must not be rebaselined while incident latch is present"
+        )
+    )
+    monkeypatch.setattr(
+        secured, "write_file_baseline", lambda *_args, **_kwargs: pytest.fail(
+            "IT-Tech must not be rebaselined while incident latch is present"
+        )
+    )
+    output = []
+
+    result = secured.main(args, root=str(tmp_path), out=output.append)
+
+    assert result == 4
+    assert any("latch" in line.lower() and "refused" in line.lower() for line in output)
+
+
+def test_explicit_recovery_rebaseline_and_latch_clear_are_audited_and_non_executing(
+    tmp_path, monkeypatch
+):
+    from ai_cyber_os.layered_defense import supervisor as supervisor_module
+
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    (state / "defence_latch.json").write_text('{"status":"blocked"}', encoding="utf-8")
+    calls = []
+
+    monkeypatch.setattr(secured, "_git_clean", lambda _root: True)
+    monkeypatch.setattr(
+        secured,
+        "write_baseline",
+        lambda target, path, integrity: calls.append(("hydra_rebaseline", target, path)),
+    )
+    monkeypatch.setattr(
+        secured,
+        "write_file_baseline",
+        lambda target, path, integrity: calls.append(("it_tech_rebaseline", target, path)),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "clear_defence_latch",
+        lambda root, reason: calls.append(("clear_latch", root, reason)) or (True, "reviewed and cleared"),
+    )
+    monkeypatch.setattr(
+        secured,
+        "build_system",
+        lambda **_kwargs: pytest.fail("administrative recovery must not execute HYDRA"),
+    )
+
+    output = []
+    result = secured.main(
+        [
+            "--defence-rebaseline",
+            "--defence-clear-latch",
+            "--defence-clear-reason",
+            "Incident reviewed; source drift remediated",
+            "--json",
+        ],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 0
+    assert [call[0] for call in calls] == [
+        "hydra_rebaseline",
+        "it_tech_rebaseline",
+        "clear_latch",
+    ]
+    assert calls[-1][2] == "Incident reviewed; source drift remediated"
+    assert any("signed incident clearance follows" in line for line in output)
+
+
+def test_explicit_recovery_rebaseline_refuses_dirty_sources(tmp_path, monkeypatch):
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    (state / "defence_latch.json").write_text('{"status":"blocked"}', encoding="utf-8")
+    monkeypatch.setattr(secured, "_git_clean", lambda _root: False)
+    monkeypatch.setattr(
+        secured,
+        "write_baseline",
+        lambda *_args, **_kwargs: pytest.fail("dirty source must not be signed"),
+    )
+    output = []
+
+    result = secured.main(
+        [
+            "--defence-rebaseline",
+            "--defence-clear-latch",
+            "--defence-clear-reason",
+            "Attempted recovery",
+            "--json",
+        ],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 4
+    assert any("rebaseline refused" in line.lower() for line in output)
+
+def test_cli_refuses_hydra_and_latches_when_persisted_audit_is_corrupt(
+    tmp_path, monkeypatch
+):
+    from ai_cyber_os.layered_defense.audit_store import save
+    from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
+    from ai_cyber_os.layered_defense.supervisor import DefenceSupervisor
+
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    audit = AuditLog()
+    audit.record("trusted prior event")
+    path = state / "audit" / "prior.jsonl"
+    save(audit, str(path), integrity=service.integrity)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("trusted prior event", "forged prior event"),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(
+        secured,
+        "build_system",
+        lambda **_kwargs: pytest.fail("HYDRA must not start with corrupt persisted audit history"),
+    )
+    output = []
+    result = secured.main(
+        ["--phase", "phase1", "--json"],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 4
+    assert any("persistent audit verification failed" in line for line in output)
+    assert (state / "defence_latch.json").is_file()
+
+
+def test_cli_cannot_rebaseline_over_corrupt_persisted_audit(tmp_path, monkeypatch):
+    from ai_cyber_os.layered_defense.audit_store import save
+    from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
+    from ai_cyber_os.layered_defense.supervisor import DefenceSupervisor
+
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    audit = AuditLog()
+    audit.record("trusted prior event")
+    path = state / "audit" / "prior.jsonl"
+    save(audit, str(path), integrity=service.integrity)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("trusted prior event", "forged prior event"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(secured, "_git_clean", lambda _root: True)
+    monkeypatch.setattr(
+        secured,
+        "write_baseline",
+        lambda *_args, **_kwargs: pytest.fail("corrupt audit must block rebaseline"),
+    )
+    monkeypatch.setattr(
+        secured,
+        "write_file_baseline",
+        lambda *_args, **_kwargs: pytest.fail("corrupt audit must block rebaseline"),
+    )
+
+    output = []
+    result = secured.main(
+        ["--defence-rebaseline", "--phase", "phase1", "--json"],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 4
+    assert any("persistent audit verification failed" in line for line in output)
+    assert not (state / "hydra_baseline.json").exists()
+    assert not (state / "it_tech_baseline.json").exists()
+    assert (state / "defence_latch.json").is_file()
+
+def test_secured_root_locator_prefers_explicit_valid_project_root(tmp_path, monkeypatch):
+    from ai_cyber_os import secured
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
     package = tmp_path / "src" / "ai_cyber_os"
     package.mkdir(parents=True)
     (tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py").write_text(
-        "# trusted project asset\n", encoding="utf-8"
+        "# fixture IT-Tech source\n", encoding="utf-8"
     )
+    monkeypatch.setenv("AI_CYBER_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.chdir("/")
+
+    assert secured._root() == str(tmp_path)
+
+
+def test_secured_root_locator_uses_valid_working_tree_for_wheel_install(tmp_path, monkeypatch):
+    from ai_cyber_os import secured
+
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='fixture'\n", encoding="utf-8")
+    package = tmp_path / "src" / "ai_cyber_os"
+    package.mkdir(parents=True)
+    (tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py").write_text(
+        "# fixture IT-Tech source\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("AI_CYBER_PROJECT_ROOT", raising=False)
     monkeypatch.chdir(tmp_path)
 
     assert secured._root() == str(tmp_path)
+

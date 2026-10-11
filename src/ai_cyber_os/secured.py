@@ -19,12 +19,11 @@ def _stderr(message: str) -> None:
 
 
 def _root() -> str:
-    """Locate the project checkout, including when this package came from a wheel.
+    """Locate a checkout whether this package is editable or installed from a wheel.
 
-    In an installed wheel, __file__ points into site-packages, not the project
-    root. Prefer an explicit project root or the current working project tree;
-    fall back to the source-layout root for editable installs. Integrity checks
-    still verify every protected asset before any HYDRA code is executed.
+    Candidate roots are accepted only when the project metadata, canonical package,
+    and protected IT-Tech source all exist. The secure runtime still validates signed
+    baselines before executing any HYDRA phase.
     """
     candidates = [
         os.environ.get("AI_CYBER_PROJECT_ROOT"),
@@ -41,8 +40,7 @@ def _root() -> str:
             and os.path.isfile(os.path.join(candidate, IT_TECH_REL))
         ):
             return candidate
-    # Return the source-layout location so the normal signed-baseline check
-    # fails closed with a clear diagnostic if no project checkout is available.
+    # Keep a deterministic source-layout fallback; missing assets/baselines will fail closed.
     return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
@@ -117,10 +115,91 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
     argv = list(sys.argv[1:] if argv is None else argv)
     rebaseline = "--defence-rebaseline" in argv
     restore = "--defence-restore" in argv
-    args = [a for a in argv if a not in ("--defence-rebaseline", "--defence-restore")]
+    clear_latch = "--defence-clear-latch" in argv
+    clear_reason = None
+    saw_clear_reason = False
+    args = []
+    index = 0
+    while index < len(argv):
+        item = argv[index]
+        if item in ("--defence-rebaseline", "--defence-restore", "--defence-clear-latch"):
+            index += 1
+            continue
+        if item == "--defence-clear-reason":
+            saw_clear_reason = True
+            if index + 1 >= len(argv):
+                clear_reason = None
+                index += 1
+            else:
+                clear_reason = argv[index + 1]
+                index += 2
+            continue
+        args.append(item)
+        index += 1
     if "--json" in args and out is print:
         out = _stderr
     root = root or _root()
+
+    if saw_clear_reason and not clear_latch:
+        out("defence: --defence-clear-reason is valid only with --defence-clear-latch")
+        return 4
+    if clear_latch:
+        if restore:
+            out("defence: latch clearing cannot be combined with restore")
+            return 4
+        unexpected = [item for item in args if item != "--json"]
+        if unexpected:
+            out("defence: latch clearing is an administrative operation and cannot be combined with execution")
+            return 4
+        if not isinstance(clear_reason, str) or not clear_reason.strip():
+            out("defence: --defence-clear-latch requires --defence-clear-reason with an operator review reason")
+            return 4
+        from .layered_defense.supervisor import clear_defence_latch
+        if rebaseline:
+            # Explicit incident recovery after an intentional, reviewed source update.
+            # Both actions require a clean checkout and a human-supplied rationale;
+            # the command exits without running HYDRA so the operator can restart.
+            if not _git_clean(root):
+                out("defence: recovery rebaseline refused while protected source assets are dirty")
+                return 4
+            state = os.path.join(root, ".ai_cyber")
+            if os.path.islink(state):
+                out("defence: recovery refused because the security state directory is a symlink")
+                return 4
+            target = os.path.join(root, PACKAGE_REL)
+            it_tech_path = os.path.join(root, IT_TECH_REL)
+            baseline_path = os.path.join(state, "hydra_baseline.json")
+            it_tech_baseline_path = os.path.join(state, "it_tech_baseline.json")
+            provider = DefaultKeyProvider(state)
+            integrity = Integrity(provider)
+            try:
+                write_baseline(target, baseline_path, integrity)
+                write_file_baseline(it_tech_path, it_tech_baseline_path, integrity)
+            except Exception as exc:
+                out(f"defence: recovery rebaseline failed closed: {type(exc).__name__}: {exc}")
+                return 4
+            out("defence: reviewed source baselines re-established; signed incident clearance follows")
+        cleared, message = clear_defence_latch(root, clear_reason)
+        out("defence: " + message)
+        return 0 if cleared else 4
+    # A resident incident latch applies to every launcher, not only the UI
+    # supervisor. A fresh one-shot CLI process must not forget a prior confirmed
+    # incident and execute HYDRA with a new, clean in-memory trust context.
+    from .layered_defense.supervisor import DefenceSupervisor
+    latch_checker = DefenceSupervisor(root)
+    latch_reason = latch_checker._persistent_latch_reason()
+    if latch_reason is None:
+        audit_reason = latch_checker._persisted_audit_reason()
+        if audit_reason:
+            latch_checker._latch_failure(
+                audit_reason, {"audit_chain": False}, persist_audit=False
+            )
+            latch_reason = audit_reason
+    latch_active = latch_reason is not None
+    if latch_active and not restore:
+        out("defence: " + str(latch_reason) + "; direct HYDRA execution refused")
+        return 4
+
     target = os.path.join(root, PACKAGE_REL)
     state = os.path.join(root, ".ai_cyber")
     baseline_path = os.path.join(state, "hydra_baseline.json")
@@ -173,9 +252,23 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
             out("integrity: IT-Tech defence will not be loaded; HYDRA will not start")
             return 4
 
+        if latch_active and restore:
+            out(
+                "defence: restore checks completed, but the persistent incident latch remains active; "
+                "HYDRA execution refused until signed sources are reviewed and the latch is explicitly cleared"
+            )
+            return 4
+
         # Import the existing IT-Tech engine only after both signed source gates pass.
         system = build_system(
-            config={"it_tech_source": it_tech_path},
+            config={
+                "it_tech_source": it_tech_path,
+                "package_baseline_path": baseline_path,
+                "it_tech_baseline_path": it_tech_baseline_path,
+                # This flag is set only after both signed package and IT-Tech
+                # source baselines have just been verified successfully above.
+                "it_tech_integrity_verified": True,
+            },
             key_provider=provider,
         )
         system.trust.grant("hydra-runtime", "read", "hydra:")

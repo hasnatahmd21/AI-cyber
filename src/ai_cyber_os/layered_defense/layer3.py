@@ -10,10 +10,23 @@ _CRITICAL = frozenset({"delete", "execute", "run"})
 
 class Layer3:
     name = "layer3"
-    def __init__(self, trust: TrustAuthority, critical_prefixes: Iterable[str] = ("/system", "/keys", "/audit"),
-                 it_tech_source: str | None = None):
+    def __init__(
+        self,
+        trust: TrustAuthority,
+        critical_prefixes: Iterable[str] = ("/system", "/keys", "/audit"),
+        it_tech_source: str | None = None,
+        it_tech_integrity_verified: bool = False,
+    ):
+        if not isinstance(it_tech_integrity_verified, bool):
+            raise ValueError("IT-Tech integrity flag must be a boolean verification result")
         self.trust, self.critical_prefixes = trust, tuple(critical_prefixes)
-        self.it_tech_gate = ITTechAuthorityGate(it_tech_source) if it_tech_source else None
+        self.it_tech_gate = (
+            ITTechAuthorityGate(
+                it_tech_source,
+                baseline_verified=it_tech_integrity_verified,
+            )
+            if it_tech_source else None
+        )
 
     def evaluate(self, req: Request, prior: Tuple[LayerResult, ...] = ()) -> LayerResult:
         try:

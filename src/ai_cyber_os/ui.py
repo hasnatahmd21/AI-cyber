@@ -25,6 +25,7 @@ from .dataset_pipeline import ingest_manifest, inspect_dataset
 from .threat_intel import ingest_source, PARSERS
 from . import telemetry
 from .command_gateway import execute as execute_command
+from .layered_defense.supervisor import DefenceSupervisor
 
 HOST = "127.0.0.1"
 PORT = 8765
@@ -33,6 +34,23 @@ VALID_PHASES = {"all", *{f"phase{i}" for i in range(1, 28)}}
 TEMPLATE = Path(__file__).with_name("ui_template.html").read_text(encoding="utf-8")
 
 STATE_LOCK = threading.Lock()
+SUPERVISOR_LOCK = threading.RLock()
+ACTIVE_SUPERVISOR: DefenceSupervisor | None = None
+
+
+def _supervisor_snapshot() -> dict[str, Any]:
+    with SUPERVISOR_LOCK:
+        supervisor = ACTIVE_SUPERVISOR
+    if supervisor is None:
+        return {
+            "service": "ai-cyber-defence-supervisor",
+            "active": False,
+            "ready": False,
+            "status": "not_started",
+            "reason": "the operational UI has not started the resident supervisor",
+        }
+    return supervisor.snapshot()
+
 def _assert_inside_project(path: Path, label: str = "path") -> Path:
     try:
         path.relative_to(PROJECT_ROOT.resolve())
@@ -61,6 +79,39 @@ def _snapshot() -> dict[str, Any]:
 def _execute(phase: str, hardening: bool) -> dict[str, Any]:
     if phase not in VALID_PHASES:
         raise ValueError("invalid phase selector")
+
+    # The resident, stateful IT-Tech defence sees every UI-triggered HYDRA run
+    # before the request is dispatched to the separately gated canonical CLI.
+    with SUPERVISOR_LOCK:
+        supervisor = ACTIVE_SUPERVISOR
+    if supervisor is None:
+        reason = "resident IT-Tech defence supervisor is not running; HYDRA blocked"
+        evidence = {"active": False, "ready": False, "status": "not_started"}
+    else:
+        allowed, reason, evidence = supervisor.authorize_hydra(phase, hardening)
+        if allowed:
+            evidence = {**(evidence if isinstance(evidence, dict) else {}), "resident_gate": "ALLOW"}
+        else:
+            evidence = evidence if isinstance(evidence, dict) else {"result": str(evidence)}
+    if supervisor is None or not allowed:
+        blocked = {
+            "phase": phase,
+            "success": False,
+            "blocked": True,
+            "error": reason,
+            "defence": evidence,
+        }
+        telemetry.emit(
+            "defence_blocked",
+            "Resident IT-Tech supervisor denied or unavailable for the UI HYDRA request",
+            operation="hydra",
+            phase=phase,
+            status="BLOCKED",
+            source="it-tech-supervisor",
+            evidence=evidence,
+        )
+        save_report("defence-block", blocked)
+        return blocked
 
     telemetry.begin("hydra", phase=phase, message=f"HYDRA {phase} execution started")
     telemetry.emit(
@@ -215,6 +266,7 @@ def _command_status() -> dict[str, Any]:
     state = _snapshot()
     state["knowledge"] = knowledge_status(db_path=DEFAULT_DB)
     state["live"] = telemetry.snapshot()
+    state["defence_monitor"] = _supervisor_snapshot()
     return state
 
 
@@ -250,12 +302,17 @@ class Handler(BaseHTTPRequestHandler):
                 latest_report=load_report(),
                 knowledge=knowledge_status(db_path=DEFAULT_DB),
                 live=telemetry.snapshot(),
+                defence_monitor=_supervisor_snapshot(),
             )
             self._send(200, state)
             return
 
         if path == "/api/report":
             self._send(200, {"success": True, "report": load_report()})
+            return
+
+        if path == "/api/defence":
+            self._send(200, _supervisor_snapshot())
             return
 
         if path == "/api/situation":
@@ -466,24 +523,59 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", default=HOST)
     parser.add_argument("--port", type=int, default=PORT)
     parser.add_argument("--no-browser", action="store_true", help="Do not open the UI automatically.")
+    parser.add_argument(
+        "--defence-interval",
+        type=float,
+        default=2.0,
+        help="Seconds between resident integrity/network/authority health checks (0.25-60).",
+    )
     args = parser.parse_args(argv)
 
     if args.host not in {"127.0.0.1", "localhost", "::1"}:
         parser.error("UI is intentionally local-only")
 
-    server = ThreadingHTTPServer((args.host, args.port), Handler)
-    url = f"http://{args.host}:{args.port}"
-    print(f"AI-CYBER UI: {url}")
-    print("Scope: localhost-only; execution delegates to canonical HYDRA runtime.")
-    if not args.no_browser:
-        threading.Timer(0.35, lambda: webbrowser.open(url)).start()
-
+    # Never serve operational controls without a resident monitor. Missing or
+    # invalid signed baselines stop startup; the UI cannot auto-trust source.
     try:
+        supervisor = DefenceSupervisor(
+            str(PROJECT_ROOT), interval_s=args.defence_interval
+        ).start()
+    except Exception as exc:
+        print(
+            f"AI-CYBER UI refused to start without healthy defence: {type(exc).__name__}: {exc}",
+            file=sys.stderr,
+        )
+        return 2
+
+    global ACTIVE_SUPERVISOR
+    with SUPERVISOR_LOCK:
+        ACTIVE_SUPERVISOR = supervisor
+
+    server = None
+    try:
+        server = ThreadingHTTPServer((args.host, args.port), Handler)
+        url = f"http://{args.host}:{args.port}"
+        print(f"AI-CYBER UI: {url}")
+        print("Scope: localhost-only; execution delegates to canonical HYDRA runtime.")
+        print(
+            "Resident defence: active; interval="
+            f"{args.defence_interval:g}s; health endpoint=/api/defence"
+        )
+        if not args.no_browser:
+            threading.Timer(0.35, lambda: webbrowser.open(url)).start()
         server.serve_forever()
     except KeyboardInterrupt:
         return 0
+    except OSError as exc:
+        print(f"AI-CYBER UI startup/runtime error: {type(exc).__name__}: {exc}", file=sys.stderr)
+        return 2
     finally:
-        server.server_close()
+        if server is not None:
+            server.server_close()
+        supervisor.stop()
+        with SUPERVISOR_LOCK:
+            if ACTIVE_SUPERVISOR is supervisor:
+                ACTIVE_SUPERVISOR = None
     return 0
 
 

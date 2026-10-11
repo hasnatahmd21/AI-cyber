@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import pytest
 from dataclasses import replace
 
 from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
@@ -14,6 +15,38 @@ from ai_cyber_os.layered_defense.runtime import StartupError, build_system
 KEY = StaticKeyProvider({"default": b"unit-test-key-material-32-bytes!!"})
 
 
+def _test_signed_it_tech_source(tmp_path):
+    from pathlib import Path
+    import shutil
+
+    root = Path(__file__).resolve().parents[1]
+    source = tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
+    shutil.copy2(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py", source)
+    state = tmp_path / ".ai_cyber"
+    state.mkdir(exist_ok=True)
+    baseline = state / "it_tech_baseline.json"
+    package_baseline = state / "hydra_baseline.json"
+    write_file_baseline(str(source), str(baseline), Integrity(KEY))
+    write_baseline(str(root / "src" / "ai_cyber_os"), str(package_baseline), Integrity(KEY))
+    return source, baseline, package_baseline
+
+
+def _build_verified_system(tmp_path):
+    # Sign the exact IT-Tech source fixture and the runtime package tree using
+    # the test key; runtime startup revalidates these HMACs instead of trusting
+    # the boolean flag sent by a caller.
+    source, baseline, package_baseline = _test_signed_it_tech_source(tmp_path)
+    return build_system(
+        config={
+            "it_tech_source": str(source),
+            "it_tech_baseline_path": str(baseline),
+            "package_baseline_path": str(package_baseline),
+            "it_tech_integrity_verified": True,
+        },
+        key_provider=KEY,
+    )
+
+
 def _allowed_request(system, payload="safe"):
     system.trust.grant("hydra-runtime", "read", "hydra:")
     token = system.trust.issue_token("hydra-runtime")
@@ -21,8 +54,8 @@ def _allowed_request(system, payload="safe"):
                    credentials=token, source="internal")
 
 
-def test_pipeline_allows_clean_internal_hydra_request():
-    system = build_system(key_provider=KEY)
+def test_pipeline_allows_clean_internal_hydra_request(tmp_path):
+    system = _build_verified_system(tmp_path)
     try:
         result = system.orchestrator.handle(_allowed_request(system))
         assert result.decision is Decision.ALLOW
@@ -31,8 +64,8 @@ def test_pipeline_allows_clean_internal_hydra_request():
         system.shutdown()
 
 
-def test_pipeline_blocks_shell_injection_before_hydra():
-    system = build_system(key_provider=KEY)
+def test_pipeline_blocks_shell_injection_before_hydra(tmp_path):
+    system = _build_verified_system(tmp_path)
     try:
         result = system.orchestrator.handle(_allowed_request(system, "; rm -rf /"))
         assert result.decision is Decision.BLOCK
@@ -93,7 +126,10 @@ def test_existing_it_tech_authority_engine_is_wired_as_layer3_gate():
     from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate
 
     root = Path(__file__).resolve().parents[1]
-    gate = ITTechAuthorityGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    gate = ITTechAuthorityGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
     request = Request(
         request_id="req-it-tech",
         principal="hydra-runtime",
@@ -127,7 +163,10 @@ def test_existing_it_tech_network_engine_enforces_trust_and_isolation_invariants
     from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
 
     root = Path(__file__).resolve().parents[1]
-    gate = ITTechNetworkGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
     clean = Request(
         request_id="req-network-clean",
         principal="hydra-runtime",
@@ -175,7 +214,7 @@ def test_audit_manifest_detects_truncation_and_requires_valid_signature(tmp_path
 
 
 def test_shutdown_event_is_included_in_persisted_audit(tmp_path):
-    system = build_system(key_provider=KEY)
+    system = _build_verified_system(tmp_path)
     system.shutdown()
     path = tmp_path / "shutdown-audit.jsonl"
     integrity = Integrity(KEY)
@@ -228,15 +267,17 @@ def test_it_tech_integrity_gate_refuses_symlink_source(tmp_path):
 
 
 
-def test_canonical_runtime_wires_it_tech_network_and_authority_gates():
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1]
-    source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
-    system = build_system(config={"it_tech_source": source}, key_provider=KEY)
+def test_canonical_runtime_wires_it_tech_network_and_authority_gates(tmp_path):
+    # A Layer 2 network incident intentionally latches the runtime and prevents
+    # later requests reaching Layer 3. Exercise each independent gate in a fresh,
+    # cryptographically initialized runtime so the first incident cannot mask
+    # the authority-layer assertion or encourage unsafe post-incident continuation.
+    network_root = tmp_path / "network"
+    network_root.mkdir()
+    network_system = _build_verified_system(network_root)
     try:
-        clean = _allowed_request(system)
-        allowed = system.orchestrator.handle(clean)
+        clean = _allowed_request(network_system)
+        allowed = network_system.orchestrator.handle(clean)
         assert allowed.decision is Decision.ALLOW, allowed
 
         network_risk = replace(
@@ -244,19 +285,434 @@ def test_canonical_runtime_wires_it_tech_network_and_authority_gates():
             request_id="req-network-risk-block",
             attributes={"network_risk": 0.9},
         )
-        blocked_network = system.orchestrator.handle(network_risk)
+        blocked_network = network_system.orchestrator.handle(network_risk)
         assert blocked_network.decision is Decision.BLOCK
         assert any(r.layer == "layer2" and r.decision is Decision.BLOCK
                    for r in blocked_network.layer_results)
+    finally:
+        network_system.shutdown()
+
+    authority_root = tmp_path / "authority"
+    authority_root.mkdir()
+    authority_system = _build_verified_system(authority_root)
+    try:
+        clean = _allowed_request(authority_system)
+        allowed = authority_system.orchestrator.handle(clean)
+        assert allowed.decision is Decision.ALLOW, allowed
 
         suspicious_posture = replace(
             clean,
             request_id="req-authority-posture-block",
             attributes={"it_tech_posture": "suspicious", "it_tech_risk": 0.8},
         )
-        blocked_authority = system.orchestrator.handle(suspicious_posture)
+        blocked_authority = authority_system.orchestrator.handle(suspicious_posture)
         assert blocked_authority.decision is Decision.BLOCK
         assert any(r.layer == "layer3" and r.decision is Decision.BLOCK
                    for r in blocked_authority.layer_results)
     finally:
-        system.shutdown()
+        authority_system.shutdown()
+
+
+@pytest.mark.parametrize(
+    "attributes",
+    [
+        {"it_tech_posture": "suspicious"},
+        {"it_tech_posture": "compromised"},
+        {"it_tech_posture": "quarantined"},
+        {"it_tech_posture": "unknown"},
+        {"it_tech_posture": "unrecognized"},
+        {"it_tech_risk": 0.7},
+        {"it_tech_risk": True},
+        {"it_tech_risk": float("nan")},
+        {"it_tech_confidence": False},
+        {"it_tech_confidence": 1.1},
+        {"it_tech_posture": ["trusted"]},
+    ],
+)
+def test_it_tech_authority_gate_fails_closed_for_risky_or_malformed_posture(attributes):
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechAuthorityGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
+    request = Request(
+        request_id="req-authority-negative",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="unused",
+        source="internal",
+        attributes=attributes,
+    )
+
+    allowed, reason = gate.authorize(request)
+    assert allowed is False
+    assert reason
+
+
+@pytest.mark.parametrize("risk", [True, float("nan"), -0.01, 1.01, 0.7])
+def test_it_tech_network_gate_fails_closed_for_malformed_or_high_risk_telemetry(risk):
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
+    request = Request(
+        request_id="req-network-negative",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="unused",
+        source="internal",
+        attributes={"network_risk": risk},
+    )
+
+    allowed, reason = gate.evaluate(request)
+    assert allowed is False
+    assert reason
+
+
+
+def test_it_tech_network_engine_state_is_persistent_and_signal_history_is_bounded():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
+    engine_identity = id(gate.engine)
+
+    for index in range(140):
+        request = Request(
+            request_id=f"req-network-persistent-{index}",
+            principal="hydra-runtime",
+            action="read",
+            resource="hydra:run",
+            payload="safe",
+            credentials="unused",
+            source="internal",
+            attributes={"network_risk": 0.0},
+        )
+        allowed, reason = gate.evaluate(request)
+        assert allowed is True, reason
+
+    snapshot = gate.snapshot()
+    assert id(gate.engine) == engine_identity
+    assert snapshot["active"] is True
+    assert snapshot["observations"] <= 2 * gate._MAX_SIGNALS_PER_SOURCE
+    assert snapshot["states"]["internal"]["label"] == "trusted"
+    healthy, reason = gate.health_check()
+    assert healthy is True, reason
+
+
+def test_it_tech_network_gate_records_and_immediately_blocks_high_risk_evidence():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
+
+    for index in range(2):
+        request = Request(
+            request_id=f"req-network-high-risk-{index}",
+            principal="hydra-runtime",
+            action="read",
+            resource="hydra:run",
+            payload="safe",
+            credentials="unused",
+            source="internal",
+            attributes={"network_risk": 0.95},
+        )
+        allowed, reason = gate.evaluate(request)
+        assert allowed is False
+        assert "risk threshold" in reason
+
+    snapshot = gate.snapshot()
+    # Two signed-baseline trust observations seed internal state at startup.
+    assert snapshot["observations"] == 4
+    healthy, reason = gate.health_check()
+    assert healthy is False
+    # The explicit incident latch takes precedence over derived network labels.
+    assert "risk threshold" in reason.lower()
+
+
+
+def test_it_tech_authority_health_check_reads_live_state_without_granting_authority():
+    from datetime import datetime, timezone
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechAuthorityGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
+    decision_count = len(gate.engine.decisions())
+
+    healthy, reason = gate.health_check()
+    assert healthy is True, reason
+    assert len(gate.engine.decisions()) == decision_count
+
+    gate.engine.revoke(
+        gate.principal_id,
+        reason="unit test simulates a revoked runtime authority",
+        at=datetime.now(timezone.utc),
+    )
+    healthy, reason = gate.health_check()
+    assert healthy is False
+    assert "revoked" in reason.lower()
+
+    request = Request(
+        request_id="req-revoked-authority",
+        principal=gate.principal_id,
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="unused",
+        source="internal",
+    )
+    allowed, reason = gate.authorize(request)
+    assert allowed is False
+    assert "revoked" in reason.lower()
+
+
+def test_signed_baseline_evidence_seeds_trusted_internal_network_state():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechNetworkGate(
+        str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        baseline_verified=True,
+    )
+    snapshot = gate.snapshot()
+    assert snapshot["states"]["internal"]["label"] == "trusted"
+    healthy, reason = gate.health_check()
+    assert healthy is True, reason
+
+
+def test_runtime_builder_requires_an_explicit_verified_it_tech_source():
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
+
+    with pytest.raises(StartupError, match="verified IT-Tech source is required"):
+        build_system(key_provider=KEY)
+
+    with pytest.raises(StartupError, match="signed IT-Tech source integrity verification"):
+        build_system(
+            config={"it_tech_source": source, "it_tech_integrity_verified": False},
+            key_provider=KEY,
+        )
+
+
+def test_unverified_it_tech_gates_refuse_requests_and_report_unhealthy():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate, ITTechNetworkGate
+
+    root = Path(__file__).resolve().parents[1]
+    source = str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py")
+    request = Request(
+        request_id="unverified-it-tech-source",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="unused",
+        source="internal",
+    )
+
+    network = ITTechNetworkGate(source, baseline_verified=False)
+    allowed, reason = network.evaluate(request)
+    assert allowed is False
+    assert "integrity verification" in reason
+    healthy, reason = network.health_check()
+    assert healthy is False
+    assert "integrity verification" in reason
+
+    authority = ITTechAuthorityGate(source, baseline_verified=False)
+    allowed, reason = authority.authorize(request)
+    assert allowed is False
+    assert "integrity verification" in reason
+    healthy, reason = authority.health_check()
+    assert healthy is False
+    assert "integrity verification" in reason
+
+
+def test_runtime_builder_rejects_missing_or_tampered_it_tech_baseline(tmp_path):
+    import shutil
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    source = tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
+    shutil.copy2(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py", source)
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+
+    with pytest.raises(StartupError, match="signed IT-Tech baseline is missing"):
+        build_system(
+            config={"it_tech_source": str(source), "it_tech_integrity_verified": True},
+            key_provider=KEY,
+        )
+
+    baseline = state / "it_tech_baseline.json"
+    write_file_baseline(str(source), str(baseline), Integrity(KEY))
+    source.write_text("# source tampered after signing\n", encoding="utf-8")
+    with pytest.raises(StartupError, match="signed IT-Tech baseline verification failed"):
+        build_system(
+            config={
+                "it_tech_source": str(source),
+                "it_tech_baseline_path": str(baseline),
+                "it_tech_integrity_verified": True,
+            },
+            key_provider=KEY,
+        )
+
+def test_audit_save_refuses_to_overwrite_tampered_chain(tmp_path):
+    import pytest
+    from ai_cyber_os.layered_defense.audit_store import AuditTamperError, save
+
+    audit = AuditLog()
+    audit.record("trusted-event", outcome="safe")
+    path = tmp_path / "audit.jsonl"
+    integrity = Integrity(KEY)
+    save(audit, str(path), integrity=integrity)
+
+    path.write_text(path.read_text(encoding="utf-8").replace("trusted-event", "forged-event"), encoding="utf-8")
+    audit.record("next-event", outcome="safe")
+    try:
+        save(audit, str(path), integrity=integrity)
+    except AuditTamperError:
+        pass
+    else:
+        raise AssertionError("save must not silently overwrite a tampered audit chain")
+
+    assert "forged-event" in path.read_text(encoding="utf-8")
+
+
+def test_audit_save_refuses_symlinked_directory(tmp_path):
+    import pytest
+    from ai_cyber_os.layered_defense.audit_store import AuditTamperError, save
+
+    actual = tmp_path / "actual-audit"
+    actual.mkdir()
+    linked = tmp_path / "audit-link"
+    linked.symlink_to(actual, target_is_directory=True)
+    audit = AuditLog()
+    audit.record("event")
+    with pytest.raises(AuditTamperError, match="symlinked"):
+        save(audit, str(linked / "audit.jsonl"), integrity=Integrity(KEY))
+    assert list(actual.iterdir()) == []
+
+def test_audit_chain_manifest_update_is_locked_across_processes(tmp_path, monkeypatch):
+    import threading
+    import time
+    from ai_cyber_os.layered_defense import audit_store
+
+    audit = AuditLog()
+    audit.record("concurrent event", outcome="safe")
+    path = tmp_path / "audit.jsonl"
+    integrity = Integrity(KEY)
+    chain_written = threading.Event()
+    allow_manifest = threading.Event()
+    reader_done = threading.Event()
+    errors = []
+    original_atomic_write = audit_store._atomic_write
+
+    def pause_between_chain_and_manifest(target, text):
+        original_atomic_write(target, text)
+        if target == str(path):
+            chain_written.set()
+            if not allow_manifest.wait(timeout=5):
+                raise TimeoutError("test did not release paused audit writer")
+
+    monkeypatch.setattr(audit_store, "_atomic_write", pause_between_chain_and_manifest)
+
+    def write_audit():
+        try:
+            save(audit, str(path), integrity=integrity)
+        except Exception as exc:
+            errors.append(exc)
+
+    def read_audit():
+        try:
+            load_verified(str(path), integrity=integrity)
+        except Exception as exc:
+            errors.append(exc)
+        finally:
+            reader_done.set()
+
+    writer = threading.Thread(target=write_audit, daemon=True)
+    writer.start()
+    assert chain_written.wait(timeout=3), "writer did not reach chain/manifest boundary"
+
+    reader = threading.Thread(target=read_audit, daemon=True)
+    reader.start()
+    # Reader must wait for the writer's cross-process directory lock rather than
+    # report the temporary chain/manifest mismatch as tampering.
+    assert not reader_done.wait(timeout=0.15)
+    allow_manifest.set()
+    writer.join(timeout=3)
+    reader.join(timeout=3)
+
+    assert not writer.is_alive()
+    assert not reader.is_alive()
+    assert errors == []
+    assert reader_done.is_set()
+    assert len(load_verified(str(path), integrity=integrity)) == 1
+
+def test_audit_loader_refuses_named_pipe_without_blocking(tmp_path):
+    import os
+
+    from ai_cyber_os.layered_defense.audit_store import AuditTamperError, load_verified
+
+    path = tmp_path / "audit.jsonl"
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("named pipes are not supported on this platform")
+    os.mkfifo(path)
+    with pytest.raises(AuditTamperError, match="single-link regular file"):
+        load_verified(str(path), integrity=Integrity(KEY))
+
+
+def test_audit_directory_lock_refuses_symlinked_lock_file(tmp_path):
+    from ai_cyber_os.layered_defense.audit_store import AuditTamperError, audit_directory_lock
+
+    audit_dir = tmp_path / "audit"
+    audit_dir.mkdir()
+    outside = tmp_path / "outside.lock"
+    outside.write_text("do not lock through a link", encoding="utf-8")
+    (audit_dir / ".audit-store.lock").symlink_to(outside)
+
+    with pytest.raises(AuditTamperError, match="symlinked audit directory lock"):
+        with audit_directory_lock(str(audit_dir / "target.jsonl")):
+            pytest.fail("must not acquire lock via symlink")
+    assert outside.read_text(encoding="utf-8") == "do not lock through a link"
+
+def test_audit_loader_rejects_non_object_manifest_schema(tmp_path):
+    audit = AuditLog()
+    audit.record("schema test")
+    path = tmp_path / "audit.jsonl"
+    integrity = Integrity(KEY)
+    save(audit, str(path), integrity=integrity)
+    manifest_path = tmp_path / "audit.jsonl.manifest.json"
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    document["manifest"] = []
+    manifest_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(AuditTamperError, match="audit manifest schema invalid"):
+        load_verified(str(path), integrity=integrity)
+

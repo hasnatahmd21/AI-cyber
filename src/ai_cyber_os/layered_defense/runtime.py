@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional
 from .audit_telemetry import AuditLog
 from .barrier import Barrier, RateLimiter
 from .contracts import SecurityError
+from .integrity_gate import check, check_file
 from .crypto_integrity import EnvKeyProvider, Integrity, KeyProvider, StaticKeyProvider
 from .deception import Deception
 from .isolation import Isolation
@@ -34,7 +35,9 @@ class System:
 
 def build_system(config: Optional[Dict[str, Any]] = None, key_provider: Optional[KeyProvider] = None) -> System:
     cfg = {"rate_capacity": 20, "rate_refill": 5.0, "timeout_s": 2.0, "strike_limit": 3,
-           "releasers": [], "ephemeral_key": False, "it_tech_source": None}
+           "releasers": [], "ephemeral_key": False, "it_tech_source": None,
+           "package_baseline_path": None, "it_tech_baseline_path": None,
+           "it_tech_integrity_verified": False}
     cfg.update(config or {})
     if key_provider is None:
         if cfg["ephemeral_key"]:
@@ -45,12 +48,85 @@ def build_system(config: Optional[Dict[str, Any]] = None, key_provider: Optional
             raise StartupError("signing key provider is required")
     try: key_provider.get_key("default")
     except Exception as exc: raise StartupError(f"invalid signing key: {exc}") from exc
+
+    # The canonical application runtime must never come up with the IT-Tech
+    # authority/network layers silently omitted or operating on unverified code.
+    source = cfg.get("it_tech_source")
+    integrity_verified = cfg.get("it_tech_integrity_verified")
+    if not isinstance(integrity_verified, bool):
+        raise StartupError("IT-Tech integrity verification must be an explicit boolean result")
+    if not isinstance(source, str) or not source.strip():
+        raise StartupError("verified IT-Tech source is required; defensive layers cannot be disabled")
+    source = os.path.abspath(source)
+    if os.path.islink(source) or not os.path.isfile(source):
+        raise StartupError("IT-Tech source must be a regular, non-symlink file")
+    if integrity_verified is not True:
+        raise StartupError("signed IT-Tech source integrity verification is required before startup")
+
+    # Do not trust a caller-supplied boolean by itself. Re-verify the source against
+    # its HMAC-signed baseline using the same key provider that protects runtime audit
+    # and trust tokens. This closes the gap for callers using build_system directly.
+    baseline_path = cfg.get("it_tech_baseline_path")
+    if baseline_path is None:
+        baseline_path = os.path.join(os.path.dirname(source), ".ai_cyber", "it_tech_baseline.json")
+    if not isinstance(baseline_path, str) or not baseline_path.strip():
+        raise StartupError("signed IT-Tech baseline path is required")
+    baseline_path = os.path.abspath(baseline_path)
+    state_dir = os.path.dirname(baseline_path)
+    if os.path.islink(state_dir) or os.path.islink(baseline_path):
+        raise StartupError("IT-Tech baseline path must not follow symlinks")
+    if not os.path.isfile(baseline_path):
+        raise StartupError("signed IT-Tech baseline is missing")
+    source_check = check_file(source, baseline_path, Integrity(key_provider))
+    if not source_check.ok:
+        raise StartupError("signed IT-Tech baseline verification failed: " + source_check.reason)
+
+    package_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    package_baseline_path = cfg.get("package_baseline_path")
+    if package_baseline_path is None:
+        package_baseline_path = os.path.join(os.path.dirname(source), ".ai_cyber", "hydra_baseline.json")
+    if not isinstance(package_baseline_path, str) or not package_baseline_path.strip():
+        raise StartupError("signed AI-Cyber package baseline path is required")
+    package_baseline_path = os.path.abspath(package_baseline_path)
+    package_state_dir = os.path.dirname(package_baseline_path)
+    if os.path.islink(package_state_dir) or os.path.islink(package_baseline_path):
+        raise StartupError("AI-Cyber package baseline path must not follow symlinks")
+    if not os.path.isfile(package_baseline_path):
+        raise StartupError("signed AI-Cyber package baseline is missing")
+    package_check = check(package_root, package_baseline_path, Integrity(key_provider))
+    if not package_check.ok:
+        raise StartupError("signed AI-Cyber package baseline verification failed: " + package_check.reason)
+
+    cfg["it_tech_source"] = source
+    cfg["it_tech_baseline_path"] = baseline_path
+    cfg["package_baseline_path"] = package_baseline_path
+    # The adapters receive the result of the cryptographic check above, never just
+    # the configuration value requested by a caller.
+    cfg["it_tech_integrity_verified"] = True
+
     audit = AuditLog()
     trust = TrustAuthority(Integrity(key_provider), audit)
     isolation = Isolation(set(cfg["releasers"]), audit)
     deception = Deception(isolation, audit)
     barrier = Barrier(trust, RateLimiter(cfg["rate_capacity"], cfg["rate_refill"]), audit)
-    orchestrator = Orchestrator(barrier, Layer1(), Layer2(trust, strike_limit=cfg["strike_limit"], it_tech_source=cfg["it_tech_source"]),
-                                Layer3(trust, it_tech_source=cfg["it_tech_source"]), isolation, deception, audit, cfg["timeout_s"])
+    orchestrator = Orchestrator(
+        barrier,
+        Layer1(),
+        Layer2(
+            trust,
+            strike_limit=cfg["strike_limit"],
+            it_tech_source=cfg["it_tech_source"],
+            it_tech_integrity_verified=cfg["it_tech_integrity_verified"],
+        ),
+        Layer3(
+            trust,
+            it_tech_source=cfg["it_tech_source"],
+            it_tech_integrity_verified=cfg["it_tech_integrity_verified"],
+        ),
+        isolation,
+        deception,
+        audit,
+        cfg["timeout_s"],
+    )
     audit.record("startup", version="ai-cyber-layered-defence")
     return System(orchestrator, audit, trust, isolation, deception)

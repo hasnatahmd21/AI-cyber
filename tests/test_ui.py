@@ -17,6 +17,14 @@ def test_execute_rejects_invalid_phase():
 def test_execute_uses_secured_runtime(monkeypatch):
     calls = []
 
+    class AllowingSupervisor:
+        def authorize_hydra(self, phase, hardening):
+            return True, "unit-test resident gate allow", {
+                "decision": "allow", "phase": phase, "hardening": hardening,
+            }
+
+    monkeypatch.setattr(ui, "ACTIVE_SUPERVISOR", AllowingSupervisor())
+
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
         payload = {
@@ -310,3 +318,67 @@ def test_command_endpoint_rejects_arbitrary_shell():
     assert status == 400
     assert body["success"] is False
     assert "unsupported command" in body["error"]
+
+
+
+def test_ui_hydra_execution_requires_resident_supervisor_allow(monkeypatch):
+    class DenyingSupervisor:
+        def authorize_hydra(self, phase, hardening):
+            return False, "resident monitor blocked request", {"status": "blocked", "phase": phase}
+
+    monkeypatch.setattr(ui, "ACTIVE_SUPERVISOR", DenyingSupervisor())
+    monkeypatch.setattr(ui, "save_report", lambda _kind, result: result)
+
+    def unexpected_dispatch(*_args, **_kwargs):
+        pytest.fail("secured CLI must not be dispatched when resident gate denies")
+
+    monkeypatch.setattr(ui.subprocess, "run", unexpected_dispatch)
+    result = ui._execute("phase1", False)
+
+    assert result["success"] is False
+    assert result["blocked"] is True
+    assert "resident monitor blocked" in result["error"]
+
+
+def test_resident_defence_health_endpoint_is_explicit_when_not_started(monkeypatch):
+    from http.client import HTTPConnection
+    from threading import Thread
+
+    monkeypatch.setattr(ui, "ACTIVE_SUPERVISOR", None)
+    server = ui.ThreadingHTTPServer(("127.0.0.1", 0), ui.Handler)
+    thread = Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        conn = HTTPConnection("127.0.0.1", server.server_port, timeout=5)
+        conn.request("GET", "/api/defence")
+        response = conn.getresponse()
+        body = json.loads(response.read())
+        assert response.status == 200
+        assert body["active"] is False
+        assert body["ready"] is False
+        assert body["status"] == "not_started"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_ui_execution_fails_closed_when_resident_supervisor_is_missing(monkeypatch):
+    monkeypatch.setattr(ui, "ACTIVE_SUPERVISOR", None)
+    monkeypatch.setattr(ui, "save_report", lambda _kind, result: result)
+
+    def unexpected_dispatch(*_args, **_kwargs):
+        pytest.fail("UI must not launch HYDRA without its resident defence supervisor")
+
+    monkeypatch.setattr(ui.subprocess, "run", unexpected_dispatch)
+    result = ui._execute("phase1", False)
+
+    assert result["success"] is False
+    assert result["blocked"] is True
+    assert "supervisor is not running" in result["error"]
+
+def test_ui_health_indicator_never_reports_online_when_defence_is_unhealthy():
+    assert "lastDefenceHealthy = false" in ui.TEMPLATE
+    assert 'element.textContent=!lastDefenceHealthy?"DEFENCE UNHEALTHY"' in ui.TEMPLATE
+    assert "refreshHealthIndicator();" in ui.TEMPLATE
+
