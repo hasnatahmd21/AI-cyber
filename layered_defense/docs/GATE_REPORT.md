@@ -1,5 +1,5 @@
 # Gate report
-Generated 2026-10-11T17:12:52+00:00
+Generated 2026-10-11T17:17:49+00:00
 
 | Gate | Result | Tests | Time |
 |---|---|---|---|
@@ -11,9 +11,9 @@ Generated 2026-10-11T17:12:52+00:00
 | Gate 5 - cryptography + trust | PASS | 13 | 0.1s |
 | Gate 6 - isolation + deception | PASS | 7 | 0.1s |
 | Gate 7 - regeneration | PASS | 5 | 0.1s |
-| Gate 8 - orchestration + audit | PASS | 18 | 0.6s |
+| Gate 8 - orchestration + audit | PASS | 19 | 0.6s |
 | Gate 9 - HYDRA integration (42-phase regression) | PASS | 9 | 2.3s |
-| Gate 10 - full system end-to-end | PASS | 7 | 2.2s |
+| Gate 10 - full system end-to-end | PASS | 7 | 2.5s |
 | Gate 11 - adapters (datasets + audit persistence) | PASS | 9 | 0.1s |
 | Gate 12 - launcher (defence in front of HYDRA) | PASS | 6 | 0.1s |
 | Gate 13 - integrity + regeneration before HYDRA starts | PASS | 7 | 0.2s |
