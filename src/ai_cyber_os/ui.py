@@ -87,7 +87,8 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
                 f"secured HYDRA command returned no JSON (exit={completed.returncode}): "
                 f"{completed.stderr[-1000:]}"
             )
-        secured_payload = json.loads("\n".join(lines[json_start:]))
+        json_text = "\n".join(lines[json_start:])
+        secured_payload, _ = json.JSONDecoder().raw_decode(json_text)
         phase_result = secured_payload.get("phase_result")
         if isinstance(phase_result, dict):
             summary = phase_result.get("summary", {})
