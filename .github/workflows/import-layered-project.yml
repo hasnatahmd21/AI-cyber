@@ -7,22 +7,26 @@ on:
       - feature/import-layered-project
     paths:
       - .github/workflows/import-layered-project.yml
+  pull_request:
+    branches:
+      - repair/forensic-reconstruction
 
 permissions:
   contents: write
+  pull-requests: read
 
 concurrency:
-  group: import-layered-project-${{ github.ref }}
+  group: import-layered-project-${{ github.event.pull_request.head.ref || github.ref }}
   cancel-in-progress: false
 
 jobs:
   import-verify:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout AI-cyber
+      - name: Checkout AI-cyber source branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
 
       - name: Download and safely extract project ZIP into AI-cyber
@@ -30,7 +34,6 @@ jobs:
         run: |
           set -euo pipefail
           python - <<'PY'
-          import os
           import shutil
           import stat
           import urllib.request
@@ -109,8 +112,10 @@ jobs:
           find layered_defense -type d -name __pycache__ -prune -exec rm -rf {} +
           find layered_defense -type f -name '*.py[co]' -delete
 
-      - name: Commit verified imported project
+      - name: Commit verified imported project to source branch
         if: success()
+        env:
+          SOURCE_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
         shell: bash
         run: |
           set -euo pipefail
@@ -122,4 +127,4 @@ jobs:
             exit 0
           fi
           git commit -m "Import verified layered defense project into AI-cyber"
-          git push origin "HEAD:${{ github.ref_name }}"
+          git push origin "HEAD:${SOURCE_BRANCH}"
