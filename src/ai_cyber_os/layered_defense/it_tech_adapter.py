@@ -157,7 +157,9 @@ class ITTechNetworkGate:
             polarity = 1.0 - (2.0 * float(risk))
             if not source_is_internal:
                 polarity = min(polarity, 0.2)  # public-zone trust ceiling is 0.6
-            evidence = module.Evidence(
+            # Evidence is also redeclared by later legacy sections; the final
+            # module binding has an unrelated verification-evidence schema.
+            evidence = SimpleNamespace(
                 evidence_id=f"evidence-{request.request_id}",
                 source="ai-cyber-layer2",
                 confidence=1.0,
