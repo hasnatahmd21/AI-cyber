@@ -39,13 +39,28 @@ def _actual_files(root: str) -> set[str]:
     return set(build_baseline(root))
 
 
+def _has_symlink_component(root: str, rel: str) -> bool:
+    if os.path.islink(root):
+        return True
+    current = root
+    for part in rel.split("/"):
+        current = os.path.join(current, part)
+        if os.path.islink(current):
+            return True
+    return False
+
+
 def verify_tree(root: str, baseline: dict[str, str]) -> list[str]:
     actual = _actual_files(root)
     expected = set(baseline)
     problems = []
-    for rel in sorted(expected - actual): problems.append("missing:" + rel)
+    for rel in sorted(expected - actual):
+        problems.append(("symlink:" if _has_symlink_component(root, rel) else "missing:") + rel)
     for rel in sorted(expected & actual):
-        if _digest(os.path.join(root, *rel.split("/"))) != baseline[rel]: problems.append("modified:" + rel)
+        if _has_symlink_component(root, rel):
+            problems.append("symlink:" + rel)
+        elif _digest(os.path.join(root, *rel.split("/"))) != baseline[rel]:
+            problems.append("modified:" + rel)
     for rel in sorted(actual - expected): problems.append("added:" + rel)
     return problems
 
@@ -86,12 +101,21 @@ def check(target: str, baseline_path: str, integrity: Integrity, clean_source: O
             return GateResult(False, "unsafe path in baseline")
         source = os.path.join(clean_source, *rel.split("/"))
         if kind == "added":
-            try: os.remove(destination); restored.append(problem)
-            except OSError: return GateResult(False, "cannot remove added file: " + rel)
+            try:
+                os.remove(destination)
+                restored.append(problem)
+            except OSError:
+                return GateResult(False, "cannot remove added file: " + rel)
         else:
+            # Never follow a symlink while restoring a baseline-listed path.
+            if _has_symlink_component(target, rel) or _has_symlink_component(clean_source, rel):
+                return GateResult(False, "refusing symlinked restore path: " + rel)
             os.makedirs(os.path.dirname(destination), exist_ok=True)
-            try: shutil.copyfile(source, destination); restored.append(problem)
-            except OSError: return GateResult(False, "cannot restore file: " + rel)
+            try:
+                shutil.copyfile(source, destination)
+                restored.append(problem)
+            except OSError:
+                return GateResult(False, "cannot restore file: " + rel)
     remaining = verify_tree(target, baseline)
     return GateResult(not remaining, "restored" if not remaining else "post-restore verification failed", restored)
 
@@ -124,7 +148,9 @@ def check_file(target_file: str, baseline_path: str, integrity: Integrity,
     except Exception:
         return GateResult(False, "IT-Tech baseline missing or unreadable")
     try:
-        if not os.path.islink(target_file) and _digest(target_file) == expected:
+        if os.path.islink(target_file):
+            return GateResult(False, "refusing symlinked IT-Tech source path")
+        if _digest(target_file) == expected:
             return GateResult(True, "clean")
     except OSError:
         pass
