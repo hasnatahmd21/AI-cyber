@@ -5,6 +5,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from ai_cyber_os.layered_defense.crypto_integrity import Integrity, StaticKeyProvider
+from ai_cyber_os.layered_defense.integrity_gate import write_baseline, write_file_baseline
 from ai_cyber_os.layered_defense import supervisor as supervisor_module
 from ai_cyber_os.layered_defense.contracts import Decision
 from ai_cyber_os.layered_defense.supervisor import (
@@ -293,3 +295,99 @@ def test_supervisor_rejects_symlinked_state_directory_even_without_latch(tmp_pat
 
     assert reason is not None
     assert "state directory is a symlink" in reason
+
+
+def test_real_supervisor_stays_live_and_latches_after_it_tech_network_attack(tmp_path):
+    import shutil
+    from pathlib import Path
+
+    repo = Path(__file__).resolve().parents[1]
+    workspace = tmp_path / "AI-cyber-workspace"
+    workspace.mkdir()
+    shutil.copytree(
+        repo / "src" / "ai_cyber_os",
+        workspace / "src" / "ai_cyber_os",
+        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", "*.pyo"),
+    )
+    shutil.copy2(
+        repo / "IT_tech__MERGED_ALL_FIXES_APPLIED.py",
+        workspace / "IT_tech__MERGED_ALL_FIXES_APPLIED.py",
+    )
+
+    state_dir = workspace / ".ai_cyber"
+    state_dir.mkdir()
+    key_provider = StaticKeyProvider({"default": b"supervisor-e2e-key-material-32bytes"})
+    integrity = Integrity(key_provider)
+    write_baseline(
+        str(workspace / "src" / "ai_cyber_os"),
+        str(state_dir / "hydra_baseline.json"),
+        integrity,
+    )
+    write_file_baseline(
+        str(workspace / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"),
+        str(state_dir / "it_tech_baseline.json"),
+        integrity,
+    )
+
+    service = DefenceSupervisor(
+        str(workspace),
+        interval_s=0.25,
+        key_provider=key_provider,
+    )
+    service.start()
+    try:
+        state = service.snapshot()
+        assert state["active"] is True
+        assert state["ready"] is True
+        assert state["status"] == "healthy"
+        assert state["checks"]["it_tech_network_engine"] is True
+        assert state["checks"]["it_tech_authority_engine"] is True
+
+        allowed, reason, evidence = service.authorize_hydra("phase1")
+        assert allowed is True, reason
+        assert evidence["decision"] == "allow"
+
+        network_gate = service._system.orchestrator.l2.it_tech_network
+        attack = Request(
+            request_id="simulated-high-risk-network-activity",
+            principal="test-attacker",
+            action="read",
+            resource="hydra:run",
+            payload="safe-looking-payload",
+            credentials="not-used-by-network-adapter",
+            source="internal",
+            attributes={"network_risk": 0.99},
+        )
+        for _ in range(5):
+            allowed, reason = network_gate.evaluate(attack)
+            assert allowed is False
+            assert "risk threshold" in reason
+
+        healthy, reason = network_gate.health_check()
+        assert healthy is False, reason
+
+        deadline = time.monotonic() + 4.0
+        while time.monotonic() < deadline:
+            if service.snapshot()["status"] == "blocked":
+                break
+            time.sleep(0.025)
+
+        blocked = service.snapshot()
+        assert blocked["status"] == "blocked"
+        assert blocked["ready"] is False
+        assert (state_dir / "defence_latch.json").is_file()
+        assert any(
+            record["event"] == "supervisor_fail_closed"
+            for record in service._system.audit.records()
+        )
+    finally:
+        service.stop()
+
+    restarted = DefenceSupervisor(
+        str(workspace),
+        interval_s=0.25,
+        key_provider=key_provider,
+    )
+    with pytest.raises(SupervisorStartupError, match="persistent defence incident latch"):
+        restarted.start()
+    assert restarted.snapshot()["ready"] is False
