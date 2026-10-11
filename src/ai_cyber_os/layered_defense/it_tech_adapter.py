@@ -51,9 +51,18 @@ def _load_it_tech(source_path: str) -> ModuleType:
 class ITTechAuthorityGate:
     """Use the existing IT-Tech AuthorityEngine as an independent authorization layer."""
 
-    def __init__(self, source_path: str, principal_id: str = "hydra-runtime") -> None:
+    def __init__(
+        self,
+        source_path: str,
+        principal_id: str = "hydra-runtime",
+        *,
+        baseline_verified: bool = False,
+    ) -> None:
+        if not isinstance(baseline_verified, bool):
+            raise ValueError("IT-Tech integrity flag must be a boolean verification result")
         self.module = _load_it_tech(source_path)
         self.principal_id = principal_id
+        self._baseline_verified = baseline_verified
         self._lock = threading.RLock()
         self.engine = self.module.AuthorityEngine()
         now = datetime.now(timezone.utc)
@@ -78,6 +87,8 @@ class ITTechAuthorityGate:
             return self._authorize_locked(request)
 
     def _authorize_locked(self, request: Request) -> tuple[bool, str]:
+        if not self._baseline_verified:
+            return False, "IT-Tech authority source has not passed signed integrity verification"
         try:
             attributes: Any = request.attributes
             if not hasattr(attributes, "get"):
@@ -116,6 +127,8 @@ class ITTechAuthorityGate:
     def health_check(self) -> tuple[bool, str]:
         """Inspect the live AuthorityEngine state without issuing synthetic ALLOW requests."""
         with self._lock:
+            if not self._baseline_verified:
+                return False, "IT-Tech authority source has not passed signed integrity verification"
             try:
                 now = datetime.now(timezone.utc)
                 state = self.engine.state(self.principal_id)
@@ -321,6 +334,8 @@ class ITTechNetworkGate:
         return True, "network state recomputed; invariants clean", labels
 
     def evaluate(self, request: Request) -> tuple[bool, str]:
+        if not self._baseline_verified:
+            return False, "IT-Tech network source has not passed signed integrity verification"
         try:
             attrs: Any = request.attributes
             if not hasattr(attrs, "get"):
@@ -354,6 +369,8 @@ class ITTechNetworkGate:
 
     def health_check(self) -> tuple[bool, str]:
         """Recompute observed network state without fabricating fresh telemetry."""
+        if not self._baseline_verified:
+            return False, "IT-Tech network source has not passed signed integrity verification"
         try:
             with self._lock:
                 allowed, reason, labels = self._recompute_locked(datetime.now(timezone.utc))
@@ -380,7 +397,9 @@ class ITTechNetworkGate:
                         }
                 signals = getattr(self.engine, "_signals", {})
                 return {
-                    "active": True,
+                    "active": bool(self._baseline_verified),
+                    "integrity_verified": bool(self._baseline_verified),
+                    "engine_initialized": True,
                     "engine": "IT-Tech NetworkSecurityStateEngine",
                     "observations": sum(len(v) for v in signals.values() if isinstance(v, list)),
                     "observation_limit_per_source": self._MAX_SIGNALS_PER_SOURCE,
