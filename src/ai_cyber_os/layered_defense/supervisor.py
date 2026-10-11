@@ -255,6 +255,10 @@ class DefenceSupervisor:
         with self._lock:
             if self._status["active"]:
                 return self
+            if self._stop.is_set():
+                raise SupervisorStartupError(
+                    "a stopped supervisor instance cannot be restarted; create a fresh instance"
+                )
 
         ok, reason, checks = self._verify_source_assets()
         if not ok:
@@ -303,14 +307,32 @@ class DefenceSupervisor:
             authority_ok, authority_reason = authority_gate.health_check()
             if not authority_ok:
                 raise SupervisorStartupError(authority_reason)
-        except Exception:
+        except Exception as exc:
+            startup_reason = f"defence supervisor startup failed: {type(exc).__name__}: {exc}"
+            self._latch_failure(startup_reason, {"startup_pipeline": False})
             system, self._system = self._system, None
+            cleanup_errors: list[str] = []
             if system is not None:
                 try:
                     system.shutdown()
+                except Exception as shutdown_exc:
+                    cleanup_errors.append(f"shutdown failed: {type(shutdown_exc).__name__}")
+                try:
                     save(system.audit, self.audit_path, integrity=self.integrity)
-                except Exception:
-                    pass
+                except Exception as audit_exc:
+                    cleanup_errors.append(f"audit persistence failed: {type(audit_exc).__name__}")
+            current = self.snapshot()
+            durable = self._durable_latch_confirmed and self._latch_marker_present()
+            detail = str(current.get("reason", startup_reason))
+            if cleanup_errors:
+                detail += "; " + "; ".join(cleanup_errors)
+            self._set_status(
+                active=False,
+                ready=False,
+                status="blocked" if durable else "blocking",
+                reason=detail,
+                last_check_at=_utc_now(),
+            )
             raise
 
         checks.update({
@@ -320,9 +342,26 @@ class DefenceSupervisor:
             "audit_chain": bool(self._system.audit.self_verify()),
         })
         if not checks["audit_chain"]:
+            self._latch_failure(
+                "audit chain failed startup verification",
+                {**checks, "audit_chain": False},
+            )
             system, self._system = self._system, None
             if system is not None:
-                system.shutdown()
+                try:
+                    system.shutdown()
+                    save(system.audit, self.audit_path, integrity=self.integrity)
+                except Exception:
+                    pass
+            current = self.snapshot()
+            durable = self._durable_latch_confirmed and self._latch_marker_present()
+            self._set_status(
+                active=False,
+                ready=False,
+                status="blocked" if durable else "blocking",
+                reason=str(current.get("reason", "audit chain failed startup verification")),
+                last_check_at=_utc_now(),
+            )
             raise SupervisorStartupError("audit chain failed startup verification")
 
         self._set_status(
