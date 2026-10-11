@@ -358,15 +358,17 @@ class ITTechNetworkGate:
             now = datetime.now(timezone.utc)
             with self._lock:
                 self._record_signal(request, risk=float(risk), source=source, now=now)
-                allowed, rationale, labels = self._recompute_locked(now)
-                # This direct threshold is intentionally independent of the
-                # trust label's confidence threshold: a single high-risk request
-                # is rejected immediately, even before enough evidence accumulates.
-                if float(risk) >= 0.7:
+                # A single high-risk event is an incident even if recomputation
+                # also finds a degraded trust label. Latch it before evaluating
+                # derived state so no branch can accidentally downgrade it to a
+                # transient request denial.
+                if float(risk) >= 0.7 and self._incident_reason is None:
                     self._incident_reason = (
                         f"IT-Tech network risk threshold exceeded for {source} source "
                         f"(risk={float(risk):.3f})"
                     )
+                allowed, rationale, labels = self._recompute_locked(now)
+                if self._incident_reason is not None:
                     return False, self._incident_reason
                 if not allowed:
                     return False, rationale
