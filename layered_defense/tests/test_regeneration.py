@@ -32,6 +32,25 @@ class T(unittest.TestCase):
         self.assertEqual(sorted(regenerate(self.live, self.clean, self.base, self.sig, self.i)), ["a.py", "sub/b.py"])
         self.assertEqual(verify_tree(self.live, self.base), [])
 
+    def test_unexpected_file_is_detected(self):
+        w(os.path.join(self.live, "unlisted.py"), "import evil")
+        self.assertEqual(verify_tree(self.live, self.base), ["unexpected:unlisted.py"])
+
+    def test_recovery_removes_unexpected_file(self):
+        extra = os.path.join(self.live, "unlisted.py")
+        w(extra, "import evil")
+        changed = regenerate(self.live, self.clean, self.base, self.sig, self.i)
+        self.assertEqual(changed, ["removed:unlisted.py"])
+        self.assertFalse(os.path.exists(extra))
+        self.assertEqual(verify_tree(self.live, self.base), [])
+
+    def test_symlinked_tree_entry_is_rejected(self):
+        outside = os.path.join(self.d, "outside.py")
+        w(outside, "trusted = False")
+        os.symlink(outside, os.path.join(self.live, "unlisted.py"))
+        with self.assertRaises(RegenerationError):
+            verify_tree(self.live, self.base)
+
     def test_corrupted_source_rejected(self):
         w(os.path.join(self.clean, "a.py"), "EVIL"); w(os.path.join(self.live, "a.py"), "X")
         with self.assertRaises(RegenerationError): regenerate(self.live, self.clean, self.base, self.sig, self.i)
@@ -43,8 +62,11 @@ class T(unittest.TestCase):
 
     def test_path_escape_rejected(self):
         evil = {"../../x": "0" * 64}
-        sig = sign_baseline(evil, self.i)
-        with self.assertRaises(Exception): regenerate(self.live, self.clean, evil, sig, self.i)
+        with self.assertRaises(RegenerationError): sign_baseline(evil, self.i)
+        # Even a correctly MACed but malformed manifest must be refused at use time.
+        sig = self.i.sign(__import__("json").dumps(evil, sort_keys=True).encode())
+        with self.assertRaises(RegenerationError): regenerate(self.live, self.clean, evil, sig, self.i)
+
 
 if __name__ == "__main__":
     unittest.main()
