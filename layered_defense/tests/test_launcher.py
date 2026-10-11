@@ -24,7 +24,7 @@ class TestLauncher(unittest.TestCase):
 
     def test_malicious_args_block_and_hydra_never_starts(self):
         calls = []
-        rc, out = self._run(["--x", "; rm " + "rf /"], lambda a: calls.append(a) or 0)
+        rc, out = self._run(["--x", "; rm " + "-rf /"], lambda a: calls.append(a) or 0)
         self.assertEqual(rc, 3); self.assertEqual(calls, [])
 
     def test_hydra_exit_code_is_passed_through(self):
