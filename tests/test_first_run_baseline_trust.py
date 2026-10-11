@@ -35,5 +35,5 @@ def test_first_run_never_automatically_trusts_source_tree(tmp_path, monkeypatch,
 
     assert result == 4
     assert any("automatic first-run trust is disabled" in line for line in output)
-    assert not hydra_baseline.exists() if existing == "none" else hydra_baseline.exists()
-    assert not it_tech_baseline.exists() if existing == "none" else it_tech_baseline.exists()
+    assert hydra_baseline.exists() is (existing == "hydra-only")
+    assert it_tech_baseline.exists() is (existing == "it-tech-only")
