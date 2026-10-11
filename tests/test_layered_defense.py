@@ -429,7 +429,8 @@ def test_it_tech_network_gate_records_and_immediately_blocks_high_risk_evidence(
     assert snapshot["observations"] == 4
     healthy, reason = gate.health_check()
     assert healthy is False
-    assert "suspicious" in reason.lower() or "invariant" in reason.lower()
+    # The explicit incident latch takes precedence over derived network labels.
+    assert "risk threshold" in reason.lower()
 
 
 
