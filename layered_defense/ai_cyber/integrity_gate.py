@@ -59,7 +59,7 @@ def _read_signed(path: str, integrity: Integrity, audit, scope: str) -> Tuple[Op
 def _inspect_tree(target: str, baseline: dict, audit, scope: str):
     try:
         return verify_tree(target, baseline), None
-    except RegenerationError as exc:
+    except (RegenerationError, OSError, ValueError) as exc:
         audit.record("integrity_failed", scope=scope + "_tree_inventory", problems=[type(exc).__name__])
         return None, f"{scope} code tree could not be safely inspected"
 
