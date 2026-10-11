@@ -12,7 +12,7 @@ import os
 import sys
 import threading
 from datetime import datetime, timezone
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from typing import Any
 
 from .contracts import Request
@@ -120,13 +120,17 @@ class ITTechNetworkGate:
 
             now = datetime.now(timezone.utc)
             engine = module.NetworkSecurityStateEngine()
+            # The legacy IT-Tech monolith reuses the global name Zone in a
+            # later section. Its final binding is an enum, shadowing the network
+            # engine's original dataclass. Supply the structural contract expected
+            # by NetworkTopology instead of instantiating the shadowed enum.
             for zone_id, kind, ceiling in (
                 ("public", module.ZoneKind.PUBLIC, 0.6),
                 ("dmz", module.ZoneKind.DMZ, 0.8),
                 ("internal", module.ZoneKind.INTERNAL, 1.0),
                 ("data", module.ZoneKind.DATA, 1.0),
             ):
-                engine.add_zone(module.Zone(zone_id, kind, ceiling))
+                engine.add_zone(SimpleNamespace(zone_id=zone_id, kind=kind, trust_ceiling=ceiling))
 
             source_is_internal = request.source == "internal"
             source_zone = "internal" if source_is_internal else "public"
