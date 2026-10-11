@@ -61,12 +61,11 @@ def run(root: Path, *, stop_event: threading.Event | None = None) -> int:
             pass
 
     state_dir = root / ".ai_cyber"
-    if state_dir.is_symlink():
-        print("Codespaces watchdog refusing symlinked .ai_cyber state.", file=sys.stderr, flush=True)
-        return 2
-
     delay = 1.0
     try:
+        if state_dir.is_symlink():
+            print("Codespaces watchdog refusing symlinked .ai_cyber state.", file=sys.stderr, flush=True)
+            return 2
         while not stop.is_set():
             incident = _restart_block_reason(root)
             if incident:
