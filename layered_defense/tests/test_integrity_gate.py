@@ -15,12 +15,18 @@ class TestIntegrityGate(unittest.TestCase):
         self.clean = os.path.join(d, "clean"); shutil.copytree(self.hy, self.clean)
         self.bl = os.path.join(d, "bl", "b.json")
         write_baseline(self.hy, self.bl, Integrity(KEY))
+        self.defence = os.path.join(d, "layered_defense", "ai_cyber"); os.makedirs(self.defence)
+        with open(os.path.join(self.defence, "barrier.py"), "w") as f: f.write("TRUSTED = True\n")
+        self.defence_clean = os.path.join(d, "defence_clean"); shutil.copytree(self.defence, self.defence_clean)
+        self.def_bl = os.path.join(d, "bl", "defence_baseline.json")
+        write_baseline(self.defence, self.def_bl, Integrity(KEY))
         self.calls = []
 
     def _run(self, **kw):
         out = []
         rc = launcher.run(["--go"], hydra_main=lambda a: self.calls.append(a) or 0, key_provider=KEY,
-                          out=out.append, hydra_dir=self.hy, baseline_path=self.bl, **kw)
+                          out=out.append, hydra_dir=self.hy, baseline_path=self.bl,
+                          defence_dir=self.defence, defence_baseline_path=self.def_bl, **kw)
         return rc, "\n".join(out)
 
     def test_clean_tree_runs(self):
@@ -42,12 +48,29 @@ class TestIntegrityGate(unittest.TestCase):
         with open(os.path.join(self.hy, "a.py"), "a") as f: f.write("evil()\n")
         rc, _ = self._run(); self.assertEqual((rc, self.calls), (4, []))
 
-    def test_drift_with_clean_source_regenerates_then_runs(self):
+    def test_drift_with_clean_source_restores_then_requires_fresh_process(self):
         with open(os.path.join(self.hy, "a.py"), "a") as f: f.write("evil()\n")
         os.remove(os.path.join(self.hy, "b.py"))
         rc, out = self._run(clean_source=self.clean)
-        self.assertEqual((rc, len(self.calls)), (0, 1)); self.assertIn("restored=2", out)
+        self.assertEqual((rc, self.calls), (4, [])); self.assertIn("restored=2", out)
         with open(os.path.join(self.hy, "a.py")) as f: self.assertEqual(f.read(), "x=1\n")
+        rc, _ = self._run()
+        self.assertEqual((rc, len(self.calls)), (0, 1))
+
+    def test_modified_defence_module_refuses_to_start(self):
+        with open(os.path.join(self.defence, "barrier.py"), "a") as f: f.write("UNTRUSTED = True\n")
+        rc, out = self._run()
+        self.assertEqual((rc, self.calls), (4, []))
+        self.assertIn("defence implementation changed", out)
+
+    def test_defence_restore_blocks_current_process_then_restarts_clean(self):
+        with open(os.path.join(self.defence, "barrier.py"), "a") as f: f.write("UNTRUSTED = True\n")
+        rc, out = self._run(defence_clean_source=self.defence_clean)
+        self.assertEqual((rc, self.calls), (4, []))
+        self.assertIn("restart required", out)
+        with open(os.path.join(self.defence, "barrier.py")) as f: self.assertEqual(f.read(), "TRUSTED = True\n")
+        rc, _ = self._run()
+        self.assertEqual((rc, len(self.calls)), (0, 1))
 
     def test_dirty_clean_source_is_refused(self):
         with open(os.path.join(self.hy, "a.py"), "a") as f: f.write("evil()\n")
