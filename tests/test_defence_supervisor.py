@@ -607,3 +607,55 @@ def test_failed_latch_write_is_retried_and_audited_when_storage_recovers(
     finally:
         service.stop()
 
+def test_startup_pipeline_denial_is_persistently_latched(tmp_path, monkeypatch):
+    network = _FakeNetworkGate()
+    authority = _FakeAuthorityGate()
+    system = _FakeSystem(network, authority)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    _install_fake_runtime(monkeypatch, service, system)
+
+    def deny_startup(request):
+        system.orchestrator.requests.append(request)
+        return SimpleNamespace(
+            decision=Decision.BLOCK,
+            reason="simulated startup defence denial",
+            trace=("barrier:block",),
+        )
+
+    monkeypatch.setattr(system.orchestrator, "handle", deny_startup)
+    with pytest.raises(SupervisorStartupError, match="startup defence pipeline denied"):
+        service.start()
+
+    state = service.snapshot()
+    assert state["active"] is False
+    assert state["ready"] is False
+    assert state["status"] == "blocked"
+    assert (tmp_path / ".ai_cyber" / "defence_latch.json").is_file()
+
+    restarted = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    monkeypatch.setattr(
+        restarted,
+        "_verify_source_assets",
+        lambda: (
+            True,
+            "signed source baselines verified",
+            {"hydra_source_integrity": True, "it_tech_source_integrity": True},
+        ),
+    )
+    with pytest.raises(SupervisorStartupError, match="persistent defence incident latch"):
+        restarted.start()
+
+
+def test_stopped_supervisor_instance_cannot_be_reused(tmp_path, monkeypatch):
+    network = _FakeNetworkGate()
+    authority = _FakeAuthorityGate()
+    system = _FakeSystem(network, authority)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    _install_fake_runtime(monkeypatch, service, system)
+
+    service.start()
+    service.stop()
+
+    with pytest.raises(SupervisorStartupError, match="cannot be restarted"):
+        service.start()
+
