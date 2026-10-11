@@ -46,7 +46,19 @@ jobs:
           prefix = "ai_cyber_project/"
 
           if target.exists():
-              raise SystemExit("Refusing to overwrite existing layered_defense/; inspect it before re-importing.")
+              required_existing = [
+                  target / "run_gates.py",
+                  target / "ai_cyber" / "legacy" / "split_manifest.json",
+                  target / "ai_cyber" / "legacy" / "symbol_map.json",
+                  target / "tests" / "__init__.py",
+                  target / "docs",
+                  target / "tools",
+              ]
+              missing_existing = [str(p) for p in required_existing if not p.exists()]
+              if missing_existing:
+                  raise SystemExit("Existing layered_defense/ is incomplete; refusing to overwrite it. Missing: " + ", ".join(missing_existing))
+              print("Using the already-present layered_defense/ tree; no files will be overwritten.")
+              raise SystemExit(0)
 
           urllib.request.urlretrieve(url, archive)
           if not zipfile.is_zipfile(archive):
