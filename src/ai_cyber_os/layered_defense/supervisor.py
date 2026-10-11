@@ -116,6 +116,10 @@ class DefenceSupervisor:
         return True, "signed source baselines verified", checks
 
     def _persistent_latch_reason(self) -> Optional[str]:
+        # Do not follow the runtime-state directory even when a latch file is not
+        # present there. The state directory also stores signing keys and baselines.
+        if os.path.islink(self.state_dir):
+            return "security state directory is a symlink; refusing to trust local state"
         if not os.path.lexists(self.latch_path):
             return None
         if os.path.islink(self.latch_path):
