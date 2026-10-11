@@ -94,7 +94,7 @@ jobs:
           print("MISSING BASELINE stderr:", missing.stderr[-2000:])
           if missing.returncode != 4:
               raise SystemExit(f"missing baseline with audit history should block with exit 4, got {missing.returncode}")
-          if "prior audit history exists" not in missing.stdout:
+          if "prior audit history exists" not in (missing.stdout + missing.stderr):
               raise SystemExit("missing baseline was not blocked for prior audit history")
           print("REAL RUNTIME SMOKE: PASS")
           PY
