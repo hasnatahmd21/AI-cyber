@@ -84,3 +84,29 @@ def test_integrity_gate_detects_added_files_and_refuses_without_clean_source(tmp
     result = check(str(target), str(baseline_path), integrity, str(clean))
     assert result.ok is True
     assert not (target / "injected.py").exists()
+
+
+
+def test_existing_it_tech_authority_engine_is_wired_as_layer3_gate():
+    from pathlib import Path
+    from ai_cyber_os.layered_defense.it_tech_adapter import ITTechAuthorityGate
+
+    root = Path(__file__).resolve().parents[1]
+    gate = ITTechAuthorityGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
+    request = _allowed_request(build_system(key_provider=KEY))
+    allowed, reason = gate.authorize(request)
+    assert allowed is True, reason
+
+    suspicious = Request(
+        request_id="req-suspicious",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials=request.credentials,
+        source="internal",
+        attributes={"it_tech_posture": "suspicious", "it_tech_risk": 0.8, "it_tech_confidence": 0.9},
+    )
+    allowed, reason = gate.authorize(suspicious)
+    assert allowed is False
+    assert reason
