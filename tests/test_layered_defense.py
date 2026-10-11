@@ -93,7 +93,15 @@ def test_existing_it_tech_authority_engine_is_wired_as_layer3_gate():
 
     root = Path(__file__).resolve().parents[1]
     gate = ITTechAuthorityGate(str(root / "IT_tech__MERGED_ALL_FIXES_APPLIED.py"))
-    request = _allowed_request(build_system(key_provider=KEY))
+    request = Request(
+        request_id="req-it-tech",
+        principal="hydra-runtime",
+        action="read",
+        resource="hydra:run",
+        payload="safe",
+        credentials="not-used-by-the-independent-authority",
+        source="internal",
+    )
     allowed, reason = gate.authorize(request)
     assert allowed is True, reason
 
