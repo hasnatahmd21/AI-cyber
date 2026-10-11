@@ -1,4 +1,4 @@
-import os, shutil, tempfile, unittest
+import json, os, shutil, tempfile, unittest
 from ai_cyber.crypto_integrity import Integrity, StaticKeyProvider
 from ai_cyber.regeneration import build_baseline, sign_baseline, verify_tree, regenerate, RegenerationError
 
@@ -51,6 +51,16 @@ class T(unittest.TestCase):
         with self.assertRaises(RegenerationError):
             verify_tree(self.live, self.base)
 
+    def test_hardlinked_tree_file_is_rejected(self):
+        outside = os.path.join(self.d, "outside.py")
+        os.link(os.path.join(self.live, "a.py"), outside)
+        with self.assertRaises(RegenerationError):
+            verify_tree(self.live, self.base)
+
+    def test_orphan_bytecode_is_detected(self):
+        w(os.path.join(self.live, "injected.pyc"), "untrusted bytecode")
+        self.assertEqual(verify_tree(self.live, self.base), ["unexpected:injected.pyc"])
+
     def test_corrupted_source_rejected(self):
         w(os.path.join(self.clean, "a.py"), "EVIL"); w(os.path.join(self.live, "a.py"), "X")
         with self.assertRaises(RegenerationError): regenerate(self.live, self.clean, self.base, self.sig, self.i)
@@ -64,7 +74,7 @@ class T(unittest.TestCase):
         evil = {"../../x": "0" * 64}
         with self.assertRaises(RegenerationError): sign_baseline(evil, self.i)
         # Even a correctly MACed but malformed manifest must be refused at use time.
-        sig = self.i.sign(__import__("json").dumps(evil, sort_keys=True).encode())
+        sig = self.i.sign(json.dumps(evil, sort_keys=True).encode())
         with self.assertRaises(RegenerationError): regenerate(self.live, self.clean, evil, sig, self.i)
 
 
