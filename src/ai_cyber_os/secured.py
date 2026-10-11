@@ -190,7 +190,12 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
 
         # Import the existing IT-Tech engine only after both signed source gates pass.
         system = build_system(
-            config={"it_tech_source": it_tech_path},
+            config={
+                "it_tech_source": it_tech_path,
+                # This flag is set only after both signed package and IT-Tech
+                # source baselines have just been verified successfully above.
+                "it_tech_integrity_verified": True,
+            },
             key_provider=provider,
         )
         system.trust.grant("hydra-runtime", "read", "hydra:")
