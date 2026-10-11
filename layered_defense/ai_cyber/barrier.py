@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 from .contracts import AuditSink, Decision, Finding, LayerResult, Request
 from .trust_authority import TrustAuthority
 
-ALLOWED_ACTIONS = frozenset({"read", "write", "delete", "list", "execute"})
+ALLOWED_ACTIONS = frozenset({"read", "write", "delete", "list", "execute", "run"})
 MAX_ID_LEN = 128
 MAX_RESOURCE_LEN = 512
 MAX_PAYLOAD_BYTES = 1_000_000

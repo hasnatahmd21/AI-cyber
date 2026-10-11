@@ -29,15 +29,30 @@ def _demo() -> int:
 
 
 def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:1] == ["secure"]:        # project entry: defence + HYDRA together (same as the `ai-cyber` command)
+        from .secured import main as secured_main
+        return secured_main(argv[1:])
     ap = argparse.ArgumentParser(prog="ai_cyber")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("demo")
     h = sub.add_parser("hydra-check"); h.add_argument("--run", action="store_true", help="also run all phase tests")
     sub.add_parser("entry-points")
+    r = sub.add_parser("run", help="run HYDRA behind the always-on defence: python -m ai_cyber run -- <hydra args>")
+    r.add_argument("hydra_args", nargs=argparse.REMAINDER)
+    sub.add_parser("baseline", help="explicitly create/update the signed HYDRA code baseline")
     a = ap.parse_args(argv)
     try:
         if a.cmd == "demo":
             return _demo()
+        if a.cmd == "run":
+            from .secured import main as secured_main
+            args = a.hydra_args[1:] if a.hydra_args[:1] == ["--"] else a.hydra_args
+            return secured_main(args)
+        if a.cmd == "baseline":
+            from .launcher import make_baseline
+            print("baseline files:", make_baseline())
+            return 0
         if a.cmd == "entry-points":
             import os
             for p in find_entry_points(os.path.dirname(os.path.abspath(__file__))):

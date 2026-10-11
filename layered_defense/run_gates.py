@@ -14,6 +14,10 @@ GATES = [
     ("Gate 8 - orchestration + audit", ["tests.test_audit_telemetry", "tests.test_orchestrator"]),
     ("Gate 9 - HYDRA integration (42-phase regression)", ["tests.test_hydra_integration"]),
     ("Gate 10 - full system end-to-end", ["tests.test_end_to_end"]),
+    ("Gate 11 - adapters (datasets + audit persistence)", ["tests.test_adapters"]),
+    ("Gate 12 - launcher (defence in front of HYDRA)", ["tests.test_launcher"]),
+    ("Gate 13 - integrity + regeneration before HYDRA starts", ["tests.test_integrity_gate"]),
+    ("Gate 14 - project entry: auto key + defence and HYDRA together", ["tests.test_secured"]),
 ]
 lines = ["# Gate report", f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')}", "",
          "| Gate | Result | Tests | Time |", "|---|---|---|---|"]

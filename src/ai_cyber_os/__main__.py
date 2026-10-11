@@ -71,7 +71,7 @@ def _result_successful(result: dict[str, Any]) -> bool:
         )
     return True
 
-def main(argv: list[str] | None = None) -> int:
+def _main_impl(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
     try:
@@ -126,6 +126,22 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"AI-Cyber runtime error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run always-on layered defence once, then the unchanged canonical HYDRA CLI."""
+    from ._defence import enforce, release
+
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    enforce(arguments)
+    runtime_arguments = [
+        arg for arg in arguments
+        if arg not in ("--defence-restore", "--defence-rebaseline")
+    ]
+    try:
+        return _main_impl(runtime_arguments)
+    finally:
+        release()
 
 
 if __name__ == "__main__":
