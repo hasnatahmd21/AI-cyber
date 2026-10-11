@@ -54,7 +54,12 @@ def check(system: System, target: str, baseline_path: str, integrity: Integrity,
     if not integrity.verify(json.dumps(bl, sort_keys=True).encode(), sig):
         a.record("integrity_failed", scope="baseline", problems=["bad_signature"])
         return GateResult(False, "baseline signature invalid")
-    problems = verify_tree(target, bl)
+    try:
+        problems = verify_tree(target, bl)
+    except RegenerationError as e:
+        # Uninspectable trees (including symbolic-link entries) must block execution cleanly.
+        a.record("integrity_failed", scope="tree_inventory", problems=[type(e).__name__])
+        return GateResult(False, "HYDRA code tree could not be safely inspected")
     if not problems:
         a.record("integrity_ok", files=len(bl))
         return GateResult(True, "clean")
