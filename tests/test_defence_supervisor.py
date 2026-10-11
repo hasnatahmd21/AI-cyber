@@ -8,7 +8,7 @@ import pytest
 from ai_cyber_os.layered_defense.crypto_integrity import Integrity, StaticKeyProvider
 from ai_cyber_os.layered_defense.integrity_gate import write_baseline, write_file_baseline
 from ai_cyber_os.layered_defense import supervisor as supervisor_module
-from ai_cyber_os.layered_defense.contracts import Decision
+from ai_cyber_os.layered_defense.contracts import Decision, Request
 from ai_cyber_os.layered_defense.supervisor import (
     DefenceSupervisor,
     SupervisorStartupError,
