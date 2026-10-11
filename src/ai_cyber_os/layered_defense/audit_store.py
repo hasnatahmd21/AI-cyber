@@ -162,12 +162,10 @@ def save(audit: AuditLog, path: str, *, integrity: Optional[Integrity] = None) -
 
 
 def _save_unlocked(
-audit: AuditLog, path: str, *, integrity: Optional[Integrity] = None
+    audit: AuditLog, path: str, *, integrity: Optional[Integrity] = None
 ) -> int:
     """Persist a chain without overwriting a tampered or divergent prior chain."""
     directory = os.path.dirname(os.path.abspath(path))
-    if _has_symlink_ancestor(directory):
-        raise AuditTamperError("refusing audit persistence through a symlinked directory")
     if _has_symlink_ancestor(directory):
         raise AuditTamperError("audit persistence directory became a symlink")
     manifest_path = path + ".manifest.json"
@@ -188,7 +186,7 @@ audit: AuditLog, path: str, *, integrity: Optional[Integrity] = None
         if previous_hashes != current_hashes:
             raise AuditTamperError("persisted audit history diverges from in-memory chain")
 
-    lines = "".join(json.dumps(record, sort_keys=True, default=str) + "\n" for record in records)
+    lines = "".join(json.dumps(record, sort_keys=True, default=str) + "\\n" for record in records)
     manifest = {
         "count": len(records),
         "final_hash": records[-1]["hash"] if records else _GENESIS,
@@ -196,12 +194,12 @@ audit: AuditLog, path: str, *, integrity: Optional[Integrity] = None
     document = {"manifest": manifest}
     if integrity is not None:
         document["signature"] = integrity.sign(_canonical(manifest))
-    # Chain first, manifest second. A crash between these writes is detected by the
-    # next save instead of silently replacing the previous signed history.
+    # Chain first, manifest second. The process-shared directory lock prevents live
+    # readers from confusing that short update window with tampering; a crash remains
+    # detectable because the lock is released while the incomplete pair is still visible.
     _atomic_write(path, lines)
     _atomic_write(manifest_path, json.dumps(document, sort_keys=True, indent=2))
     return len(records)
-
 
 def load_verified(
     path: str,
