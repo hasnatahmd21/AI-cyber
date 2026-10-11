@@ -233,3 +233,21 @@ def test_watchdog_suppresses_restart_when_persisted_audit_is_corrupt(tmp_path, m
     )
     assert codespace_watchdog.run(tmp_path, stop_event=StopAfterWait()) == 0
 
+def test_codespaces_pid_writer_refuses_preexisting_hardlinked_temporary(tmp_path):
+    import os
+    import pytest
+
+    state = _workspace(tmp_path)
+    external = tmp_path / "external.txt"
+    external.write_text("preserve me", encoding="utf-8")
+    temporary = state / "codespace-ui.pid.tmp"
+    try:
+        os.link(external, temporary)
+    except (OSError, NotImplementedError):
+        pytest.skip("hard links are unavailable on this platform")
+
+    with pytest.raises(FileExistsError):
+        codespace_start._write_pid(state / "codespace-ui.pid", 1234)
+    assert external.read_text(encoding="utf-8") == "preserve me"
+    assert not (state / "codespace-ui.pid").exists()
+

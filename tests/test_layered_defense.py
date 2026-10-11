@@ -702,3 +702,17 @@ def test_audit_directory_lock_refuses_symlinked_lock_file(tmp_path):
             pytest.fail("must not acquire lock via symlink")
     assert outside.read_text(encoding="utf-8") == "do not lock through a link"
 
+def test_audit_loader_rejects_non_object_manifest_schema(tmp_path):
+    audit = AuditLog()
+    audit.record("schema test")
+    path = tmp_path / "audit.jsonl"
+    integrity = Integrity(KEY)
+    save(audit, str(path), integrity=integrity)
+    manifest_path = tmp_path / "audit.jsonl.manifest.json"
+    document = json.loads(manifest_path.read_text(encoding="utf-8"))
+    document["manifest"] = []
+    manifest_path.write_text(json.dumps(document), encoding="utf-8")
+
+    with pytest.raises(AuditTamperError, match="audit manifest schema invalid"):
+        load_verified(str(path), integrity=integrity)
+

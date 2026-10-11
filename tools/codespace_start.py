@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import socket
+import stat
 import subprocess
 import sys
 import time
@@ -65,17 +66,35 @@ def _write_pid(pid_path: Path, pid: int) -> None:
     temporary = pid_path.with_name(pid_path.name + ".tmp")
     if pid_path.is_symlink() or temporary.is_symlink():
         raise RuntimeError("refusing symlinked Codespaces UI PID file")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
-    fd = os.open(temporary, flags, 0o600)
+    fd: int | None = os.open(temporary, flags, 0o600)
     try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise RuntimeError("refusing non-regular or hard-linked Codespaces PID temporary")
+        try:
+            os.fchmod(fd, 0o600)
+        except (AttributeError, OSError):
+            pass
         with os.fdopen(fd, "w", encoding="ascii") as stream:
+            fd = None
             stream.write(f"{pid}\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, pid_path)
+        directory_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            directory_flags |= os.O_DIRECTORY
+        directory_fd = os.open(pid_path.parent, directory_flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
     finally:
+        if fd is not None:
+            os.close(fd)
         try:
             temporary.unlink()
         except FileNotFoundError:

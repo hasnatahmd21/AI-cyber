@@ -376,3 +376,9 @@ def test_ui_execution_fails_closed_when_resident_supervisor_is_missing(monkeypat
     assert result["success"] is False
     assert result["blocked"] is True
     assert "supervisor is not running" in result["error"]
+
+def test_ui_health_indicator_never_reports_online_when_defence_is_unhealthy():
+    assert "lastDefenceHealthy = false" in ui.TEMPLATE
+    assert 'element.textContent=!lastDefenceHealthy?"DEFENCE UNHEALTHY"' in ui.TEMPLATE
+    assert "refreshHealthIndicator();" in ui.TEMPLATE
+

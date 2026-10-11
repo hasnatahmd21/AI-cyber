@@ -220,7 +220,11 @@ def load_verified(
             if line.strip()
         ]
         document = json.loads(_read_regular_text(path + ".manifest.json"))
-        manifest = document["manifest"]
+        if not isinstance(document, dict):
+            raise AuditTamperError("audit manifest schema invalid")
+        manifest = document.get("manifest")
+        if not isinstance(manifest, dict):
+            raise AuditTamperError("audit manifest schema invalid")
     except AuditTamperError:
         raise
     except Exception as exc:
