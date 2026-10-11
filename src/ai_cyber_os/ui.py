@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
+import sys
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -72,7 +74,21 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
     )
 
     try:
-        phase_result = run_hydra_phase(phase)
+        command = [sys.executable, "-m", "ai_cyber_os", "--phase", phase, "--json"]
+        if hardening:
+            command.append("--hardening")
+        completed = subprocess.run(
+            command, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=3600
+        )
+        lines = completed.stdout.splitlines()
+        json_start = next((i for i, line in enumerate(lines) if line.strip() == "{"), None)
+        if json_start is None:
+            raise RuntimeError(
+                f"secured HYDRA command returned no JSON (exit={completed.returncode}): "
+                f"{completed.stderr[-1000:]}"
+            )
+        secured_payload = json.loads("\n".join(lines[json_start:]))
+        phase_result = secured_payload.get("phase_result")
         if isinstance(phase_result, dict):
             summary = phase_result.get("summary", {})
             if isinstance(summary, dict) and "success" in summary:
@@ -93,17 +109,13 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
             evidence=summary if isinstance(summary, dict) else phase_result,
         )
 
-        hardening_result = None
+        hardening_result = secured_payload.get("hardening_result")
         if hardening:
             telemetry.begin("hardening", phase=phase, message="Final hardening verification started")
-            hardening_result = run_final_hardening_verification()
-            hardening_success = (
-                isinstance(hardening_result, dict)
-                and hardening_result.get("verified") is True
-            )
+            hardening_success = isinstance(hardening_result, dict) and hardening_result.get("verified") is True
             telemetry.emit(
                 "hardening_completed",
-                "Final hardening verification returned",
+                "Final hardening verification returned through the secured runtime",
                 operation="hardening",
                 phase=phase,
                 status="PASS" if hardening_success else "FAIL",
@@ -112,6 +124,8 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
                 keep_active=True,
             )
             success = success and hardening_success
+        if completed.returncode != 0:
+            success = False
 
         failed_phases = summary.get("failed_phases", []) if isinstance(summary, dict) else []
         if not isinstance(failed_phases, list):
