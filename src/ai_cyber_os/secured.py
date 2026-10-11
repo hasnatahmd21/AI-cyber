@@ -43,7 +43,7 @@ def _root() -> str:
             return candidate
     # Return the source-layout location so the normal signed-baseline check
     # fails closed with a clear diagnostic if no project checkout is available.
-    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 def _git_clean(root: str) -> bool:
