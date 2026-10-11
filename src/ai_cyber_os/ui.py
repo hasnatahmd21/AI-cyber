@@ -57,7 +57,7 @@ def _snapshot() -> dict[str, Any]:
         return json.loads(json.dumps(STATE, default=str))
 
 
-def _execute(phase: str, hardening: bool) -> dict[str, Any]:
+def _execute_unprotected(phase: str, hardening: bool) -> dict[str, Any]:
     if phase not in VALID_PHASES:
         raise ValueError("invalid phase selector")
 
@@ -163,6 +163,18 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
     except Exception as exc:
         telemetry.error("hydra", f"HYDRA execution raised {type(exc).__name__}: {exc}", phase=phase)
         raise
+
+
+def _execute(phase: str, hardening: bool) -> dict[str, Any]:
+    """Run one validated HYDRA operation behind the always-on defence exactly once."""
+    if phase not in VALID_PHASES:
+        raise ValueError("invalid phase selector")
+    from ._defence import run_guarded
+
+    argv = ["--phase", phase]
+    if hardening:
+        argv.append("--hardening")
+    return run_guarded(argv, lambda: _execute_unprotected(phase, hardening))
 
 
 def _run_redteam() -> dict[str, Any]:
