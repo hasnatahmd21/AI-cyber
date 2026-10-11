@@ -42,6 +42,16 @@ Start the local operational UI with `ai-cyber-ui`. UI execution requests are del
 - An environment key can be supplied as `AI_CYBER_KEY_DEFAULT` using hex-encoded key material (at least 16 bytes). Changing key material invalidates existing signed baselines and audit-manifest signatures.
 - Signed source baselines and persistent audit records live under `.ai_cyber/`. Audit JSONL files have matching `.manifest.json` files; a missing or mismatched manifest is treated as an integrity failure by `load_verified`.
 
+### First-run trust is explicit
+
+A missing signed baseline is **not** created automatically, even when the Git working tree is clean. A clean tree proves only that files match the checked-out commit; it does not establish that the commit itself is trusted. Review the branch, commit, and protected source files first, then explicitly initialize the baseline:
+
+```bash
+python -m ai_cyber_os --defence-rebaseline --phase all --json
+```
+
+This command refuses to sign the source if the protected package or IT-Tech monolith has uncommitted or untracked changes. Treat rebaselining as a trust decision and perform it only on a reviewed revision.
+
 ## Intentional source updates and recovery
 
 After intentionally changing source code, commit the intended changes first, then run:
