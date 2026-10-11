@@ -436,3 +436,30 @@ def test_final_layer_quarantine_is_persistently_latched_before_ui_returns(tmp_pa
     )
     with pytest.raises(SupervisorStartupError, match="persistent defence incident latch"):
         restarted.start()
+
+
+def test_audit_append_failure_cannot_leave_supervisor_stuck_in_blocking_state(tmp_path, monkeypatch):
+    network = _FakeNetworkGate()
+    authority = _FakeAuthorityGate()
+    system = _FakeSystem(network, authority)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    _install_fake_runtime(monkeypatch, service, system)
+    service.start()
+
+    original_record = system.audit.record
+
+    def fail_incident_append(event, **fields):
+        if event == "supervisor_fail_closed":
+            raise OSError("simulated audit append failure")
+        return original_record(event, **fields)
+
+    monkeypatch.setattr(system.audit, "record", fail_incident_append)
+    try:
+        service._latch_failure("simulated authority failure", {"authority": False})
+        snapshot = service.snapshot()
+        assert snapshot["status"] == "blocked"
+        assert snapshot["ready"] is False
+        assert "audit append failed" in snapshot["reason"]
+        assert (tmp_path / ".ai_cyber" / "defence_latch.json").is_file()
+    finally:
+        service.stop()
