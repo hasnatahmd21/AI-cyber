@@ -98,3 +98,86 @@ def test_cli_refuses_execution_and_rebaseline_while_incident_latch_exists(
 
     assert result == 4
     assert any("latch" in line.lower() and "refused" in line.lower() for line in output)
+
+
+def test_explicit_recovery_rebaseline_and_latch_clear_are_audited_and_non_executing(
+    tmp_path, monkeypatch
+):
+    from ai_cyber_os.layered_defense import supervisor as supervisor_module
+
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    (state / "defence_latch.json").write_text('{"status":"blocked"}', encoding="utf-8")
+    calls = []
+
+    monkeypatch.setattr(secured, "_git_clean", lambda _root: True)
+    monkeypatch.setattr(
+        secured,
+        "write_baseline",
+        lambda target, path, integrity: calls.append(("hydra_rebaseline", target, path)),
+    )
+    monkeypatch.setattr(
+        secured,
+        "write_file_baseline",
+        lambda target, path, integrity: calls.append(("it_tech_rebaseline", target, path)),
+    )
+    monkeypatch.setattr(
+        supervisor_module,
+        "clear_defence_latch",
+        lambda root, reason: calls.append(("clear_latch", root, reason)) or (True, "reviewed and cleared"),
+    )
+    monkeypatch.setattr(
+        secured,
+        "build_system",
+        lambda **_kwargs: pytest.fail("administrative recovery must not execute HYDRA"),
+    )
+
+    output = []
+    result = secured.main(
+        [
+            "--defence-rebaseline",
+            "--defence-clear-latch",
+            "--defence-clear-reason",
+            "Incident reviewed; source drift remediated",
+            "--json",
+        ],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 0
+    assert [call[0] for call in calls] == [
+        "hydra_rebaseline",
+        "it_tech_rebaseline",
+        "clear_latch",
+    ]
+    assert calls[-1][2] == "Incident reviewed; source drift remediated"
+    assert any("signed incident clearance follows" in line for line in output)
+
+
+def test_explicit_recovery_rebaseline_refuses_dirty_sources(tmp_path, monkeypatch):
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    (state / "defence_latch.json").write_text('{"status":"blocked"}', encoding="utf-8")
+    monkeypatch.setattr(secured, "_git_clean", lambda _root: False)
+    monkeypatch.setattr(
+        secured,
+        "write_baseline",
+        lambda *_args, **_kwargs: pytest.fail("dirty source must not be signed"),
+    )
+    output = []
+
+    result = secured.main(
+        [
+            "--defence-rebaseline",
+            "--defence-clear-latch",
+            "--defence-clear-reason",
+            "Attempted recovery",
+            "--json",
+        ],
+        root=str(tmp_path),
+        out=output.append,
+    )
+
+    assert result == 4
+    assert any("rebaseline refused" in line.lower() for line in output)
