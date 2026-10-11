@@ -22,9 +22,10 @@ class TestIntegrityGate(unittest.TestCase):
         write_baseline(self.defence, self.def_bl, Integrity(KEY))
         self.calls = []
 
-    def _run(self, **kw):
+    def _run(self, argv=None, **kw):
         out = []
-        rc = launcher.run(["--go"], hydra_main=lambda a: self.calls.append(a) or 0, key_provider=KEY,
+        rc = launcher.run(["--go"] if argv is None else argv,
+                          hydra_main=lambda a: self.calls.append(a) or 0, key_provider=KEY,
                           out=out.append, hydra_dir=self.hy, baseline_path=self.bl,
                           defence_dir=self.defence, defence_baseline_path=self.def_bl, **kw)
         return rc, "\n".join(out)
@@ -87,9 +88,7 @@ class TestIntegrityGate(unittest.TestCase):
         os.remove(self.bl); rc, _ = self._run(); self.assertEqual((rc, self.calls), (4, []))
 
     def test_barrier_and_layers_still_apply_after_integrity_ok(self):
-        out = []
-        rc = launcher.run([";rm " + "rf /"], hydra_main=lambda a: self.calls.append(a) or 0, key_provider=KEY,
-                          out=out.append, hydra_dir=self.hy, baseline_path=self.bl)
+        rc, _ = self._run([";rm " + "rf /"])
         self.assertEqual((rc, self.calls), (3, []))
 
 
