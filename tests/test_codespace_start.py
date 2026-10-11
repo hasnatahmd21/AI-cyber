@@ -195,3 +195,41 @@ def test_watchdog_restarts_ui_after_unexpected_exit(tmp_path, monkeypatch, capsy
     assert launches[0][1:4] == ["-m", "ai_cyber_os.ui", "--no-browser"]
     assert "exited unexpectedly" in capsys.readouterr().out
 
+def test_watchdog_suppresses_restart_when_persisted_audit_is_corrupt(tmp_path, monkeypatch):
+    from ai_cyber_os.layered_defense.audit_store import save
+    from ai_cyber_os.layered_defense.audit_telemetry import AuditLog
+    from ai_cyber_os.layered_defense.supervisor import DefenceSupervisor
+    from tools import codespace_watchdog
+
+    state = tmp_path / ".ai_cyber"
+    state.mkdir()
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    audit = AuditLog()
+    audit.record("trusted prior event")
+    path = state / "audit" / "prior.jsonl"
+    save(audit, str(path), integrity=service.integrity)
+    path.write_text(
+        path.read_text(encoding="utf-8").replace("trusted prior event", "forged prior event"),
+        encoding="utf-8",
+    )
+
+    reason = codespace_watchdog._restart_block_reason(tmp_path)
+    assert reason is not None
+    assert "persistent audit verification failed" in reason
+
+    class StopAfterWait:
+        def is_set(self):
+            return False
+
+        def wait(self, _seconds):
+            return True
+
+    monkeypatch.setattr(
+        codespace_watchdog.subprocess,
+        "Popen",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("watchdog must not restart with a corrupt persisted audit")
+        ),
+    )
+    assert codespace_watchdog.run(tmp_path, stop_event=StopAfterWait()) == 0
+
