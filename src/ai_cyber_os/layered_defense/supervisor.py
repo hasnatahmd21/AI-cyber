@@ -212,7 +212,16 @@ class DefenceSupervisor:
             try:
                 os.link(temporary, latch_path)
             except FileExistsError:
-                return
+                # A concurrent writer installed this marker. Confirm its contents
+                # and directory entry are flushed before returning success.
+                marker_flags = os.O_RDONLY
+                if hasattr(os, "O_NOFOLLOW"):
+                    marker_flags |= os.O_NOFOLLOW
+                marker_fd = os.open(latch_path, marker_flags)
+                try:
+                    os.fsync(marker_fd)
+                finally:
+                    os.close(marker_fd)
             directory_flags = os.O_RDONLY
             if hasattr(os, "O_DIRECTORY"):
                 directory_flags |= os.O_DIRECTORY
@@ -449,7 +458,9 @@ class DefenceSupervisor:
         self._durable_latch_confirmed = False
         return False, final_reason
 
-    def _latch_failure(self, reason: str, checks: dict[str, bool]) -> None:
+    def _latch_failure(
+        self, reason: str, checks: dict[str, bool], *, persist_audit: bool = True
+    ) -> None:
         # Readiness is withdrawn before disk or audit I/O. Do not publish the terminal
         # blocked state until a signed marker write and its fsync sequence succeeded.
         with self._latch_lock:
@@ -477,7 +488,7 @@ class DefenceSupervisor:
                     )
                 except Exception as exc:
                     final_reason = f"{final_reason}; audit append failed: {type(exc).__name__}"
-                self._persist_audit()
+                self._persist_audit(latch_on_failure=False)
                 audit_status = self.snapshot()
                 audit_reason = str(audit_status.get("reason", "")).lower()
                 if "audit persistence failed" in audit_reason:
@@ -557,7 +568,7 @@ class DefenceSupervisor:
                 self._persist_audit()
                 last_audit_save = time.monotonic()
 
-    def _persist_audit(self) -> None:
+    def _persist_audit(self, *, latch_on_failure: bool = True) -> None:
         system = self._system
         if system is None:
             return
@@ -565,10 +576,18 @@ class DefenceSupervisor:
             with self._audit_save_lock:
                 save(system.audit, self.audit_path, integrity=self.integrity)
         except Exception as exc:
-            self._set_status(
-                ready=False, status="blocked",
-                reason=f"audit persistence failed: {type(exc).__name__}",
-            )
+            reason = f"audit persistence failed: {type(exc).__name__}"
+            if latch_on_failure:
+                # A write failure is itself a defence incident. The nested path
+                # persists a signed latch but deliberately does not recurse into
+                # another audit save attempt.
+                self._latch_failure(
+                    reason,
+                    {"audit_persistence": False},
+                    persist_audit=False,
+                )
+            else:
+                self._set_status(ready=False, status="blocked", reason=reason)
 
     def stop(self) -> None:
         self._stop.set()
@@ -583,14 +602,20 @@ class DefenceSupervisor:
                     with self._audit_save_lock:
                         save(system.audit, self.audit_path, integrity=self.integrity)
                 except Exception as exc:
-                    self._set_status(
-                        ready=False, status="blocked",
-                        reason=f"audit persistence failed during shutdown: {type(exc).__name__}",
+                    self._latch_failure(
+                        f"audit persistence failed during shutdown: {type(exc).__name__}",
+                        {"audit_persistence": False},
+                        persist_audit=False,
                     )
         current = self.snapshot()
+        durable_latch = self._durable_latch_confirmed and self._latch_marker_present()
         self._set_status(
             active=False, ready=False,
-            status="blocked" if self._failed_latched else "stopped",
+            status=(
+                "blocked" if self._failed_latched and durable_latch
+                else "blocking" if self._failed_latched
+                else "stopped"
+            ),
             reason=current.get("reason") if self._failed_latched else "stopped by operator",
             last_check_at=_utc_now(),
         )
