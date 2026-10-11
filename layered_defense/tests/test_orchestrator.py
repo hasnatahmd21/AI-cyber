@@ -71,6 +71,24 @@ class T(unittest.TestCase):
         r = self.o.handle(rq(21, "hi", self.tok, resource="/decoy/x"))   # barrier requires permission
         self.assertFalse(r.authorized)
 
+    def test_existing_quarantine_is_applied_after_all_three_layers(self):
+        events = []
+        for layer in (self.o.barrier, self.o.l1, self.o.l2, self.o.l3):
+            original = layer.evaluate
+            name = layer.name
+            def tracked(req, prior=(), _original=original, _name=name):
+                events.append(_name)
+                return _original(req, prior)
+            layer.evaluate = tracked
+        self.s.isolation.quarantine("alice", "preexisting")
+        r = self.o.handle(rq(55, "hello", self.tok))
+        self.assertIs(r.decision, Decision.QUARANTINE)
+        self.assertEqual(events, ["barrier", "layer1", "layer2", "layer3"])
+        self.assertEqual(
+            [item.split(":")[0] for item in r.trace],
+            ["barrier", "layer1", "layer2", "layer3", "isolation"],
+        )
+
     def test_decoy_touch_quarantines(self):
         p = self.s.deception.register_decoy("creds"); self.s.trust.grant("alice", "read", "/decoy/")
         r = self.o.handle(rq(30, None, self.tok, resource=p))
