@@ -54,7 +54,7 @@ jobs:
       - name: Compile imported project
         run: python -m compileall -q layered_defense
 
-      - name: Run Gates 0–10
+      - name: Run Gates 0–14
         working-directory: layered_defense
         run: python run_gates.py
 
