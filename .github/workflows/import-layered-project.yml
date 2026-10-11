@@ -29,82 +29,26 @@ jobs:
           ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
           fetch-depth: 0
 
-      - name: Download and safely extract project ZIP into AI-cyber
+      - name: Validate imported project folder in AI-cyber
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
-          import shutil
-          import stat
-          import urllib.request
-          import zipfile
-          from pathlib import Path, PurePosixPath
+          from pathlib import Path
 
-          url = "https://raw.githubusercontent.com/hasnatahmd21/Vexon/main/ai_cyber_project.zip"
-          archive = Path("/tmp/ai_cyber_project.zip")
           target = Path("layered_defense")
-          prefix = "ai_cyber_project/"
-
-          if target.exists():
-              required_existing = [
-                  target / "run_gates.py",
-                  target / "ai_cyber" / "legacy" / "split_manifest.json",
-                  target / "ai_cyber" / "legacy" / "symbol_map.json",
-                  target / "tests" / "__init__.py",
-                  target / "docs",
-                  target / "tools",
-              ]
-              missing_existing = [str(p) for p in required_existing if not p.exists()]
-              if missing_existing:
-                  raise SystemExit("Existing layered_defense/ is incomplete; refusing to overwrite it. Missing: " + ", ".join(missing_existing))
-              print("Using the already-present layered_defense/ tree; no files will be overwritten.")
-              raise SystemExit(0)
-
-          urllib.request.urlretrieve(url, archive)
-          if not zipfile.is_zipfile(archive):
-              raise SystemExit("Downloaded source is not a valid ZIP archive.")
-
-          target.mkdir(parents=True)
-          try:
-              with zipfile.ZipFile(archive) as zf:
-                  members = zf.infolist()
-                  if not members:
-                      raise SystemExit("Source ZIP is empty.")
-                  for info in members:
-                      name = info.filename
-                      p = PurePosixPath(name)
-                      mode = info.external_attr >> 16
-                      if p.is_absolute() or ".." in p.parts:
-                          raise SystemExit(f"Unsafe ZIP path: {name}")
-                      if stat.S_ISLNK(mode):
-                          raise SystemExit(f"Symlink not allowed in ZIP: {name}")
-                      if not name.startswith(prefix):
-                          raise SystemExit(f"Unexpected ZIP root (expected {prefix}): {name}")
-                      relative = p.parts[1:]
-                      if not relative:
-                          continue
-                      out = target.joinpath(*relative)
-                      if info.is_dir():
-                          out.mkdir(parents=True, exist_ok=True)
-                      else:
-                          out.parent.mkdir(parents=True, exist_ok=True)
-                          with zf.open(info) as src, out.open("wb") as dst:
-                              shutil.copyfileobj(src, dst)
-
-              required = [
-                  target / "run_gates.py",
-                  target / "ai_cyber" / "legacy" / "split_manifest.json",
-                  target / "ai_cyber" / "legacy" / "symbol_map.json",
-                  target / "tests" / "__init__.py",
-                  target / "docs",
-                  target / "tools",
-              ]
-              missing = [str(p) for p in required if not p.exists()]
-              if missing:
-                  raise SystemExit("Required layout entries missing: " + ", ".join(missing))
-          except Exception:
-              shutil.rmtree(target, ignore_errors=True)
-              raise
+          required = [
+              target / "run_gates.py",
+              target / "ai_cyber" / "legacy" / "split_manifest.json",
+              target / "ai_cyber" / "legacy" / "symbol_map.json",
+              target / "tests" / "__init__.py",
+              target / "docs",
+              target / "tools",
+          ]
+          missing = [str(path) for path in required if not path.exists()]
+          if missing:
+              raise SystemExit("Required AI-cyber project layout entries missing: " + ", ".join(missing))
+          print("AI-cyber contains the standalone layered project. No external repository is used.")
           PY
 
       - name: Compile imported project
