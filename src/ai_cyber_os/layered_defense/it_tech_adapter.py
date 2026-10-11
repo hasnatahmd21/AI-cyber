@@ -54,6 +54,7 @@ class ITTechAuthorityGate:
     def __init__(self, source_path: str, principal_id: str = "hydra-runtime") -> None:
         self.module = _load_it_tech(source_path)
         self.principal_id = principal_id
+        self._lock = threading.RLock()
         self.engine = self.module.AuthorityEngine()
         now = datetime.now(timezone.utc)
         principal = self.module.Principal(
@@ -70,8 +71,16 @@ class ITTechAuthorityGate:
         )
 
     def authorize(self, request: Request) -> tuple[bool, str]:
+        # AuthorityEngine is stateful. Serialize its transitions so concurrent UI
+        # requests and the resident health monitor cannot race revocation/decisions.
+        with self._lock:
+            return self._authorize_locked(request)
+
+    def _authorize_locked(self, request: Request) -> tuple[bool, str]:
         try:
             attributes: Any = request.attributes
+            if not hasattr(attributes, "get"):
+                return False, "invalid IT-Tech authority telemetry shape"
             label = attributes.get("it_tech_posture", "trusted")
             risk = attributes.get("it_tech_risk", 0.0)
             confidence = attributes.get("it_tech_confidence", 1.0)
