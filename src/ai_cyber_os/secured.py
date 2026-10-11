@@ -210,6 +210,8 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
         system = build_system(
             config={
                 "it_tech_source": it_tech_path,
+                "package_baseline_path": baseline_path,
+                "it_tech_baseline_path": it_tech_baseline_path,
                 # This flag is set only after both signed package and IT-Tech
                 # source baselines have just been verified successfully above.
                 "it_tech_integrity_verified": True,
