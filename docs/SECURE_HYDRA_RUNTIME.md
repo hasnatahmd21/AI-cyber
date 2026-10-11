@@ -18,7 +18,13 @@ The IT-Tech module is loaded as a module only after its source file passes the s
 
 ## First run and key management
 
-The first launch initializes a baseline only when the tracked package and IT-Tech source are clean in Git. The local signing key and baselines are stored under `.ai_cyber/`, which is ignored by Git. Protect that directory with the same operating-system account and filesystem controls used for other security-sensitive local state.
+A missing baseline deliberately blocks startup; the runtime never automatically trusts an unknown first-run source tree. On a new trusted checkout, review the source/commit, then explicitly provision the signed baseline (the command also runs `phase1` as a smoke test):
+
+```bash
+python -m ai_cyber_os --defence-rebaseline --phase phase1 --json
+```
+
+The local signing key and baselines are stored under `.ai_cyber/`, which is ignored by Git. Protect that directory with the same operating-system account and filesystem controls used for other security-sensitive local state.
 
 For production deployments, set `AI_CYBER_KEY_DEFAULT` to a securely provisioned hexadecimal key of at least 16 bytes, and protect/backup it separately from the baseline files. A locally generated key is convenient for a single-user development install; it is not a defence against an attacker who already has write access to both the local key and baseline directory.
 
@@ -36,4 +42,4 @@ The local UI is bound to localhost and sends HYDRA execution requests through th
 
 ## Verification
 
-The GitHub Actions workflow compiles Python, runs the complete test suite with per-test timeouts, and runs the Phase 13 standalone security/RAG evaluation. A green CI run verifies these automated checks; it is not a substitute for deployment-specific key provisioning, host hardening, or a live adversarial assessment.
+Latest verified code CI at `35690416bfccdbf483db45f92ada9d55b595ffa5`: 225 tests passed; Phase 13 security/RAG evaluation, Stage 0 forensic audit, distributable-wheel smoke test, controlled red-team check, 27-phase runtime verification and final hardening all passed. This verifies the repository CI environment; it is not a substitute for deployment-specific key provisioning, host hardening, or a live adversarial assessment.
