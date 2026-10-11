@@ -30,7 +30,7 @@ def test_execute_uses_secured_runtime(monkeypatch):
 
     assert result["success"] is True
     assert len(calls) == 1
-    assert calls[0][0][2:5] == ["-m", "ai_cyber_os", "--phase"]
+    assert calls[0][0][1:4] == ["-m", "ai_cyber_os", "--phase"]
     assert "--hardening" in calls[0][0]
     assert "--json" in calls[0][0]
 
