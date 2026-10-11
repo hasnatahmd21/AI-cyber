@@ -68,27 +68,51 @@ def default_paths():
             os.path.join(root, ".ai_cyber", "hydra_baseline.json"))
 
 
+def default_defence_paths(hydra_baseline_path: Optional[str] = None):
+    """The defence implementation gets its own signed inventory and shares the private state dir."""
+    root = os.path.dirname(_repo_src())
+    state = os.path.dirname(os.path.abspath(hydra_baseline_path)) if hydra_baseline_path else os.path.join(root, ".ai_cyber")
+    return os.path.join(root, "layered_defense", "ai_cyber"), os.path.join(state, "defence_baseline.json")
+
+
 def _integrity(key_provider) -> Integrity:
     from .keystore import DefaultKeyProvider
     return Integrity(key_provider or DefaultKeyProvider(os.path.join(os.path.dirname(_repo_src()), ".ai_cyber")))
 
 
-def make_baseline(target: Optional[str] = None, baseline_path: Optional[str] = None, key_provider=None) -> int:
+def make_baseline(target: Optional[str] = None, baseline_path: Optional[str] = None, key_provider=None,
+                  *, defence_dir: Optional[str] = None, defence_baseline_path: Optional[str] = None) -> int:
+    """Explicitly baseline both the canonical HYDRA files and the defence code that guards them."""
     from .integrity_gate import write_baseline
     t, b = default_paths()
-    return write_baseline(target or t, baseline_path or b, _integrity(key_provider))
+    d_t, d_b = default_defence_paths(baseline_path or b)
+    integrity = _integrity(key_provider)
+    hydra_count = write_baseline(target or t, baseline_path or b, integrity)
+    write_baseline(defence_dir or d_t, defence_baseline_path or d_b, integrity)
+    return hydra_count
 
 
 def run(argv: Sequence[str], *, hydra_main: Optional[Callable[[Sequence[str]], int]] = None,
         config: Optional[dict] = None, key_provider=None, audit_file: Optional[str] = None,
         out=print, hydra_dir: Optional[str] = None, baseline_path: Optional[str] = None,
-        clean_source: Optional[str] = None) -> int:
+        clean_source: Optional[str] = None, defence_dir: Optional[str] = None,
+        defence_baseline_path: Optional[str] = None, defence_clean_source: Optional[str] = None) -> int:
     """Exit codes: 0 ok | 1 HYDRA failed | 2 startup/config error | 3 refused by defence | 4 integrity failed."""
     system = build_system(config, key_provider=key_provider)     # raises StartupError if no key
     try:
         from .integrity_gate import check
         d_t, d_b = default_paths()
-        g = check(system, hydra_dir or d_t, baseline_path or d_b, _integrity(key_provider), clean_source)
+        df_t, df_b = default_defence_paths(baseline_path or d_b)
+        g = check(
+            system,
+            hydra_dir or d_t,
+            baseline_path or d_b,
+            _integrity(key_provider),
+            clean_source,
+            defence_dir=defence_dir or df_t,
+            defence_baseline_path=defence_baseline_path or df_b,
+            defence_clean_source=defence_clean_source,
+        )
         out(f"integrity: {'OK' if g.ok else 'FAILED'} ({g.reason}){' restored=' + str(len(g.restored)) if g.restored else ''}")
         if not g.ok:
             system.audit.record("hydra_not_started", decision="integrity_failed")
