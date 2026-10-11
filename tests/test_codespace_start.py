@@ -44,7 +44,7 @@ def test_codespaces_start_does_not_adopt_unverified_pid(tmp_path, monkeypatch, c
     pid_file = state / "codespace-ui.pid"
     pid_file.write_text("4321\n", encoding="ascii")
     monkeypatch.setattr(codespace_start, "_process_exists", lambda _pid: True)
-    monkeypatch.setattr(codespace_start, "_is_ai_cyber_ui_process", lambda _pid: False)
+    monkeypatch.setattr(codespace_start, "_is_codespace_watchdog_process", lambda _pid: False)
     monkeypatch.setattr(
         codespace_start.subprocess,
         "Popen",
@@ -60,7 +60,7 @@ def test_codespaces_start_reuses_only_healthy_managed_process(tmp_path, monkeypa
     state = _workspace(tmp_path)
     (state / "codespace-ui.pid").write_text("4321\n", encoding="ascii")
     monkeypatch.setattr(codespace_start, "_process_exists", lambda _pid: True)
-    monkeypatch.setattr(codespace_start, "_is_ai_cyber_ui_process", lambda _pid: True)
+    monkeypatch.setattr(codespace_start, "_is_codespace_watchdog_process", lambda _pid: True)
     monkeypatch.setattr(
         codespace_start,
         "_read_health",
@@ -88,3 +88,42 @@ def test_devcontainer_autostarts_ui_without_implicit_rebaseline():
     assert config["portsAttributes"]["8765"]["visibility"] == "private"
     assert "--defence-rebaseline" not in config["postCreateCommand"]
     assert "--defence-rebaseline" not in config["postStartCommand"]
+
+def test_watchdog_does_not_restart_ui_while_persistent_latch_is_active(tmp_path, monkeypatch):
+    import threading
+
+    from tools import codespace_watchdog
+
+    class StopAfterWait:
+        def __init__(self):
+            self.stopped = False
+
+        def is_set(self):
+            return self.stopped
+
+        def wait(self, _seconds):
+            self.stopped = True
+            return True
+
+    def forbidden_launch(*_args, **_kwargs):
+        raise AssertionError("watchdog must suppress UI launch while incident latch is active")
+
+    monkeypatch.setattr(
+        codespace_watchdog, "_incident_reason", lambda _root: "persistent incident latch active"
+    )
+    monkeypatch.setattr(codespace_watchdog.subprocess, "Popen", forbidden_launch)
+    stop = StopAfterWait()
+
+    assert codespace_watchdog.run(tmp_path, stop_event=stop) == 0
+
+
+def test_watchdog_refuses_symlinked_state_directory(tmp_path, monkeypatch, capsys):
+    from tools import codespace_watchdog
+
+    target = tmp_path / "outside-state"
+    target.mkdir()
+    (tmp_path / ".ai_cyber").symlink_to(target, target_is_directory=True)
+
+    assert codespace_watchdog.run(tmp_path) == 2
+    assert "symlinked" in capsys.readouterr().err
+
