@@ -44,3 +44,39 @@ def test_json_cli_keeps_defence_diagnostics_off_stdout(monkeypatch, capsys):
 
     assert captured.out == ""
     assert "integrity: OK" in captured.err
+
+def test_malicious_cli_arguments_block_before_runtime(monkeypatch, tmp_path):
+    import subprocess
+
+    from ai_cyber import secured
+
+    root = tmp_path
+    target = root / "src" / "ai_cyber_os"
+    target.mkdir(parents=True)
+    (target / "__init__.py").write_text("", encoding="utf-8")
+    (target / "protected.py").write_text("TRUSTED = True\\n", encoding="utf-8")
+
+    def git(*args):
+        subprocess.run(
+            ["git", "-C", str(root), "-c", "user.email=test@example.com",
+             "-c", "user.name=Test", *args],
+            check=True, capture_output=True,
+        )
+
+    git("init", "-q")
+    git("add", "-A")
+    git("commit", "-qm", "trusted baseline source")
+
+    monkeypatch.setattr(defence, "enforce", lambda argv=None: secured.enforce(argv, root=str(root)))
+    monkeypatch.setattr(defence, "release", lambda: setattr(secured, "ACTIVE", False))
+    called = []
+    monkeypatch.setattr(cli, "_main_impl", lambda argv=None: called.append(list(argv or [])) or 0)
+    monkeypatch.setattr(secured, "ACTIVE", False)
+
+    try:
+        cli.main(["; rm " + "-rf /"])
+        assert False, "malicious CLI input must be blocked"
+    except SystemExit as exc:
+        assert exc.code == 3
+    assert called == []
+    assert (root / ".ai_cyber" / "hydra_baseline.json").is_file()
