@@ -17,6 +17,14 @@ def test_execute_rejects_invalid_phase():
 def test_execute_uses_secured_runtime(monkeypatch):
     calls = []
 
+    class AllowingSupervisor:
+        def authorize_hydra(self, phase, hardening):
+            return True, "unit-test resident gate allow", {
+                "decision": "allow", "phase": phase, "hardening": hardening,
+            }
+
+    monkeypatch.setattr(ui, "ACTIVE_SUPERVISOR", AllowingSupervisor())
+
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
         payload = {
@@ -353,3 +361,18 @@ def test_resident_defence_health_endpoint_is_explicit_when_not_started(monkeypat
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
+
+
+def test_ui_execution_fails_closed_when_resident_supervisor_is_missing(monkeypatch):
+    monkeypatch.setattr(ui, "ACTIVE_SUPERVISOR", None)
+    monkeypatch.setattr(ui, "save_report", lambda _kind, result: result)
+
+    def unexpected_dispatch(*_args, **_kwargs):
+        pytest.fail("UI must not launch HYDRA without its resident defence supervisor")
+
+    monkeypatch.setattr(ui.subprocess, "run", unexpected_dispatch)
+    result = ui._execute("phase1", False)
+
+    assert result["success"] is False
+    assert result["blocked"] is True
+    assert "supervisor is not running" in result["error"]
