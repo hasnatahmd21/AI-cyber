@@ -762,6 +762,11 @@ def clear_defence_latch(root: str, reason: str) -> tuple[bool, str]:
     if not it_tech.ok:
         return False, "cannot clear latch; IT-Tech source integrity: " + it_tech.reason
 
+    audit_checker = DefenceSupervisor(root)
+    audit_reason = audit_checker._persisted_audit_reason()
+    if audit_reason:
+        return False, "cannot clear latch; " + audit_reason
+
     existing = [path for path in latch_paths if os.path.lexists(path)]
     if not existing:
         return True, "no persisted defence latch is present; signed source baselines are clean"
@@ -809,6 +814,14 @@ def clear_defence_latch(root: str, reason: str) -> tuple[bool, str]:
         for path in existing:
             os.remove(path)
             removed.append(path)
+        directory_flags = os.O_RDONLY
+        if hasattr(os, "O_DIRECTORY"):
+            directory_flags |= os.O_DIRECTORY
+        directory_fd = os.open(state_dir, directory_flags)
+        try:
+            os.fsync(directory_fd)
+        finally:
+            os.close(directory_fd)
         audit.record(
             "defence_latch_cleared",
             operator_reason=reason.strip(),
@@ -832,6 +845,14 @@ def clear_defence_latch(root: str, reason: str) -> tuple[bool, str]:
                         stream.flush()
                         os.fsync(stream.fileno())
                     os.replace(temporary, path)
+                    directory_flags = os.O_RDONLY
+                    if hasattr(os, "O_DIRECTORY"):
+                        directory_flags |= os.O_DIRECTORY
+                    directory_fd = os.open(state_dir, directory_flags)
+                    try:
+                        os.fsync(directory_fd)
+                    finally:
+                        os.close(directory_fd)
             except Exception:
                 pass
         return False, f"latch clear failed closed: {type(exc).__name__}"
