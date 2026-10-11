@@ -118,6 +118,9 @@ class ITTechNetworkGate:
             if isinstance(risk, bool) or not isinstance(risk, (int, float)) or not math.isfinite(risk) or not 0.0 <= risk <= 1.0:
                 return False, "invalid network risk telemetry"
 
+            if float(risk) >= 0.7:
+                return False, "IT-Tech network risk threshold exceeded"
+
             now = datetime.now(timezone.utc)
             engine = module.NetworkSecurityStateEngine()
             # The legacy IT-Tech monolith reuses the global name Zone in a
