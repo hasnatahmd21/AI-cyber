@@ -186,7 +186,7 @@ def _save_unlocked(
         if previous_hashes != current_hashes:
             raise AuditTamperError("persisted audit history diverges from in-memory chain")
 
-    lines = "".join(json.dumps(record, sort_keys=True, default=str) + "\\n" for record in records)
+    lines = "".join(json.dumps(record, sort_keys=True, default=str) + "\n" for record in records)
     manifest = {
         "count": len(records),
         "final_hash": records[-1]["hash"] if records else _GENESIS,
