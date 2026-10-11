@@ -80,14 +80,13 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
         completed = subprocess.run(
             command, cwd=str(PROJECT_ROOT), capture_output=True, text=True, timeout=3600
         )
-        lines = completed.stdout.splitlines()
-        json_start = next((i for i, line in enumerate(lines) if line.strip() == "{"), None)
-        if json_start is None:
+        json_start = completed.stdout.find("{")
+        if json_start < 0:
             raise RuntimeError(
                 f"secured HYDRA command returned no JSON (exit={completed.returncode}): "
                 f"{completed.stderr[-1000:]}"
             )
-        json_text = "\n".join(lines[json_start:])
+        json_text = completed.stdout[json_start:]
         secured_payload, _ = json.JSONDecoder().raw_decode(json_text)
         phase_result = secured_payload.get("phase_result")
         if isinstance(phase_result, dict):
