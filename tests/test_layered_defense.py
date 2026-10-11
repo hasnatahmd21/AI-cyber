@@ -689,7 +689,7 @@ def test_audit_loader_refuses_named_pipe_without_blocking(tmp_path):
 
 
 def test_audit_directory_lock_refuses_symlinked_lock_file(tmp_path):
-    from ai_cyber.layered_defense.audit_store import AuditTamperError, audit_directory_lock
+    from ai_cyber_os.layered_defense.audit_store import AuditTamperError, audit_directory_lock
 
     audit_dir = tmp_path / "audit"
     audit_dir.mkdir()
