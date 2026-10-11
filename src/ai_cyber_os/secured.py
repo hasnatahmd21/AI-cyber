@@ -4,13 +4,14 @@ import datetime, io, json, os, shutil, subprocess, sys, tarfile, tempfile
 from contextlib import redirect_stdout
 from typing import Optional, Sequence
 from .layered_defense.contracts import Decision, Request
-from .layered_defense.integrity_gate import check, write_baseline
+from .layered_defense.integrity_gate import check, check_file, write_baseline, write_file_baseline
 from .layered_defense.keystore import DefaultKeyProvider
 from .layered_defense.crypto_integrity import Integrity
 from .layered_defense.runtime import StartupError, build_system
 from .layered_defense.audit_store import save
 
 PACKAGE_REL = os.path.join("src", "ai_cyber_os")
+IT_TECH_REL = "IT_tech__MERGED_ALL_FIXES_APPLIED.py"
 
 
 def _stderr(message: str) -> None:
@@ -23,7 +24,7 @@ def _root() -> str:
 
 def _git_clean(root: str) -> bool:
     result = subprocess.run(
-        ["git", "-C", root, "status", "--porcelain", "--untracked-files=all", "--", PACKAGE_REL],
+        ["git", "-C", root, "status", "--porcelain", "--untracked-files=all", "--", PACKAGE_REL, IT_TECH_REL],
         capture_output=True, text=True,
     )
     if result.returncode != 0:
@@ -38,7 +39,7 @@ def _git_clean(root: str) -> bool:
 
 
 def _clean_source(root: str) -> str:
-    archive = subprocess.run(["git", "-C", root, "archive", "HEAD", PACKAGE_REL.replace(os.sep, "/")],
+    archive = subprocess.run(["git", "-C", root, "archive", "HEAD", PACKAGE_REL.replace(os.sep, "/"), IT_TECH_REL],
                              check=True, capture_output=True).stdout
     temp = tempfile.mkdtemp(prefix="ai_cyber_trusted_")
     with tarfile.open(fileobj=io.BytesIO(archive)) as stream:
@@ -99,6 +100,8 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
     target = os.path.join(root, PACKAGE_REL)
     state = os.path.join(root, ".ai_cyber")
     baseline_path = os.path.join(state, "hydra_baseline.json")
+    it_tech_baseline_path = os.path.join(state, "it_tech_baseline.json")
+    it_tech_path = os.path.join(root, IT_TECH_REL)
     provider = DefaultKeyProvider(state)
     integrity = Integrity(provider)
     system = None
@@ -108,30 +111,47 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
     try:
         if rebaseline:
             if not _git_clean(root):
-                out("defence: rebaseline refused while source tree is dirty; commit intended changes first")
+                out("defence: rebaseline refused while source assets are dirty; commit intended changes first")
                 return 4
             write_baseline(target, baseline_path, integrity)
-            out("defence: signed baseline updated")
-        elif not os.path.exists(baseline_path):
+            write_file_baseline(it_tech_path, it_tech_baseline_path, integrity)
+            out("defence: signed AI-Cyber and IT-Tech baselines updated")
+        elif not os.path.exists(baseline_path) or not os.path.exists(it_tech_baseline_path):
             if not _git_clean(root):
-                out("defence: first baseline refused because src/ai_cyber_os has uncommitted or untracked files")
+                out("defence: first baseline refused because trusted source files are dirty or untracked")
                 return 4
             count = write_baseline(target, baseline_path, integrity)
-            out(f"defence: trusted baseline initialized ({count} files)")
+            write_file_baseline(it_tech_path, it_tech_baseline_path, integrity)
+            out(f"defence: trusted baselines initialized ({count} AI-Cyber files + IT-Tech source)")
+
         if restore:
             clean = _clean_source(root)
-        system = build_system(key_provider=provider)
         gate = check(target, baseline_path, integrity, clean)
         out(f"integrity: {'OK' if gate.ok else 'FAILED'} ({gate.reason})")
         if gate.ok and gate.restored:
-            system.audit.record("source_restored", files=gate.restored)
-            out("integrity: source restored from trusted Git HEAD; restart the command to load the restored code")
+            out("integrity: AI-Cyber source restored from trusted Git HEAD; restart to load restored code")
             rc = 4
             return rc
         if not gate.ok:
-            system.audit.record("hydra_not_started", decision="integrity_failed", reason=gate.reason)
-            rc = 4
-            return rc
+            out("integrity: HYDRA will not start")
+            return 4
+
+        clean_root = os.path.dirname(os.path.dirname(clean)) if clean else None
+        clean_it_tech = os.path.join(clean_root, IT_TECH_REL) if clean_root else None
+        it_gate = check_file(it_tech_path, it_tech_baseline_path, integrity, clean_it_tech)
+        out(f"IT-Tech integrity: {'OK' if it_gate.ok else 'FAILED'} ({it_gate.reason})")
+        if it_gate.ok and it_gate.restored:
+            out("IT-Tech source restored from trusted Git HEAD; restart to load restored code")
+            return 4
+        if not it_gate.ok:
+            out("integrity: IT-Tech defence will not be loaded; HYDRA will not start")
+            return 4
+
+        # Import the existing IT-Tech engine only after both signed source gates pass.
+        system = build_system(
+            config={"it_tech_source": it_tech_path},
+            key_provider=provider,
+        )
         system.trust.grant("hydra-runtime", "read", "hydra:")
         token = system.trust.issue_token("hydra-runtime")
         request = Request(request_id="hydra-startup", principal="hydra-runtime", action="read",
