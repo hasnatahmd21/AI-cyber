@@ -1,4 +1,4 @@
-"""Central coordinator. Order: barrier -> isolation/decoy gate -> layer1 -> layer2 -> layer3.
+"""Central coordinator. Order: barrier -> layer1 -> layer2 -> layer3 -> conditional isolation.
 Timeouts and exceptions yield ERROR (never an allow). Every decision is traced and audited."""
 from __future__ import annotations
 
@@ -50,19 +50,7 @@ class Orchestrator:
             d = r.decision if r.decision is Decision.ERROR else Decision.BLOCK
             return self._final(rid, results, trace, d, f"barrier:{r.reason}")
 
-        # [7] isolation gate - quarantined principals only ever see decoys
-        if self.isolation.is_quarantined(req.principal):
-            trace.append("isolation:quarantined")
-            if self.deception.is_decoy(req.resource):
-                self.deception.serve(req)
-                return self._final(rid, results, trace, Decision.QUARANTINE, "served_decoy")
-            return self._final(rid, results, trace, Decision.QUARANTINE, "principal_quarantined")
-        if self.deception.is_decoy(req.resource):   # honeytoken touched by a non-quarantined principal
-            self.isolation.quarantine(req.principal, "touched_decoy")
-            trace.append("deception:decoy_touched")
-            return self._final(rid, results, trace, Decision.QUARANTINE, "decoy_touched")
-
-        # [2][3][4] defence layers
+        # [2][3][4] independent defence layers; any non-authorized result short-circuits.
         for layer in (self.l1, self.l2, self.l3):
             r = self._run(layer, req, tuple(results))
             results.append(r); trace.append(f"{r.layer}:{r.decision.value}")
@@ -71,6 +59,19 @@ class Orchestrator:
                 return self._final(rid, results, trace, Decision.QUARANTINE, f"{r.layer}:{r.reason}")
             if not is_authorized(r.decision):
                 return self._final(rid, results, trace, r.decision, f"{r.layer}:{r.reason}")
+
+        # [7] conditional isolation occurs only after the three layers have evaluated.
+        # Layer 2 may already quarantine a repeat offender and short-circuit above.
+        if self.isolation.is_quarantined(req.principal):
+            trace.append("isolation:quarantined")
+            if self.deception.is_decoy(req.resource):
+                self.deception.serve(req)
+                return self._final(rid, results, trace, Decision.QUARANTINE, "served_decoy")
+            return self._final(rid, results, trace, Decision.QUARANTINE, "principal_quarantined")
+        if self.deception.is_decoy(req.resource):
+            self.isolation.quarantine(req.principal, "touched_decoy")
+            trace.append("deception:decoy_touched")
+            return self._final(rid, results, trace, Decision.QUARANTINE, "decoy_touched")
 
         final = most_severe(*(x.decision for x in results))
         return self._final(rid, results, trace, final, "ok" if final is Decision.ALLOW else "restricted")
