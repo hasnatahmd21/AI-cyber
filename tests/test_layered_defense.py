@@ -164,7 +164,7 @@ def test_audit_manifest_detects_truncation_and_requires_valid_signature(tmp_path
     assert save(audit, str(path), integrity=integrity) == 2
     assert len(load_verified(str(path), integrity=integrity)) == 2
 
-    path.write_text(path.read_text().splitlines()[0] + "\\n", encoding="utf-8")
+    path.write_text(path.read_text().splitlines()[0] + "\n", encoding="utf-8")
     try:
         load_verified(str(path), integrity=integrity)
     except AuditTamperError:
