@@ -737,3 +737,24 @@ def test_clear_latch_refuses_when_persisted_audit_history_is_tampered(tmp_path):
     assert "persistent audit verification failed" in message
     assert (state / "defence_latch.json").is_file()
 
+def test_persisted_audit_inventory_lock_failure_is_fail_closed(tmp_path, monkeypatch):
+    (tmp_path / ".ai_cyber" / "audit").mkdir(parents=True)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+
+    class BrokenLock:
+        def __enter__(self):
+            raise OSError("simulated audit-lock unavailable")
+
+        def __exit__(self, *_args):
+            return False
+
+    monkeypatch.setattr(
+        supervisor_module,
+        "audit_directory_lock",
+        lambda *_args, **_kwargs: BrokenLock(),
+    )
+    reason = service._persisted_audit_reason()
+
+    assert reason is not None
+    assert "persistent audit inventory verification failed (OSError)" in reason
+

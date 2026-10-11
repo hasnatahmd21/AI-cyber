@@ -168,36 +168,39 @@ class DefenceSupervisor:
 
         # Serialize reads with this process's atomic audit writer so a reader cannot
         # confuse the intentional chain-then-manifest update window with tampering.
-        with self._audit_save_lock, audit_directory_lock(os.path.join(audit_dir, ".inventory")):
-            try:
-                names = sorted(os.listdir(audit_dir))
-            except OSError as exc:
-                return f"persistent audit directory unreadable ({type(exc).__name__})"
-
-            chain_names = {name for name in names if name.endswith(".jsonl")}
-            manifest_names = {
-                name[:-len(".manifest.json")]
-                for name in names
-                if name.endswith(".jsonl.manifest.json")
-            }
-            for name in names:
-                path = os.path.join(audit_dir, name)
-                if os.path.islink(path):
-                    return f"persistent audit entry {name} is a symlink; explicit review required"
-                if name.endswith(".tmp"):
-                    return f"incomplete persistent audit write {name}; explicit review required"
-            if chain_names != manifest_names:
-                return "persistent audit chain/manifest inventory mismatch; explicit review required"
-
-            for name in sorted(chain_names):
-                path = os.path.join(audit_dir, name)
+        try:
+            with self._audit_save_lock, audit_directory_lock(os.path.join(audit_dir, ".inventory")):
                 try:
-                    load_verified(path, integrity=self.integrity, _locked=True)
-                except Exception as exc:
-                    return (
-                        f"persistent audit verification failed for {name} "
-                        f"({type(exc).__name__}); explicit review required"
-                    )
+                    names = sorted(os.listdir(audit_dir))
+                except OSError as exc:
+                    return f"persistent audit directory unreadable ({type(exc).__name__})"
+    
+                chain_names = {name for name in names if name.endswith(".jsonl")}
+                manifest_names = {
+                    name[:-len(".manifest.json")]
+                    for name in names
+                    if name.endswith(".jsonl.manifest.json")
+                }
+                for name in names:
+                    path = os.path.join(audit_dir, name)
+                    if os.path.islink(path):
+                        return f"persistent audit entry {name} is a symlink; explicit review required"
+                    if name.endswith(".tmp"):
+                        return f"incomplete persistent audit write {name}; explicit review required"
+                if chain_names != manifest_names:
+                    return "persistent audit chain/manifest inventory mismatch; explicit review required"
+    
+                for name in sorted(chain_names):
+                    path = os.path.join(audit_dir, name)
+                    try:
+                        load_verified(path, integrity=self.integrity, _locked=True)
+                    except Exception as exc:
+                        return (
+                            f"persistent audit verification failed for {name} "
+                            f"({type(exc).__name__}); explicit review required"
+                        )
+        except Exception as exc:
+            return f"persistent audit inventory verification failed ({type(exc).__name__}); explicit review required"
         return None
 
     def _write_persistent_latch(self, reason: str, checks: dict[str, bool]) -> None:
