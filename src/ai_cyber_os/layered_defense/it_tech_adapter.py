@@ -40,7 +40,7 @@ def _load_it_tech(source_path: str) -> ModuleType:
             sys.modules.pop(module_name, None)
             raise
         required = ("AuthorityEngine", "Principal", "PrincipalKind", "AuthorityDecisionKind",
-                    "SecurityPosture", "AuthorizationRequest", "PolicyRule")
+                    "SecurityPosture", "AuthorizationRequest")
         if any(not hasattr(module, name) for name in required):
             sys.modules.pop(module_name, None)
             raise RuntimeError("IT-Tech authority API is incomplete")
@@ -68,16 +68,6 @@ class ITTechAuthorityGate:
             targets={"hydra:run"},
             issued_at=now,
         )
-        self.engine.add_policy(self.module.PolicyRule(
-            rule_id="deny-suspicious-or-worse",
-            decision=self.module.AuthorityDecisionKind.DENY,
-            posture_trigger="suspicious",
-        ))
-        self.engine.add_policy(self.module.PolicyRule(
-            rule_id="deny-high-risk",
-            decision=self.module.AuthorityDecisionKind.DENY,
-            min_risk=0.7,
-        ))
 
     def authorize(self, request: Request) -> tuple[bool, str]:
         try:
@@ -91,6 +81,10 @@ class ITTechAuthorityGate:
                 return False, "invalid IT-Tech risk"
             if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
                 return False, "invalid IT-Tech confidence"
+            if label in {"unknown", "suspicious", "compromised", "quarantined"}:
+                return False, f"IT-Tech posture '{label}' does not authorize HYDRA"
+            if float(risk) >= 0.7:
+                return False, "IT-Tech risk threshold exceeded"
             now = datetime.now(timezone.utc)
             posture = self.module.SecurityPosture(label=label, risk=float(risk), confidence=float(confidence))
             decision = self.engine.authorize(self.module.AuthorizationRequest(
