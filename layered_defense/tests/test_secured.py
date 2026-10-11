@@ -78,7 +78,7 @@ class TestSecured(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(state, "hydra_baseline.json")))
 
     def test_malicious_args_blocked_before_hydra(self):
-        self.assertEqual(self.go(";rm " + "rf /"), 3); self.assertEqual(self.calls, [])
+        self.assertEqual(self.go(";rm " + "-rf /"), 3); self.assertEqual(self.calls, [])
 
 
 if __name__ == "__main__":
@@ -94,7 +94,7 @@ class TestEnforceHook(TestSecured):
         self.assertTrue(secured.ACTIVE)
 
     def test_hook_stops_malicious_args_with_systemexit(self):
-        with self.assertRaises(SystemExit) as c: secured.enforce([";rm " + "rf /"], root=self.root, out=self.out.append)
+        with self.assertRaises(SystemExit) as c: secured.enforce([";rm " + "-rf /"], root=self.root, out=self.out.append)
         self.assertEqual(c.exception.code, 3); self.assertFalse(secured.ACTIVE)
 
     def test_hook_stops_tampered_hydra_code(self):
