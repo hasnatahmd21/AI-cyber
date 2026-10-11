@@ -117,12 +117,14 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
             write_file_baseline(it_tech_path, it_tech_baseline_path, integrity)
             out("defence: signed AI-Cyber and IT-Tech baselines updated")
         elif not os.path.exists(baseline_path) or not os.path.exists(it_tech_baseline_path):
-            if not _git_clean(root):
-                out("defence: first baseline refused because trusted source files are dirty or untracked")
-                return 4
-            count = write_baseline(target, baseline_path, integrity)
-            write_file_baseline(it_tech_path, it_tech_baseline_path, integrity)
-            out(f"defence: trusted baselines initialized ({count} AI-Cyber files + IT-Tech source)")
+            # A clean working tree only proves that files match Git; it does not prove
+            # that the checked-out revision is trusted. Never bless an unknown first-run
+            # source tree automatically. Require an explicit operator rebaseline command.
+            out(
+                "defence: signed baseline missing; automatic first-run trust is disabled. "
+                "Review the checked-out source and run --defence-rebaseline explicitly."
+            )
+            return 4
 
         if restore:
             clean = _clean_source(root)
