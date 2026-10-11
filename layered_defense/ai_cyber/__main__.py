@@ -65,11 +65,17 @@ def main(argv=None) -> int:
             print(f"phases: {len(hy.phase_numbers())}  files_intact: {not bad}  lossless_vs_original: {ll}")
             ok = not bad and ll
             if a.run:
-                res = hy.run_all()
-                for r in res:
-                    print(f"phase {r.phase:02d}: {r.passed} passed, {r.failed} failed {'OK' if r.ok else 'FAIL '+r.detail}")
-                print("total passed:", sum(r.passed for r in res))
-                ok = ok and all(r.ok for r in res)
+                # Running all HYDRA phases is an execution path, not a passive file check.
+                from . import secured
+                secured.enforce(["hydra-check", "--run"])
+                try:
+                    res = hy.run_all()
+                    for r in res:
+                        print(f"phase {r.phase:02d}: {r.passed} passed, {r.failed} failed {'OK' if r.ok else 'FAIL '+r.detail}")
+                    print("total passed:", sum(r.passed for r in res))
+                    ok = ok and all(r.ok for r in res)
+                finally:
+                    secured.ACTIVE = False
             return 0 if ok else 1
     except StartupError as e:
         print(f"startup error: {e}", file=sys.stderr)
