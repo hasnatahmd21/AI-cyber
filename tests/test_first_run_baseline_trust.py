@@ -37,3 +37,15 @@ def test_first_run_never_automatically_trusts_source_tree(tmp_path, monkeypatch,
     assert any("automatic first-run trust is disabled" in line for line in output)
     assert hydra_baseline.exists() is (existing == "hydra-only")
     assert it_tech_baseline.exists() is (existing == "it-tech-only")
+
+
+def test_installed_runtime_prefers_project_checkout_over_site_packages(tmp_path, monkeypatch):
+    (tmp_path / "pyproject.toml").write_text("[project]\nname='test-project'\n", encoding="utf-8")
+    package = tmp_path / "src" / "ai_cyber_os"
+    package.mkdir(parents=True)
+    (tmp_path / "IT_tech__MERGED_ALL_FIXES_APPLIED.py").write_text(
+        "# trusted project asset\n", encoding="utf-8"
+    )
+    monkeypatch.chdir(tmp_path)
+
+    assert secured._root() == str(tmp_path)
