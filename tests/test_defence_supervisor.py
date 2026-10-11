@@ -281,3 +281,15 @@ def test_clear_defence_latch_refuses_when_source_has_drifted(tmp_path):
     assert cleared is False
     assert "source integrity" in message
     assert (state / "defence_latch.json").exists()
+
+
+def test_supervisor_rejects_symlinked_state_directory_even_without_latch(tmp_path):
+    state_target = tmp_path / "state-target"
+    state_target.mkdir()
+    (tmp_path / ".ai_cyber").symlink_to(state_target, target_is_directory=True)
+
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    reason = service._persistent_latch_reason()
+
+    assert reason is not None
+    assert "state directory is a symlink" in reason
