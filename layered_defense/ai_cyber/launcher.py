@@ -1,7 +1,7 @@
 """Run HYDRA (ai_cyber_os) behind the defence pipeline.
 
-Order on every run:  barrier -> isolation -> layer1 -> layer2 -> layer3  ->  (only if ALLOW) HYDRA runs.
-HYDRA code is not modified and does not know about the defence; the defence does not know HYDRA's internals.
+Order on every run: integrity check -> barrier -> layer1 -> layer2 -> layer3 -> conditional isolation -> HYDRA supervisor.
+HYDRA starts only after the signed integrity baseline and all defence layers allow execution.
 Anything other than ALLOW (block, restrict, quarantine, escalate, error) means HYDRA is NOT started."""
 from __future__ import annotations
 
@@ -82,18 +82,17 @@ def make_baseline(target: Optional[str] = None, baseline_path: Optional[str] = N
 def run(argv: Sequence[str], *, hydra_main: Optional[Callable[[Sequence[str]], int]] = None,
         config: Optional[dict] = None, key_provider=None, audit_file: Optional[str] = None,
         out=print, hydra_dir: Optional[str] = None, baseline_path: Optional[str] = None,
-        clean_source: Optional[str] = None, check_integrity: bool = True) -> int:
+        clean_source: Optional[str] = None) -> int:
     """Exit codes: 0 ok | 1 HYDRA failed | 2 startup/config error | 3 refused by defence | 4 integrity failed."""
     system = build_system(config, key_provider=key_provider)     # raises StartupError if no key
     try:
-        if check_integrity:
-            from .integrity_gate import check
-            d_t, d_b = default_paths()
-            g = check(system, hydra_dir or d_t, baseline_path or d_b, _integrity(key_provider), clean_source)
-            out(f"integrity: {'OK' if g.ok else 'FAILED'} ({g.reason}){' restored=' + str(len(g.restored)) if g.restored else ''}")
-            if not g.ok:
-                system.audit.record("hydra_not_started", decision="integrity_failed")
-                return 4
+        from .integrity_gate import check
+        d_t, d_b = default_paths()
+        g = check(system, hydra_dir or d_t, baseline_path or d_b, _integrity(key_provider), clean_source)
+        out(f"integrity: {'OK' if g.ok else 'FAILED'} ({g.reason}){' restored=' + str(len(g.restored)) if g.restored else ''}")
+        if not g.ok:
+            system.audit.record("hydra_not_started", decision="integrity_failed")
+            return 4
         res = guard(system, argv)
         out(f"defence: {res.decision.value}  trace={list(res.trace)}  reason={res.reason}")
         if res.decision is not Decision.ALLOW:
