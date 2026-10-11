@@ -187,9 +187,14 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None, ou
         return 4
     finally:
         if system:
+            try:
+                system.shutdown()
+            except Exception as exc:
+                out(f"audit shutdown event failed: {type(exc).__name__}")
             out(f"audit chain ok: {system.audit.self_verify()}")
-            try: save(system.audit, audit_path)
-            except Exception as exc: out(f"audit persistence failed: {type(exc).__name__}")
-            system.shutdown()
+            try:
+                save(system.audit, audit_path, integrity=integrity)
+            except Exception as exc:
+                out(f"audit persistence failed: {type(exc).__name__}")
         if clean:
             shutil.rmtree(os.path.dirname(os.path.dirname(clean)), ignore_errors=True)
