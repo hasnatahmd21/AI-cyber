@@ -25,18 +25,22 @@ def _test_signed_it_tech_source(tmp_path):
     state = tmp_path / ".ai_cyber"
     state.mkdir(exist_ok=True)
     baseline = state / "it_tech_baseline.json"
+    package_baseline = state / "hydra_baseline.json"
     write_file_baseline(str(source), str(baseline), Integrity(KEY))
-    return source, baseline
+    write_baseline(str(root / "src" / "ai_cyber_os"), str(package_baseline), Integrity(KEY))
+    return source, baseline, package_baseline
 
 
 def _build_verified_system(tmp_path):
-    # Sign the exact source fixture with the test key, then exercise the same
-    # cryptographic check performed by the production runtime builder.
-    source, baseline = _test_signed_it_tech_source(tmp_path)
+    # Sign the exact IT-Tech source fixture and the runtime package tree using
+    # the test key; runtime startup revalidates these HMACs instead of trusting
+    # the boolean flag sent by a caller.
+    source, baseline, package_baseline = _test_signed_it_tech_source(tmp_path)
     return build_system(
         config={
             "it_tech_source": str(source),
             "it_tech_baseline_path": str(baseline),
+            "package_baseline_path": str(package_baseline),
             "it_tech_integrity_verified": True,
         },
         key_provider=KEY,
@@ -421,7 +425,8 @@ def test_it_tech_network_gate_records_and_immediately_blocks_high_risk_evidence(
         assert "risk threshold" in reason
 
     snapshot = gate.snapshot()
-    assert snapshot["observations"] == 2
+    # Two signed-baseline trust observations seed internal state at startup.
+    assert snapshot["observations"] == 4
     healthy, reason = gate.health_check()
     assert healthy is False
     assert "suspicious" in reason.lower() or "invariant" in reason.lower()
