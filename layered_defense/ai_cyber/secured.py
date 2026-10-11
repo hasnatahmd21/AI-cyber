@@ -93,7 +93,8 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None,
         n_hydra = write_baseline(target, baseline, integrity)
         n_defence = write_baseline(defence_target, defence_baseline, integrity)
         reason = "updated explicitly" if rebaseline else "initialised (first start; no prior audit history)"
-        out(f"defence: baselines {reason} - {n_hydra} HYDRA files, {n_defence} defence files")
+        # Keep a stable, human-readable marker for operational smoke checks while naming both trees.
+        out(f"defence: baseline {reason} - HYDRA inventory: {n_hydra} files; defence inventory: {n_defence} files")
 
     clean_hydra = None
     clean_defence = None
