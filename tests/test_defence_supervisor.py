@@ -463,3 +463,70 @@ def test_audit_append_failure_cannot_leave_supervisor_stuck_in_blocking_state(tm
         assert (tmp_path / ".ai_cyber" / "defence_latch.json").is_file()
     finally:
         service.stop()
+
+def test_primary_latch_write_failure_uses_signed_fallback_and_blocks_restart(tmp_path, monkeypatch):
+    network = _FakeNetworkGate()
+    authority = _FakeAuthorityGate()
+    system = _FakeSystem(network, authority)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    _install_fake_runtime(monkeypatch, service, system)
+    service.start()
+
+    def fail_primary_latch(_reason, _checks):
+        raise OSError("simulated primary latch path failure")
+
+    monkeypatch.setattr(service, "_write_persistent_latch", fail_primary_latch)
+    try:
+        service._latch_failure("simulated network incident", {"network": False})
+        state = service.snapshot()
+        fallback = tmp_path / ".ai_cyber" / "defence_latch_fallback.json"
+        assert state["status"] == "blocked"
+        assert state["ready"] is False
+        assert fallback.is_file()
+        assert "signed fallback latch persisted" in state["reason"]
+    finally:
+        service.stop()
+
+    restarted = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    monkeypatch.setattr(
+        restarted,
+        "_verify_source_assets",
+        lambda: (
+            True,
+            "signed source baselines verified",
+            {"hydra_source_integrity": True, "it_tech_source_integrity": True},
+        ),
+    )
+    with pytest.raises(SupervisorStartupError, match="persistent defence incident latch"):
+        restarted.start()
+    assert restarted.snapshot()["ready"] is False
+
+
+def test_supervisor_remains_blocking_if_primary_and_fallback_latch_writes_fail(
+    tmp_path, monkeypatch
+):
+    network = _FakeNetworkGate()
+    authority = _FakeAuthorityGate()
+    system = _FakeSystem(network, authority)
+    service = DefenceSupervisor(str(tmp_path), interval_s=0.25)
+    _install_fake_runtime(monkeypatch, service, system)
+    service.start()
+
+    def fail_latch(*_args, **_kwargs):
+        raise OSError("simulated persistent storage failure")
+
+    monkeypatch.setattr(service, "_write_persistent_latch", fail_latch)
+    monkeypatch.setattr(service, "_write_persistent_latch_to", fail_latch)
+    try:
+        service._latch_failure("simulated authority incident", {"authority": False})
+        state = service.snapshot()
+        assert state["status"] == "blocking"
+        assert state["ready"] is False
+        assert "restart persistence is unavailable" in state["reason"]
+        assert not (tmp_path / ".ai_cyber" / "defence_latch.json").exists()
+        assert not (tmp_path / ".ai_cyber" / "defence_latch_fallback.json").exists()
+        allowed, _reason, _evidence = service.authorize_hydra("phase1")
+        assert allowed is False
+    finally:
+        service.stop()
+
