@@ -144,4 +144,4 @@ def test_codespaces_start_serializes_concurrent_launches(tmp_path, monkeypatch, 
 
     assert codespace_start.start(tmp_path) == 3
     assert "already running in another process" in capsys.readouterr().err
-\n
+
