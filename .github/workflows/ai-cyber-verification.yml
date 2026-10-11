@@ -30,6 +30,10 @@ jobs:
           pip install pytest pytest-timeout
       - name: Compile Python
         run: python -m compileall -q src tests
+      # CI must make its trust decision explicit just like an operator's first run.
+      # The protected source is checked out from the reviewed commit and must be clean.
+      - name: Explicitly initialize trusted baseline for the test workspace
+        run: python -m ai_cyber_os --defence-rebaseline --phase phase1 --json
       - name: Run tests with progress logging and per-test timeout
         env:
           PYTHONPATH: src
