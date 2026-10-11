@@ -74,6 +74,9 @@ class _FakeAuthorityGate:
     def authorize(self, _request):
         return True, "authority allows"
 
+    def health_check(self):
+        return True, "authority state and grant healthy"
+
 
 class _FakeOrchestrator:
     def __init__(self, network_gate, authority_gate):
