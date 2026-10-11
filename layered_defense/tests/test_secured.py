@@ -51,11 +51,16 @@ class TestSecured(unittest.TestCase):
         with open(os.path.join(self.hy, "a.py")) as f: self.assertEqual(f.read(), "x=1\nevil()\n")
         self.assertEqual(self.go("--defence-rebaseline"), 0); self.assertEqual(len(self.calls), 1)
 
-    def test_restore_from_git_head(self):
+    def test_restore_from_git_head_requires_fresh_process(self):
         self.go()
+        self.calls.clear()
         with open(os.path.join(self.hy, "a.py"), "a") as f: f.write("evil()\n")
-        self.assertEqual(self.go("--defence-restore"), 0)
+        self.assertEqual(self.go("--defence-restore"), 4)
+        self.assertEqual(self.calls, [])
         with open(os.path.join(self.hy, "a.py")) as f: self.assertEqual(f.read(), "x=1\n")
+        # The on-disk tree is now clean, so a new process invocation can execute it.
+        self.assertEqual(self.go(), 0)
+        self.assertEqual(len(self.calls), 1)
 
     def test_restore_with_missing_baseline_blocks_without_creating_one(self):
         self.assertEqual(self.go("--defence-restore"), 4)
@@ -70,6 +75,15 @@ class TestSecured(unittest.TestCase):
         self.assertEqual(self.go(), 4)
         self.assertEqual(self.calls, [])
         self.assertFalse(os.path.exists(os.path.join(state, "hydra_baseline.json")))
+
+    def test_missing_defence_baseline_with_prior_audit_history_blocks(self):
+        self.assertEqual(self.go(), 0)
+        state = os.path.join(self.root, ".ai_cyber")
+        os.remove(os.path.join(state, "defence_baseline.json"))
+        self.calls.clear()
+        self.assertEqual(self.go(), 4)
+        self.assertEqual(self.calls, [])
+        self.assertFalse(os.path.exists(os.path.join(state, "defence_baseline.json")))
 
     def test_missing_baseline_with_damaged_audit_history_blocks(self):
         state = os.path.join(self.root, ".ai_cyber")
