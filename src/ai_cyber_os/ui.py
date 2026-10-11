@@ -84,27 +84,34 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
     # before the request is dispatched to the separately gated canonical CLI.
     with SUPERVISOR_LOCK:
         supervisor = ACTIVE_SUPERVISOR
-    if supervisor is not None:
+    if supervisor is None:
+        reason = "resident IT-Tech defence supervisor is not running; HYDRA blocked"
+        evidence = {"active": False, "ready": False, "status": "not_started"}
+    else:
         allowed, reason, evidence = supervisor.authorize_hydra(phase, hardening)
-        if not allowed:
-            blocked = {
-                "phase": phase,
-                "success": False,
-                "blocked": True,
-                "error": reason,
-                "defence": evidence,
-            }
-            telemetry.emit(
-                "defence_blocked",
-                "Resident IT-Tech supervisor denied the UI HYDRA request",
-                operation="hydra",
-                phase=phase,
-                status="BLOCKED",
-                source="it-tech-supervisor",
-                evidence=evidence,
-            )
-            save_report("defence-block", blocked)
-            return blocked
+        if allowed:
+            evidence = {**(evidence if isinstance(evidence, dict) else {}), "resident_gate": "ALLOW"}
+        else:
+            evidence = evidence if isinstance(evidence, dict) else {"result": str(evidence)}
+    if supervisor is None or not allowed:
+        blocked = {
+            "phase": phase,
+            "success": False,
+            "blocked": True,
+            "error": reason,
+            "defence": evidence,
+        }
+        telemetry.emit(
+            "defence_blocked",
+            "Resident IT-Tech supervisor denied or unavailable for the UI HYDRA request",
+            operation="hydra",
+            phase=phase,
+            status="BLOCKED",
+            source="it-tech-supervisor",
+            evidence=evidence,
+        )
+        save_report("defence-block", blocked)
+        return blocked
 
     telemetry.begin("hydra", phase=phase, message=f"HYDRA {phase} execution started")
     telemetry.emit(
