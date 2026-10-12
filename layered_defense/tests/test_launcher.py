@@ -58,6 +58,7 @@ class TestLauncher(unittest.TestCase):
             self.assertEqual(rc, 1)
             events = [r["event"] for r in load_verified_encrypted(p, AeadCipher(KEY))]
             self.assertIn("hydra_crashed", events)
+            self.assertIn("shutdown", events)
 
     def test_integrity_cannot_be_disabled_by_runtime_flag(self):
         import inspect
