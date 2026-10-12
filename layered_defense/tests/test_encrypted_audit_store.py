@@ -29,7 +29,8 @@ class TestEncryptedAuditStore(unittest.TestCase):
     def test_save_encrypts_and_round_trips_verified_chain(self):
         count = save_encrypted(self.audit, self.path, self.cipher)
         self.assertEqual(count, 2)
-        raw = open(self.path, encoding="utf-8").read()
+        with open(self.path, encoding="utf-8") as stream:
+            raw = stream.read()
         self.assertNotIn("CONFIDENTIAL_AUDIT_MARKER", raw)
         self.assertNotIn("private/resource", raw)
         self.assertEqual(os.stat(self.path).st_mode & 0o777, 0o600)
@@ -39,7 +40,8 @@ class TestEncryptedAuditStore(unittest.TestCase):
 
     def test_ciphertext_tampering_is_rejected(self):
         save_encrypted(self.audit, self.path, self.cipher)
-        envelope = json.loads(open(self.path, encoding="utf-8").read())
+        with open(self.path, encoding="utf-8") as stream:
+            envelope = json.load(stream)
         value = envelope["ciphertext"]
         envelope["ciphertext"] = ("A" if value[0] != "A" else "B") + value[1:]
         with open(self.path, "w", encoding="utf-8") as f:
