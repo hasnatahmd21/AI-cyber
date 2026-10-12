@@ -134,6 +134,9 @@ def run(argv: Sequence[str], *, hydra_main: Optional[Callable[[Sequence[str]], i
     finally:
         out(f"audit chain ok: {system.audit.self_verify()}")
         if audit_file:
-            from .adapters.audit_store import save
-            save(system.audit, audit_file)
+            from .adapters.audit_store import save_encrypted
+            from .crypto_encryption import AeadCipher
+            from .keystore import DefaultKeyProvider
+            provider = key_provider or DefaultKeyProvider(os.path.join(os.path.dirname(_repo_src()), ".ai_cyber"))
+            save_encrypted(system.audit, audit_file, AeadCipher(provider))
         system.shutdown()
