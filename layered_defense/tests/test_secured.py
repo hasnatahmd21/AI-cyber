@@ -2,6 +2,7 @@ import os, stat, subprocess, tempfile, unittest
 
 from ai_cyber import secured
 from ai_cyber.keystore import DefaultKeyProvider, FileKeyProvider
+from ai_cyber.crypto_integrity import KeyError_
 
 
 def git(root, *a):
@@ -32,7 +33,7 @@ class TestKeystore(unittest.TestCase):
             with open(outside, "w", encoding="ascii") as stream:
                 stream.write("ab" * 32)
             os.symlink(outside, os.path.join(state, "key"))
-            with self.assertRaises(Exception):
+            with self.assertRaises(KeyError_):
                 FileKeyProvider(state).get_key("default")
 
     def test_hardlinked_signing_key_is_rejected(self):
@@ -54,7 +55,7 @@ class TestKeystore(unittest.TestCase):
             provider = FileKeyProvider(os.path.join(d, ".ai_cyber"))
             provider.get_key("default")
             os.chmod(provider.path, 0o644)
-            with self.assertRaises(Exception):
+            with self.assertRaises(KeyError_):
                 provider.get_key("default")
 
     def test_symlinked_state_directory_is_rejected(self):
@@ -63,7 +64,7 @@ class TestKeystore(unittest.TestCase):
             os.makedirs(target, mode=0o700)
             linked = os.path.join(d, "linked-state")
             os.symlink(target, linked)
-            with self.assertRaises(Exception):
+            with self.assertRaises(KeyError_):
                 FileKeyProvider(linked).get_key("default")
 
 
