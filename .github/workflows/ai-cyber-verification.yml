@@ -33,7 +33,7 @@ jobs:
         run: python -m compileall -q src tests
       - name: Run non-UI tests with progress logging and per-test timeout
         env:
-          PYTHONPATH: src
+          PYTHONPATH: src:layered_defense
           PYTHONFAULTHANDLER: "1"
         # The legacy UI is intentionally frozen while its replacement is being built.
         # Keep its known failing tests visible as deferred work; do not change UI code here.
