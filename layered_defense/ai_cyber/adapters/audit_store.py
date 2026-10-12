@@ -27,7 +27,7 @@ def save(audit: AuditLog, path: str) -> int:
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
         for r in recs:
-            f.write(json.dumps(r, sort_keys=True, default=str) + "\\n")
+            f.write(json.dumps(r, sort_keys=True, default=str) + "\n")
         f.flush()
         os.fsync(f.fileno())
     os.replace(tmp, path)
@@ -49,7 +49,7 @@ def load_verified(path: str, expected_len=None):
 def save_encrypted(audit: AuditLog, path: str, cipher: AeadCipher) -> int:
     """Encrypt the full audit chain with AES-GCM and atomically persist mode-0600 ciphertext."""
     recs = _records(audit)
-    plaintext = "".join(json.dumps(r, sort_keys=True, default=str) + "\\n" for r in recs).encode("utf-8")
+    plaintext = "".join(json.dumps(r, sort_keys=True, default=str) + "\n" for r in recs).encode("utf-8")
     envelope = cipher.encrypt(plaintext, associated_data=_AUDIT_AAD)
     parent = os.path.dirname(os.path.abspath(path))
     os.makedirs(parent, mode=0o700, exist_ok=True)
