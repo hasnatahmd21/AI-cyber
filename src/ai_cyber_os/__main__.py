@@ -16,19 +16,19 @@ from typing import Any
 # path, main() must enforce the defence before any HYDRA implementation module loads.
 
 
-def run_hydra_phase(name: str):
+def run_hydra_phase(*args, **kwargs):
     from .intelligence_hydra import run_hydra_phase as implementation
-    return implementation(name)
+    return implementation(*args, **kwargs)
 
 
-def run_all_extended():
+def run_all_extended(*args, **kwargs):
     from .intelligence_hydra import run_all_extended as implementation
-    return implementation()
+    return implementation(*args, **kwargs)
 
 
-def run_final_hardening_verification():
+def run_final_hardening_verification(*args, **kwargs):
     from .hydra import run_final_hardening_verification as implementation
-    return implementation()
+    return implementation(*args, **kwargs)
 
 
 
