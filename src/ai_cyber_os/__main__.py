@@ -12,8 +12,25 @@ from contextlib import redirect_stdout
 from io import StringIO
 from typing import Any
 
-from .hydra import run_final_hardening_verification
-from .intelligence_hydra import run_hydra_phase, run_all_extended
+# Runtime implementations are imported lazily by these wrappers. In the canonical CLI
+# path, main() must enforce the defence before any HYDRA implementation module loads.
+
+
+def run_hydra_phase(name: str):
+    from .intelligence_hydra import run_hydra_phase as implementation
+    return implementation(name)
+
+
+def run_all_extended():
+    from .intelligence_hydra import run_all_extended as implementation
+    return implementation()
+
+
+def run_final_hardening_verification():
+    from .hydra import run_final_hardening_verification as implementation
+    return implementation()
+
+
 
 
 def _build_parser() -> argparse.ArgumentParser:
