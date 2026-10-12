@@ -115,7 +115,7 @@ def main(argv: Optional[Sequence[str]] = None, *, root: Optional[str] = None,
             baseline_path=baseline, clean_source=clean_hydra,
             defence_dir=defence_target, defence_baseline_path=defence_baseline,
             defence_clean_source=clean_defence,
-            audit_file=os.path.join(audit_dir, f"{stamp}.jsonl"),
+            audit_file=os.path.join(audit_dir, f"{stamp}.json.enc"),
         )
     finally:
         clean_roots = {
