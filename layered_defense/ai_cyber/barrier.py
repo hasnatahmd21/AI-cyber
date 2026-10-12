@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import re
 import time
+from urllib.parse import unquote
 from typing import Any, Callable, Dict, Optional, Tuple
 
 from .contracts import AuditSink, Decision, Finding, LayerResult, Request
@@ -53,6 +54,27 @@ class Barrier:
             return len(p)
         return len(str(p).encode("utf-8", "replace"))
 
+    @staticmethod
+    def _has_path_traversal(resource: str) -> bool:
+        """Reject traversal before downstream URL decoding or path normalization.
+
+        Decode repeatedly because a downstream component may decode a path more
+        than once. Convert backslashes to separators on every pass. If decoding
+        keeps changing the path beyond the bounded number of passes, fail closed.
+        """
+        current = resource
+        for _ in range(5):
+            current = current.replace("\\", "/")
+            if ".." in current.split("/"):
+                return True
+            decoded = unquote(current)
+            if decoded == current:
+                return False
+            current = decoded
+        # Excessively nested encoding is ambiguous and must not be allowed
+        # to bypass the path check.
+        return True
+
     def evaluate(self, req: Any, prior: Tuple[LayerResult, ...] = ()) -> LayerResult:
         # 1. structural validation - unknown/invalid state is explicitly an error
         if not isinstance(req, Request):
@@ -68,7 +90,7 @@ class Barrier:
             return self._deny(req.request_id, "action_not_allowed", req.action)
         if len(req.resource) > MAX_RESOURCE_LEN or "\x00" in req.resource:
             return self._deny(req.request_id, "bad_resource", "length/NUL")
-        if ".." in req.resource.replace("\\", "/").split("/"):
+        if self._has_path_traversal(req.resource):
             return self._deny(req.request_id, "path_traversal", req.resource)
         if self._payload_size(req.payload) > MAX_PAYLOAD_BYTES:
             return self._deny(req.request_id, "payload_too_large", "")
