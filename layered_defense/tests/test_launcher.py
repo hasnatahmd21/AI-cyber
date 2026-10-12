@@ -1,8 +1,9 @@
 import os, tempfile, unittest
 
 from ai_cyber import launcher
-from ai_cyber.adapters.audit_store import load_verified
+from ai_cyber.adapters.audit_store import load_verified_encrypted
 from ai_cyber.contracts import Decision
+from ai_cyber.crypto_encryption import AeadCipher
 from ai_cyber.crypto_integrity import Integrity
 from ai_cyber.integrity_gate import write_baseline
 from ai_cyber.runtime import StartupError, build_system
@@ -52,10 +53,10 @@ class TestLauncher(unittest.TestCase):
     def test_hydra_crash_is_reported_and_audited(self):
         def boom(a): raise RuntimeError("x")
         with tempfile.TemporaryDirectory() as d:
-            p = os.path.join(d, "a.jsonl")
+            p = os.path.join(d, "a.json.enc")
             rc, out = self._run([], boom, audit_file=p)
             self.assertEqual(rc, 1)
-            events = [r["event"] for r in load_verified(p)]
+            events = [r["event"] for r in load_verified_encrypted(p, AeadCipher(KEY))]
             self.assertIn("hydra_crashed", events)
 
     def test_integrity_cannot_be_disabled_by_runtime_flag(self):
