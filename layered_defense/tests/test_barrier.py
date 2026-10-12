@@ -29,7 +29,7 @@ class T(unittest.TestCase):
         self.assertIs(b.evaluate(Request("r", "alice", "format_disk", "/docs/a", None, tok)).decision, Decision.BLOCK)
         self.assertIs(b.evaluate(Request("r;x", "alice", "read", "/docs/a", None, tok)).decision, Decision.BLOCK)
         self.assertIs(b.evaluate(Request("r", "alice", "read", "/docs/../etc/passwd", None, tok)).decision, Decision.BLOCK)
-        self.assertIs(b.evaluate(Request("r", "alice", "read", "/docs/a\\x00", None, tok)).decision, Decision.BLOCK)
+        self.assertIs(b.evaluate(Request("r", "alice", "read", "/docs/a\x00", None, tok)).decision, Decision.BLOCK)
         self.assertIs(b.evaluate(Request("r", "alice", "read", "/" + "a" * 600, None, tok)).decision, Decision.BLOCK)
 
     def test_encoded_path_traversal_is_blocked(self):
