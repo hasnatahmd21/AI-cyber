@@ -77,7 +77,8 @@ def find_entry_points(root: str) -> List[str]:
                 continue
             p = os.path.join(dp, f)
             try:
-                tree = ast.parse(open(p, encoding="utf-8").read())
+                with open(p, encoding="utf-8") as source_file:
+                    tree = ast.parse(source_file.read())
             except SyntaxError:
                 continue
             for n in tree.body:
