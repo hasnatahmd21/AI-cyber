@@ -57,12 +57,16 @@ class Hydra:
             p = os.path.join(self.phases_dir, fn)
             if not os.path.isfile(p):
                 bad.append(f"missing:{fn}")
-            elif hashlib.sha256(open(p, "rb").read()).hexdigest() != digest:
-                bad.append(f"modified:{fn}")
+            else:
+                with open(p, "rb") as stream:
+                    actual = hashlib.sha256(stream.read()).hexdigest()
+                if actual != digest:
+                    bad.append(f"modified:{fn}")
         return bad
 
     def _original_segment(self, fn: str) -> bytes:
-        data = open(os.path.join(self.phases_dir, fn), "rb").read().decode("utf-8")
+        with open(os.path.join(self.phases_dir, fn), "rb") as stream:
+            data = stream.read().decode("utf-8")
         info = self.manifest["future_import_patch"]["files"][fn]
         ins = info["inserted_line"]
         if ins:
