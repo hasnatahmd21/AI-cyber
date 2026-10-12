@@ -1,6 +1,7 @@
 """Gate 1 - outer barrier: first enforcement point for every untrusted request."""
 from __future__ import annotations
 
+import math
 import re
 import threading
 import time
@@ -24,7 +25,7 @@ class RateLimiter:
                  clock: Callable[[], float] = time.monotonic) -> None:
         if isinstance(capacity, bool) or not isinstance(capacity, int) or capacity < 1:
             raise ValueError("capacity must be a positive integer")
-        if not isinstance(refill_per_sec, (int, float)) or isinstance(refill_per_sec, bool) or refill_per_sec <= 0:
+        if not isinstance(refill_per_sec, (int, float)) or isinstance(refill_per_sec, bool) or not math.isfinite(refill_per_sec) or refill_per_sec <= 0:
             raise ValueError("refill_per_sec must be positive")
         if not callable(clock):
             raise TypeError("clock must be callable")
