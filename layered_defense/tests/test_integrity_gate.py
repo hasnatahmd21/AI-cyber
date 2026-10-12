@@ -33,6 +33,18 @@ class TestIntegrityGate(unittest.TestCase):
     def test_clean_tree_runs(self):
         rc, out = self._run(); self.assertEqual((rc, len(self.calls)), (0, 1)); self.assertIn("integrity: OK", out)
 
+    def test_baseline_write_does_not_follow_predictable_tmp_symlink(self):
+        outside = os.path.join(os.path.dirname(self.bl), "outside-baseline-target")
+        with open(outside, "w", encoding="utf-8") as stream:
+            stream.write("preserve-me")
+        os.symlink(outside, self.bl + ".tmp")
+        count = write_baseline(self.hy, self.bl, Integrity(KEY))
+        self.assertGreater(count, 0)
+        with open(outside, encoding="utf-8") as stream:
+            self.assertEqual(stream.read(), "preserve-me")
+        self.assertTrue(os.path.islink(self.bl + ".tmp"))
+        self.assertTrue(os.path.isfile(self.bl))
+
     def test_unlisted_hydra_file_refuses_to_start(self):
         with open(os.path.join(self.hy, "unlisted.py"), "w") as f: f.write("import evil\\n")
         rc, out = self._run()
