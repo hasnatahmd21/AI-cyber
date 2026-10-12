@@ -29,8 +29,25 @@ class T(unittest.TestCase):
         self.assertIs(b.evaluate(Request("r", "alice", "format_disk", "/docs/a", None, tok)).decision, Decision.BLOCK)
         self.assertIs(b.evaluate(Request("r;x", "alice", "read", "/docs/a", None, tok)).decision, Decision.BLOCK)
         self.assertIs(b.evaluate(Request("r", "alice", "read", "/docs/../etc/passwd", None, tok)).decision, Decision.BLOCK)
-        self.assertIs(b.evaluate(Request("r", "alice", "read", "/docs/a\x00", None, tok)).decision, Decision.BLOCK)
+        self.assertIs(b.evaluate(Request("r", "alice", "read", "/docs/a\\x00", None, tok)).decision, Decision.BLOCK)
         self.assertIs(b.evaluate(Request("r", "alice", "read", "/" + "a" * 600, None, tok)).decision, Decision.BLOCK)
+
+    def test_encoded_path_traversal_is_blocked(self):
+        b, _, tok = mk()
+        paths = (
+            "/docs/%2e%2e/etc/passwd",
+            "/docs/%2E%2E/etc/passwd",
+            "/docs/%2e%2e%2fetc/passwd",
+            "/docs/%252e%252e/etc/passwd",
+            "/docs/%25252e%25252e/etc/passwd",
+            r"/docs/..\\etc\\passwd",
+            "/docs/a/../../etc/passwd",
+        )
+        for i, path in enumerate(paths):
+            with self.subTest(path=path):
+                result = b.evaluate(Request(f"trav{i}", "alice", "read", path, None, tok))
+                self.assertIn(result.decision, (Decision.BLOCK, Decision.ERROR), path)
+                self.assertEqual(result.reason, "path_traversal", path)
 
     def test_payload_too_large(self):
         b, _, tok = mk()
@@ -66,6 +83,7 @@ class T(unittest.TestCase):
         self.assertEqual(d[:3], [Decision.ALLOW] * 3); self.assertEqual(d[3:], [Decision.BLOCK] * 2)
         now[0] = 10.0
         self.assertIs(b.evaluate(Request("rx", "alice", "read", "/docs/a", None, tok)).decision, Decision.ALLOW)
+
 
 if __name__ == "__main__":
     unittest.main()
