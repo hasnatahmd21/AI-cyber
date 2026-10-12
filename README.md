@@ -45,6 +45,19 @@ surface; no live operational capability is claimed merely from passing tests.
 
 No legacy source is considered canonical solely because of its filename.
 
+## Layered defence and cryptographic storage
+
+The canonical CLI is guarded by the separate `layered_defense/ai_cyber` runtime before HYDRA executes. The enforced order is signed-tree integrity verification, outer barrier, independent Layers 1–3, conditional isolation/quarantine, then the existing HYDRA supervisor. Any result other than explicit `ALLOW` prevents HYDRA execution.
+
+- HMAC-SHA256 signatures protect separate inventories for the HYDRA and defence code trees. HMAC provides integrity/authenticity, not confidentiality.
+- Sensitive runtime audit chains are persisted as AES-256-GCM authenticated ciphertext in `.ai_cyber/audit/*.json.enc`. The adapter authenticates/decrypts the envelope and then verifies the audit hash chain. Files are written with owner-only permissions on supported POSIX systems.
+- The AES-GCM key is derived with HKDF-SHA256 from the configured root key and a fresh per-message salt; nonces are generated per encryption. The key is never stored in the encrypted envelope.
+- The default key provider uses `AI_CYBER_KEY_DEFAULT` (hex-encoded secret) when configured, otherwise a persistent `.ai_cyber/key` file. Keep that key and the `.ai_cyber/` state directory private and backed up; losing the key prevents audit decryption.
+- Recovery is explicit: `--defence-restore` verifies the recovery source against the signed baseline, repairs files, and blocks the current process. Restart before executing restored code. Intentional code changes require explicit `--defence-rebaseline`; missing baselines with prior audit history fail closed.
+- This is guarded recovery, not an autonomous continuous self-rebuilding loop. Such a loop is not claimed as verified.
+
+The legacy UI is intentionally deferred while its replacement is being built. Non-UI CI excludes `tests/test_ui.py`; this does not mean the legacy UI is verified or production-ready.
+
 ## Stage 0 forensic audit
 
 The read-only [Stage 0 audit protocol](docs/FORENSIC_AUDIT_STAGE_0.md) describes the per-file inventory. The deep AST report records source line ranges, symbol/call evidence, duplicate names, security-sensitive API signals, markers, and approximate import reachability. The reconstruction workflow preserves commit-specific JSON and Markdown reports as a GitHub Actions artifact. A generated inventory alone is not a GREEN security verdict.
