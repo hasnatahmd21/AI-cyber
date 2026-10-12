@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
@@ -27,14 +28,28 @@ def write_baseline(target: str, baseline_path: str, integrity: Integrity) -> int
     bl = build_baseline(target)
     if not bl:
         raise RegenerationError("target has no files to baseline")
+    signature = sign_baseline(bl, integrity)
     parent = os.path.dirname(os.path.abspath(baseline_path))
     os.makedirs(parent, mode=0o700, exist_ok=True)
-    tmp = baseline_path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump({"baseline": bl, "signature": sign_baseline(bl, integrity)}, f, indent=1, sort_keys=True)
-        f.flush()
-        os.fsync(f.fileno())
-    os.replace(tmp, baseline_path)
+    fd, temporary = tempfile.mkstemp(prefix=".aicyber-baseline-", dir=parent)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump({"baseline": bl, "signature": signature}, f, indent=1, sort_keys=True)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temporary, baseline_path)
+        if os.name == "posix":
+            dir_fd = os.open(parent, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+    finally:
+        try:
+            os.unlink(temporary)
+        except FileNotFoundError:
+            pass
     return len(bl)
 
 
