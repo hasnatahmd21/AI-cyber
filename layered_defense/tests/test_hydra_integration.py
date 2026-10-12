@@ -17,7 +17,8 @@ class T(unittest.TestCase):
     def test_lossless_vs_original_monolith(self):
         self.assertTrue(self.h.verify_lossless())
         import hashlib
-        orig = open(os.path.join(LEGACY_DIR, "IT_tech__MERGED_ALL_FIXES_APPLIED.py"), "rb").read()
+        with open(os.path.join(LEGACY_DIR, "IT_tech__MERGED_ALL_FIXES_APPLIED.py"), "rb") as source_file:
+            orig = source_file.read()
         self.assertEqual(hashlib.sha256(orig).hexdigest(), self.h.manifest["source_sha256"])
 
     def test_tamper_detected(self):
@@ -39,7 +40,8 @@ class T(unittest.TestCase):
 
     def test_all_phases_have_runner_and_future_annotations(self):
         for n, fn in self.h.phase_files().items():
-            src = open(os.path.join(self.h.phases_dir, fn), encoding="utf-8").read()
+            with open(os.path.join(self.h.phases_dir, fn), encoding="utf-8") as source_file:
+                src = source_file.read()
             self.assertIn("from __future__ import annotations", src, fn); self.assertIn("_run_all_tests", src, fn)
 
     def test_regression_phase13_split_fix(self):     # phase 13 needed the future import after splitting
