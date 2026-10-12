@@ -132,11 +132,15 @@ def run(argv: Sequence[str], *, hydra_main: Optional[Callable[[Sequence[str]], i
         system.audit.record("hydra_finished", exit_code=rc)
         return rc
     finally:
-        out(f"audit chain ok: {system.audit.self_verify()}")
-        if audit_file:
-            from .adapters.audit_store import save_encrypted
-            from .crypto_encryption import AeadCipher
-            from .keystore import DefaultKeyProvider
-            provider = key_provider or DefaultKeyProvider(os.path.join(os.path.dirname(_repo_src()), ".ai_cyber"))
-            save_encrypted(system.audit, audit_file, AeadCipher(provider))
-        system.shutdown()
+        # Include shutdown in the durable audit record: stop the executor first, then
+        # verify and persist the complete chain as authenticated ciphertext.
+        try:
+            system.shutdown()
+        finally:
+            out(f"audit chain ok: {system.audit.self_verify()}")
+            if audit_file:
+                from .adapters.audit_store import save_encrypted
+                from .crypto_encryption import AeadCipher
+                from .keystore import DefaultKeyProvider
+                provider = key_provider or DefaultKeyProvider(os.path.join(os.path.dirname(_repo_src()), ".ai_cyber"))
+                save_encrypted(system.audit, audit_file, AeadCipher(provider))
