@@ -24,6 +24,48 @@ class TestKeystore(unittest.TestCase):
             finally: del os.environ["AI_CYBER_KEY_DEFAULT"]
             self.assertFalse(os.path.exists(os.path.join(d, "key")))
 
+    def test_symlinked_signing_key_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            state = os.path.join(d, ".ai_cyber")
+            os.makedirs(state, mode=0o700)
+            outside = os.path.join(d, "outside-key")
+            with open(outside, "w", encoding="ascii") as stream:
+                stream.write("ab" * 32)
+            os.symlink(outside, os.path.join(state, "key"))
+            with self.assertRaises(Exception):
+                FileKeyProvider(state).get_key("default")
+
+    def test_hardlinked_signing_key_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            state = os.path.join(d, ".ai_cyber")
+            os.makedirs(state, mode=0o700)
+            key_path = os.path.join(state, "key")
+            with open(key_path, "w", encoding="ascii") as stream:
+                stream.write("ab" * 32)
+            os.chmod(key_path, 0o600)
+            os.link(key_path, os.path.join(d, "key-alias"))
+            with self.assertRaises(Exception):
+                FileKeyProvider(state).get_key("default")
+
+    def test_group_or_world_readable_signing_key_is_rejected(self):
+        if os.name != "posix":
+            self.skipTest("POSIX permission bits are not portable to this platform")
+        with tempfile.TemporaryDirectory() as d:
+            provider = FileKeyProvider(os.path.join(d, ".ai_cyber"))
+            provider.get_key("default")
+            os.chmod(provider.path, 0o644)
+            with self.assertRaises(Exception):
+                provider.get_key("default")
+
+    def test_symlinked_state_directory_is_rejected(self):
+        with tempfile.TemporaryDirectory() as d:
+            target = os.path.join(d, "real-state")
+            os.makedirs(target, mode=0o700)
+            linked = os.path.join(d, "linked-state")
+            os.symlink(target, linked)
+            with self.assertRaises(Exception):
+                FileKeyProvider(linked).get_key("default")
+
 
 class TestSecured(unittest.TestCase):
     def setUp(self):
