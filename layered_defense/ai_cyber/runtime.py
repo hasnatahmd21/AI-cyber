@@ -4,7 +4,7 @@ from __future__ import annotations
 import ast
 import os
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 from .audit_telemetry import AuditLog
@@ -33,9 +33,24 @@ class System:
     isolation: Isolation
     deception: Deception
     hydra: Hydra
+    _newtech_integration: Any = field(default=None, init=False, repr=False)
+
+    @property
+    def newtech(self):
+        """Lazy-load extra engines only after launcher integrity verification."""
+        if self._newtech_integration is None:
+            from .newtech_integration import HydraBrainIntegration
+            self._newtech_integration = HydraBrainIntegration()
+        return self._newtech_integration
 
     def shutdown(self) -> None:
         self.orchestrator.shutdown()
+        if self._newtech_integration is not None:
+            try:
+                summary = self._newtech_integration.summary()
+                self.audit.record("newtech_shutdown_summary", **summary)
+            except Exception as exc:
+                self.audit.record("newtech_shutdown_error", error=type(exc).__name__)
         self.audit.record("shutdown")
 
 

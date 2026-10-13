@@ -13,6 +13,7 @@ GATES = [
     ("Gate 7 - regeneration", ["tests.test_regeneration"]),
     ("Gate 8 - orchestration + audit", ["tests.test_audit_telemetry", "tests.test_orchestrator"]),
     ("Gate 9 - HYDRA integration (42-phase regression)", ["tests.test_hydra_integration"]),
+    ("Gate 9B - HYDRA Brain new-tech integration", ["tests.test_newtech_integration"]),
     ("Gate 10 - full system end-to-end", ["tests.test_end_to_end"]),
     ("Gate 11 - adapters (datasets + audit persistence)", ["tests.test_adapters"]),
     ("Gate 12 - launcher (defence in front of HYDRA)", ["tests.test_launcher"]),

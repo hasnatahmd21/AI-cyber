@@ -45,8 +45,12 @@ class T(unittest.TestCase):
         self.assertIn("__main__.py", eps)
         # runtime.py must not be a false positive (AST scan, not substring scan)
         self.assertNotIn("runtime.py", eps)
-        # every non-legacy entry point is intentional
-        self.assertEqual([e for e in eps if not e.startswith("legacy/")], ["__main__.py"])
+        # Legacy and bundled new-tech phase files retain their standalone test runners;
+        # only the package CLI is a live product entry point.
+        self.assertEqual(
+            [e for e in eps if not e.startswith(("legacy/", "newtech_brain/"))],
+            ["__main__.py"],
+        )
 
     def test_cli_demo_and_hydra_check(self):
         r = subprocess.run([sys.executable, "-m", "ai_cyber", "demo"], cwd=ROOT, capture_output=True, text=True)
