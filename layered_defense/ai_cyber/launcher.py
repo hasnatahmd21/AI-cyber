@@ -5,10 +5,12 @@ HYDRA starts only after the signed integrity baseline and all defence layers all
 Anything other than ALLOW (block, restrict, quarantine, escalate, error) means HYDRA is NOT started."""
 from __future__ import annotations
 
+import hashlib
 import inspect
 import os
 import sys
 import uuid
+from datetime import datetime, timezone
 from typing import Callable, List, Optional, Sequence
 
 from .contracts import Decision, FinalResult, Request
@@ -119,6 +121,55 @@ def run(argv: Sequence[str], *, hydra_main: Optional[Callable[[Sequence[str]], i
             return 4
         res = guard(system, argv)
         out(f"defence: {res.decision.value}  trace={list(res.trace)}  reason={res.reason}")
+
+        # The extracted brain observes every vetted invocation, but it is not
+        # imported until the signed integrity gate above has passed.
+        untrusted_input = " ".join(str(arg) for arg in argv)
+        event_id = f"runtime-{uuid.uuid4().hex}"
+        event = {
+            "event_id": event_id,
+            "tenant_id": "local",
+            "source": "ai_cyber.layered_defence",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "untrusted_input": untrusted_input,
+            "payload": {
+                "operation": "hydra_cli_invocation",
+                "decision": res.decision.value,
+                "reason": str(res.reason)[:512],
+                "trace": list(res.trace),
+                "arguments_count": len(argv),
+                "arguments_sha256": hashlib.sha256(untrusted_input.encode("utf-8")).hexdigest(),
+            },
+        }
+        try:
+            newtech_result = system.newtech.process_runtime_event(event)
+            system.audit.record(
+                "newtech_runtime_event",
+                event_id=event_id,
+                accepted=newtech_result.accepted,
+                blocked=newtech_result.blocked,
+                fabric_decision=newtech_result.fabric_decision,
+                integrity_status=newtech_result.integrity_status,
+                trust_state=newtech_result.trust_state,
+                loop_id=newtech_result.loop_id or "",
+                audit_hash=newtech_result.audit_hash,
+            )
+            out(
+                f"newtech brain: {'BLOCK' if newtech_result.blocked else 'ACCEPT'} "
+                f"fabric={newtech_result.fabric_decision} "
+                f"integrity={newtech_result.integrity_status} "
+                f"trust={newtech_result.trust_state} "
+                f"reason={newtech_result.reason}"
+            )
+            if newtech_result.blocked or not newtech_result.accepted:
+                system.audit.record("hydra_not_started", decision="newtech_block")
+                return 3
+        except Exception as e:
+            system.audit.record("newtech_integration_error", error=type(e).__name__)
+            system.audit.record("hydra_not_started", decision="newtech_error")
+            out(f"newtech brain: BLOCK (integration error: {type(e).__name__})")
+            return 3
+
         if res.decision is not Decision.ALLOW:
             system.audit.record("hydra_not_started", decision=res.decision.value)
             return 3

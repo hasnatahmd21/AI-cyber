@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -26,6 +27,15 @@ class HydraError(SecurityError):
 class PhaseResult:
     phase: int
     file: str
+    passed: int
+    failed: int
+    ok: bool
+    detail: str = ""
+
+
+@dataclass(frozen=True)
+class NewTechResult:
+    total: int
     passed: int
     failed: int
     ok: bool
@@ -62,6 +72,13 @@ class Hydra:
                     actual = hashlib.sha256(stream.read()).hexdigest()
                 if actual != digest:
                     bad.append(f"modified:{fn}")
+        # New-tech package integrity is checked without importing any new-tech
+        # runtime code; production imports remain behind the signed integrity gate.
+        try:
+            from .newtech_integration import verify_newtech_extraction
+            bad.extend(verify_newtech_extraction())
+        except Exception as exc:
+            bad.append(f"newtech: verification error: {type(exc).__name__}: {exc}")
         return bad
 
     def _original_segment(self, fn: str) -> bytes:
@@ -111,6 +128,51 @@ class Hydra:
         return mod
 
     def run_all(self, workers: int = 8) -> List[PhaseResult]:
+        """Run only the unchanged legacy 42-phase suite."""
         from concurrent.futures import ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=workers) as ex:
             return list(ex.map(self.run_phase_subprocess, self.phase_numbers()))
+
+    def run_newtech_all(self, timeout: float = 300.0) -> NewTechResult:
+        """Run extracted HYDRA Brain phase 4-22 tests as a separate namespaced suite."""
+        problems = []
+        try:
+            from .newtech_integration import verify_newtech_extraction, newtech_root
+            problems = verify_newtech_extraction()
+            if problems:
+                return NewTechResult(0, 0, len(problems), False, "; ".join(problems[:12]))
+            package_root = str(newtech_root())
+        except Exception as exc:
+            return NewTechResult(0, 0, 1, False, f"newtech setup error: {type(exc).__name__}: {exc}")
+
+        layered_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        env = os.environ.copy()
+        env["PYTHONPATH"] = os.pathsep.join(
+            item for item in (package_root, layered_root, env.get("PYTHONPATH", "")) if item
+        )
+        try:
+            cp = subprocess.run(
+                [sys.executable, "-m", "hydra_brain.tests.run_all"],
+                cwd=layered_root, env=env, capture_output=True, text=True, timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return NewTechResult(0, 0, 1, False, f"newtech test suite timed out after {timeout:g}s")
+
+        output = "\n".join(part for part in (cp.stdout, cp.stderr) if part)
+        summary = re.search(r"Ran\s+(\d+)\s+tests?", output)
+        if not summary:
+            detail = output[-2500:].strip() or "no unittest summary produced"
+            return NewTechResult(0, 0, 1, False, f"newtech tests produced no summary; exit={cp.returncode}; {detail}")
+        total = int(summary.group(1))
+        fail_match = re.search(r"FAILED\s*\(([^)]*)\)", output)
+        failed = 0
+        if fail_match:
+            failed = sum(int(n) for n in re.findall(r"(?:failures|errors|skipped)=(\d+)", fail_match.group(1)))
+        ok = cp.returncode == 0 and failed == 0
+        if cp.returncode != 0 and failed == 0:
+            failed = 1
+        passed = total if ok else max(0, total - failed)
+        detail = f"Ran {total} new-tech tests; exit={cp.returncode}"
+        if not ok:
+            detail += "\n" + output[-2500:].strip()
+        return NewTechResult(total, passed, failed, ok, detail)

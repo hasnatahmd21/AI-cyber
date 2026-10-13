@@ -1,0 +1,164 @@
+{
+  "archive": "hydra_brain_newtech.zip",
+  "archive_sha256": "d332cefe22516d241d45858cca2e8e68d1f70d820aa510206a0917e065600cba",
+  "destination": "layered_defense/ai_cyber/newtech_brain",
+  "file_count": 31,
+  "total_uncompressed_bytes": 960456,
+  "files": [
+    {
+      "path": "hydra_brain/README.md",
+      "size_bytes": 4546,
+      "sha256": "05c8e4e79065ff0d133e3f0ac525d8a3128ea6144d2782c6a97246c6a0408cc5"
+    },
+    {
+      "path": "hydra_brain/__init__.py",
+      "size_bytes": 1023,
+      "sha256": "d8ecbe7ad9bc159aaab9a9ee142a0bcb37ec60fad170f8e5b27f5462aa0c6acb"
+    },
+    {
+      "path": "hydra_brain/audit.py",
+      "size_bytes": 5020,
+      "sha256": "ea7d4d4503d1e92d697e97ca3ecf1bb871dcf7b14ded84ddc52c8075931d2f96"
+    },
+    {
+      "path": "hydra_brain/brain.py",
+      "size_bytes": 66711,
+      "sha256": "5f007ec4ea1699399589936008116fddd9b06f943a56e572c966ba474d2bbbf1"
+    },
+    {
+      "path": "hydra_brain/bridge.py",
+      "size_bytes": 2791,
+      "sha256": "866282674561f992d4550ee6e55b5f6d8765b23176b37b4e894d1d24f5153ee1"
+    },
+    {
+      "path": "hydra_brain/optional/__init__.py",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "hydra_brain/optional/phase17_regeneration.py",
+      "size_bytes": 74078,
+      "sha256": "de81123c1c15fad096fdda1875939166961a792195075988dbfb4d1abf5e31ef"
+    },
+    {
+      "path": "hydra_brain/optional/phase18_adaptive_defense.py",
+      "size_bytes": 70113,
+      "sha256": "7d8eadb0bd42381a805269ce6aa3480860a9b3cdff5608067f4bfe4a29c16130"
+    },
+    {
+      "path": "hydra_brain/optional/phase19_agent_protection.py",
+      "size_bytes": 50222,
+      "sha256": "48d854b23ac296159e6a391c5de0a5b5d4bade028789b50e0f5e166dd2014cbf"
+    },
+    {
+      "path": "hydra_brain/optional/phase20_defense_fabric.py",
+      "size_bytes": 37735,
+      "sha256": "cdcf67f49a187f79c3f7392491dad581910dc6eac0daf671489d8a9505121a5e"
+    },
+    {
+      "path": "hydra_brain/optional/phase21_resilience.py",
+      "size_bytes": 44965,
+      "sha256": "9172de0139ec23871677a7bddb4936a6d1ae3c06948769d6d0bcb36aea141931"
+    },
+    {
+      "path": "hydra_brain/optional/phase22_control_loop.py",
+      "size_bytes": 57099,
+      "sha256": "3cb23950b9983c9890749a1512ae21ea570028f7495e1d0330f05617667f0df9"
+    },
+    {
+      "path": "hydra_brain/examples/__init__.py",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "hydra_brain/examples/demo.py",
+      "size_bytes": 2674,
+      "sha256": "3fa93a2552bbcc9fb1bca718f881efc5b2ba9afb9bf3102bec20237293dde1c5"
+    },
+    {
+      "path": "hydra_brain/tests/__init__.py",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "hydra_brain/tests/run_all.py",
+      "size_bytes": 901,
+      "sha256": "5a4c050208a4f73c2fc6406cfe9ac0a7bd1803677cdfcd3f4d3d169c2d0c428a"
+    },
+    {
+      "path": "hydra_brain/tests/test_wiring.py",
+      "size_bytes": 13736,
+      "sha256": "5c081d7f3c0f8301e1c8c61d72f397155052005909332d06804f403bd3cbbcfd"
+    },
+    {
+      "path": "hydra_brain/core/__init__.py",
+      "size_bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "hydra_brain/core/phase04_security_state.py",
+      "size_bytes": 32737,
+      "sha256": "96b50d44d1b78903ffbda8fa2719bf111b2bec42488c2b3f756a4f1c4b1a80a5"
+    },
+    {
+      "path": "hydra_brain/core/phase05_state_integrity.py",
+      "size_bytes": 28028,
+      "sha256": "45ab87ec339bafadf202d490c76c7b741d2c03ec1ab530185a427f18a455bb51"
+    },
+    {
+      "path": "hydra_brain/core/phase06_security_graph.py",
+      "size_bytes": 32109,
+      "sha256": "0758c5f9314cdaed848da87d5ba4a01c807456ad4f89674570679ca59ae63cce"
+    },
+    {
+      "path": "hydra_brain/core/phase07_causal_memory.py",
+      "size_bytes": 41254,
+      "sha256": "a84f59b39fb6cd1a509d13585cbba55333a846b54e11535ceb3af48a91a93ab7"
+    },
+    {
+      "path": "hydra_brain/core/phase08_memory_trust.py",
+      "size_bytes": 41878,
+      "sha256": "179ce44616d559ccbc6ec3df27fdfe207b320caa590b35e3bc200751f3df6f80"
+    },
+    {
+      "path": "hydra_brain/core/phase09_attribution.py",
+      "size_bytes": 47240,
+      "sha256": "583ff3c08ad77a2fe6fc17c0801180e0dd0a01d6f51363156d8a3a20da6d3411"
+    },
+    {
+      "path": "hydra_brain/core/phase10_intervention.py",
+      "size_bytes": 38038,
+      "sha256": "fb58c2e07806242a2ae57578bbaaba2b7e8f8425ccdb12187ed14b7dc274fa42"
+    },
+    {
+      "path": "hydra_brain/core/phase11_invariants.py",
+      "size_bytes": 42715,
+      "sha256": "1cb57c36396e31e3eb1fc77544ff1ecd8ac813d1b3ea8db7e4bfe8a047f95148"
+    },
+    {
+      "path": "hydra_brain/core/phase12_authority_graph.py",
+      "size_bytes": 40110,
+      "sha256": "18f7e85ddbdfe6f57b3d808ce7ffed3642d764eaf9832288521f68d274a7f15c"
+    },
+    {
+      "path": "hydra_brain/core/phase13_intent_compiler.py",
+      "size_bytes": 40714,
+      "sha256": "bcb46af211285f3722e500e0da10f6b347b21eb3ff2aeea738ffd7cbb967b366"
+    },
+    {
+      "path": "hydra_brain/core/phase14_verification.py",
+      "size_bytes": 38129,
+      "sha256": "87e9d802e23913874f72bd2fe86249f85a6be9a7a6639cc905efdd7dcf7d8fe4"
+    },
+    {
+      "path": "hydra_brain/core/phase15_replanning.py",
+      "size_bytes": 47529,
+      "sha256": "3a4879caf9471e00316b7b2d469f555df9c7c44b5c418661a4a443f331e93570"
+    },
+    {
+      "path": "hydra_brain/core/phase16_cyber_experiment.py",
+      "size_bytes": 58361,
+      "sha256": "af6f4696a7ac74960db185c242ddf70e56d14f07978f50c8ae9655bd0ea096e7"
+    }
+  ]
+}

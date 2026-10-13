@@ -63,17 +63,31 @@ def main(argv=None) -> int:
             hy = Hydra()
             bad = hy.verify_files(); ll = hy.verify_lossless()
             print(f"phases: {len(hy.phase_numbers())}  files_intact: {not bad}  lossless_vs_original: {ll}")
+            if bad:
+                for issue in bad:
+                    print(f"integrity issue: {issue}")
             ok = not bad and ll
             if a.run:
-                # Running all HYDRA phases is an execution path, not a passive file check.
+                # Both suites run only after the secured launcher has verified integrity.
                 from . import secured
                 secured.enforce(["hydra-check", "--run"])
                 try:
                     res = hy.run_all()
                     for r in res:
                         print(f"phase {r.phase:02d}: {r.passed} passed, {r.failed} failed {'OK' if r.ok else 'FAIL '+r.detail}")
-                    print("total passed:", sum(r.passed for r in res))
-                    ok = ok and all(r.ok for r in res)
+                    legacy_passed = sum(r.passed for r in res)
+                    print("legacy HYDRA total passed:", legacy_passed)
+                    legacy_ok = all(r.ok for r in res)
+                    ok = ok and legacy_ok
+
+                    brain = hy.run_newtech_all()
+                    print(
+                        f"new-tech brain suite: {brain.passed} passed, {brain.failed} failed "
+                        f"{'OK' if brain.ok else 'FAIL'}"
+                    )
+                    if brain.detail:
+                        print(brain.detail)
+                    ok = ok and brain.ok
                 finally:
                     secured.ACTIVE = False
             return 0 if ok else 1

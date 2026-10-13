@@ -82,6 +82,9 @@ class TestLauncher(unittest.TestCase):
             def run_all(self):
                 events.append("hydra")
                 return [SimpleNamespace(phase=1, passed=1, failed=0, ok=True, detail="")]
+            def run_newtech_all(self):
+                events.append("newtech")
+                return SimpleNamespace(passed=1, failed=0, ok=True, detail="")
 
         original_active = secured.ACTIVE
         secured.ACTIVE = False
@@ -94,7 +97,7 @@ class TestLauncher(unittest.TestCase):
         self.addCleanup(setattr, secured, "enforce", self.patch_enforce)
 
         self.assertEqual(cli.main(["hydra-check", "--run"]), 0)
-        self.assertEqual(events, [("enforce", ["hydra-check", "--run"]), "hydra"])
+        self.assertEqual(events, [("enforce", ["hydra-check", "--run"]), "hydra", "newtech"])
         self.assertFalse(secured.ACTIVE)
 
     def test_no_key_refuses_to_start(self):
