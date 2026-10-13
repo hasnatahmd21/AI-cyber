@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - repair/forensic-reconstruction
+      - feature/import-layered-project
   pull_request:
     branches:
       - main
