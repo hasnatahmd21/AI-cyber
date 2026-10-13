@@ -12,8 +12,25 @@ from contextlib import redirect_stdout
 from io import StringIO
 from typing import Any
 
-from .hydra import run_final_hardening_verification
-from .intelligence_hydra import run_hydra_phase, run_all_extended
+# Runtime implementations are imported lazily by these wrappers. In the canonical CLI
+# path, main() must enforce the defence before any HYDRA implementation module loads.
+
+
+def run_hydra_phase(*args, **kwargs):
+    from .intelligence_hydra import run_hydra_phase as implementation
+    return implementation(*args, **kwargs)
+
+
+def run_all_extended(*args, **kwargs):
+    from .intelligence_hydra import run_all_extended as implementation
+    return implementation(*args, **kwargs)
+
+
+def run_final_hardening_verification(*args, **kwargs):
+    from .hydra import run_final_hardening_verification as implementation
+    return implementation(*args, **kwargs)
+
+
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -71,7 +88,7 @@ def _result_successful(result: dict[str, Any]) -> bool:
         )
     return True
 
-def main(argv: list[str] | None = None) -> int:
+def _main_impl(argv: list[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
 
     try:
@@ -126,6 +143,22 @@ def main(argv: list[str] | None = None) -> int:
         else:
             print(f"AI-Cyber runtime error: {type(exc).__name__}: {exc}", file=sys.stderr)
         return 1
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run always-on layered defence once, then the unchanged canonical HYDRA CLI."""
+    from ._defence import enforce, release
+
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    enforce(arguments)
+    runtime_arguments = [
+        arg for arg in arguments
+        if arg not in ("--defence-restore", "--defence-rebaseline")
+    ]
+    try:
+        return _main_impl(runtime_arguments)
+    finally:
+        release()
 
 
 if __name__ == "__main__":

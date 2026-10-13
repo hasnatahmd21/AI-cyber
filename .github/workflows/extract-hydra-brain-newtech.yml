@@ -1,0 +1,131 @@
+name: Extract HYDRA brain newtech archive
+
+on:
+  push:
+    branches:
+      - feature/integrate-hydra-brain-newtech
+    paths:
+      - hydra_brain_newtech.zip
+      - .github/workflows/extract-hydra-brain-newtech.yml
+
+permissions:
+  contents: write
+
+jobs:
+  extract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout integration branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+
+      - name: Validate and extract archive safely
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import stat
+          import zipfile
+          from pathlib import Path, PurePosixPath
+
+          archive = Path("hydra_brain_newtech.zip")
+          destination = Path("layered_defense/ai_cyber/newtech_brain")
+          if not archive.is_file():
+              raise SystemExit(f"Required archive missing: {archive}")
+          if destination.exists():
+              raise SystemExit(f"Refusing to overwrite existing extraction: {destination}")
+
+          archive_sha256 = hashlib.sha256(archive.read_bytes()).hexdigest()
+          with zipfile.ZipFile(archive) as zf:
+              bad_member = zf.testzip()
+              if bad_member:
+                  raise SystemExit(f"ZIP CRC failure: {bad_member}")
+              infos = zf.infolist()
+              if len(infos) > 2048:
+                  raise SystemExit(f"Refusing archive with too many entries: {len(infos)}")
+              total_size = sum(info.file_size for info in infos)
+              if total_size > 100 * 1024 * 1024:
+                  raise SystemExit(f"Refusing expanded archive over 100 MiB: {total_size}")
+              seen = set()
+              for info in infos:
+                  name = info.filename
+                  p = PurePosixPath(name)
+                  if not name or p.is_absolute() or ".." in p.parts or "\\" in name or ":" in p.parts[0]:
+                      raise SystemExit(f"Unsafe ZIP path: {name!r}")
+                  normalized = str(p)
+                  if normalized in seen:
+                      raise SystemExit(f"Duplicate ZIP path: {normalized}")
+                  seen.add(normalized)
+                  mode = info.external_attr >> 16
+                  if stat.S_ISLNK(mode):
+                      raise SystemExit(f"Symlink entry is not allowed: {name}")
+                  if info.flag_bits & 0x1:
+                      raise SystemExit(f"Encrypted ZIP entry is not supported: {name}")
+
+              destination.mkdir(parents=True, exist_ok=False)
+              records = []
+              root_resolved = destination.resolve()
+              for info in infos:
+                  rel = PurePosixPath(info.filename)
+                  target = destination.joinpath(*rel.parts)
+                  if not target.resolve().is_relative_to(root_resolved):
+                      raise SystemExit(f"ZIP path escaped destination: {info.filename}")
+                  if info.is_dir():
+                      target.mkdir(parents=True, exist_ok=True)
+                      continue
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  digest = hashlib.sha256()
+                  written = 0
+                  with zf.open(info, "r") as source, target.open("wb") as sink:
+                      while True:
+                          chunk = source.read(1024 * 1024)
+                          if not chunk:
+                              break
+                          written += len(chunk)
+                          if written > info.file_size:
+                              raise SystemExit(f"Expanded size exceeds metadata: {info.filename}")
+                          sink.write(chunk)
+                          digest.update(chunk)
+                  if written != info.file_size:
+                      raise SystemExit(f"Expanded size mismatch: {info.filename}")
+                  records.append({
+                      "path": str(target.relative_to(destination)),
+                      "size_bytes": written,
+                      "sha256": digest.hexdigest(),
+                  })
+
+          manifest = {
+              "archive": archive.name,
+              "archive_sha256": archive_sha256,
+              "destination": str(destination),
+              "file_count": len(records),
+              "total_uncompressed_bytes": sum(item["size_bytes"] for item in records),
+              "files": records,
+          }
+          (destination / "EXTRACTION_MANIFEST.json").write_text(
+              json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8",
+          )
+          print("ARCHIVE_SHA256=" + archive_sha256)
+          print("EXTRACTED_FILE_COUNT=" + str(len(records)))
+          print("TOTAL_UNCOMPRESSED_BYTES=" + str(manifest["total_uncompressed_bytes"]))
+          for item in records:
+              print(f"EXTRACTED {item['path']} | {item['size_bytes']} bytes | sha256={item['sha256']}")
+          PY
+
+      - name: Commit extracted files to integration branch
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add layered_defense/ai_cyber/newtech_brain/
+          if git diff --cached --quiet; then
+            echo "No extracted files to commit."
+            exit 0
+          fi
+          git commit -m "Extract HYDRA brain newtech into isolated subsystem folder"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
