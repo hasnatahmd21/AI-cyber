@@ -1,4 +1,4 @@
-""""Quarantine state, release policy, cross-boundary access control."""
+"""Quarantine state, release policy, cross-boundary access control."""
 from __future__ import annotations
 
 import posixpath
@@ -49,7 +49,7 @@ class Isolation:
         Backslashes are treated as separators so Windows-style traversal cannot
         bypass the POSIX-style sandbox boundary.
         """
-        if not isinstance(resource, str) or not resource or "\\x00" in resource:
+        if not isinstance(resource, str) or not resource or "\x00" in resource:
             return None
 
         decoded = resource
@@ -63,7 +63,7 @@ class Isolation:
             # component might interpret this path.
             return None
 
-        decoded = decoded.replace("\\\\", "/")
+        decoded = decoded.replace("\\", "/")
         parts = decoded.split("/")
         if any(part in (".", "..") for part in parts):
             return None
