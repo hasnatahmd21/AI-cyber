@@ -1,7 +1,9 @@
-"""Quarantine state, release policy, cross-boundary access control."""
+""""Quarantine state, release policy, cross-boundary access control."""
 from __future__ import annotations
 
+import posixpath
 from typing import Dict, Optional, Set
+from urllib.parse import unquote
 
 from .contracts import AuditSink, SecurityError
 
@@ -38,11 +40,51 @@ class Isolation:
         self._log("release", subject=subject, approver=approver)
         return True
 
+    @staticmethod
+    def _canonical_resource(resource: str) -> Optional[str]:
+        """Decode and canonicalize a resource path, rejecting traversal.
+
+        Repeated decoding handles double-encoded separators/dot segments. The
+        bounded loop fails closed if input is still changing after the limit.
+        Backslashes are treated as separators so Windows-style traversal cannot
+        bypass the POSIX-style sandbox boundary.
+        """
+        if not isinstance(resource, str) or not resource or "\\x00" in resource:
+            return None
+
+        decoded = resource
+        for _ in range(8):
+            next_value = unquote(decoded)
+            if next_value == decoded:
+                break
+            decoded = next_value
+        else:
+            # More decoding remains possible: do not guess how a downstream
+            # component might interpret this path.
+            return None
+
+        decoded = decoded.replace("\\\\", "/")
+        parts = decoded.split("/")
+        if any(part in (".", "..") for part in parts):
+            return None
+
+        # Keep path semantics explicit and collapse duplicate separators.
+        return posixpath.normpath(decoded)
+
     def may_access(self, subject: str, resource: str, allowed_prefix: str = "/decoy/") -> bool:
-        """A quarantined subject may only touch the sandbox prefix; all else is blocked."""
+        """Quarantined subjects may access only canonical paths inside the sandbox."""
         if subject not in self._q:
             return True
-        return resource.startswith(allowed_prefix)
+
+        canonical = self._canonical_resource(resource)
+        prefix = self._canonical_resource(allowed_prefix)
+        if canonical is None or prefix is None:
+            return False
+
+        # Treat the configured prefix as a directory boundary, not a raw string
+        # prefix (e.g. /decoyevil must not match /decoy).
+        prefix_root = prefix.rstrip("/")
+        return canonical == prefix_root or canonical.startswith(prefix_root + "/")
 
     def verify_state(self) -> bool:
         return all(isinstance(k, str) and k and isinstance(v, str) for k, v in self._q.items())
