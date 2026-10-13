@@ -1022,7 +1022,6 @@ Scope:
 No Phase-5+ implementation is included.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -2239,7 +2238,6 @@ Explicitly NOT implemented:
     - Regeneration
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -3284,7 +3282,6 @@ Scope ONLY:
 No Phase 7+ functionality is implemented.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -4589,7 +4586,6 @@ Scope ONLY:
 No Phase 8+ functionality is implemented.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -6201,7 +6197,6 @@ Strict boundary:
     No Phase 9+ functionality is implemented here.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -7641,7 +7636,6 @@ Safety boundary:
     The engine MUST NOT claim certainty when evidence is insufficient.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -9377,7 +9371,6 @@ It does NOT execute interventions.
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
@@ -10791,7 +10784,6 @@ It does NOT verify execution results.
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -12425,7 +12417,6 @@ It does NOT perform authorization of real actions.
 It does NOT implement identity infrastructure.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -13928,7 +13919,6 @@ NOT IMPLEMENTED:
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -15512,7 +15502,6 @@ Phase 18 -> Adaptive Defense
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -16908,7 +16897,6 @@ Phase 15 only orchestrates references to those capabilities.
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -18845,7 +18833,6 @@ It does not modify production infrastructure.
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -21065,7 +21052,6 @@ It does NOT:
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -23778,7 +23764,6 @@ It does NOT:
 - implement the full autonomous loop
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -26263,7 +26248,6 @@ It does NOT:
 - implement the Phase 20 defense fabric
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -28192,7 +28176,6 @@ It does NOT implement:
 No destructive or offensive operations are performed.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -29616,7 +29599,6 @@ Phase 22+ functionality is intentionally NOT implemented:
 This module does not execute external security actions.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -31445,7 +31427,6 @@ This module coordinates references/interfaces to them.
 It does not introduce Phase 23+ functionality.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -33615,7 +33596,6 @@ Phase 26 Production Validation
 Phase 27 IP / Novelty / Final Validation
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -35322,7 +35302,6 @@ It does NOT:
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -37266,7 +37245,6 @@ It does NOT:
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -39448,7 +39426,6 @@ It does NOT:
 Phase 27 remains separate.
 """
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -41336,7 +41313,6 @@ This phase does NOT:
 """
 
 
-from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
