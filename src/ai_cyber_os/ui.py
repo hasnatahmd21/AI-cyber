@@ -473,7 +473,9 @@ def _execute_runtime(phase: str, hardening: bool) -> dict[str, Any]:
                 "timestamp": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
             })
             STATE["events"] = STATE["events"][-40:]
-            result["state"] = _snapshot()
+        # _snapshot() acquires STATE_LOCK itself; call it only after releasing
+        # the non-reentrant lock to avoid deadlocking every completed run.
+        result["state"] = _snapshot()
 
         telemetry.complete(
             "hydra",
