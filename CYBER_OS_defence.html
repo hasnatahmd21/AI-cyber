@@ -435,7 +435,7 @@ const gd=document.getElementById('gd'),gz=document.getElementById('gz'),alE=docu
 try{if(THREE.EffectComposer&&THREE.UnrealBloomPass){const w=innerWidth,h=innerHeight;let rt;
  try{rt=new THREE.WebGLMultisampleRenderTarget(w*dpr,h*dpr,{format:THREE.RGBAFormat})}catch(e){rt=undefined}
  comp=new THREE.EffectComposer(R,rt);comp.addPass(new THREE.RenderPass(S,C));
- bloom=new THREE.UnrealBloomPass(new THREE.Vector2(w,h),.85,.6,.16);comp.addPass(bloom);
+ bloom=new THREE.UnrealBloomPass(new THREE.Vector2(w,h),.32,.42,.2);comp.addPass(bloom);
  fx=new THREE.ShaderPass({uniforms:{tDiffuse:{value:null},t:{value:0},a:{value:.0012},hu:{value:0}},
   vertexShader:"varying vec2 u;void main(){u=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}",
   fragmentShader:"uniform sampler2D tDiffuse;uniform float t,a,hu;varying vec2 u;float h(vec2 p){return fract(sin(dot(p,vec2(12.9898,78.233))+t)*43758.5453);}vec3 hr(vec3 c,float a){float s=sin(a),k=cos(a);mat3 m=mat3(.299+.701*k+.168*s,.299-.299*k-.328*s,.299-.3*k+1.25*s,.587-.587*k+.33*s,.587+.413*k+.035*s,.587-.588*k-1.05*s,.114-.114*k-.497*s,.114-.114*k+.292*s,.114+.886*k-.203*s);return m*c;}void main(){vec2 d=u-.5;float r=dot(d,d);vec2 o=d*r*a*14.;vec3 c=vec3(texture2D(tDiffuse,u+o).r,texture2D(tDiffuse,u).g,texture2D(tDiffuse,u-o).b);c*=1.+(h(u*vec2(1000.,700.))-.5)*.14;c*=1.-r*1.2;c=hr(c,hu);gl_FragColor=vec4(max(c,0.),1.);}"});
@@ -508,14 +508,14 @@ function loop(now){requestAnimationFrame(loop);const dt=Math.min(.05,(now-last)/
  // core
  core.rotation.y=t*.5;core.rotation.x=t*.3;core2.rotation.y=-t*.9;core2.rotation.z=t*.6;core.scale.setScalar(1+Math.sin(t*2)*.05);ringP.rotation.y=t*.6;core3.rotation.y=-t*.4;core3.rotation.x=t*.7;
  waves.forEach(m=>{const d=m.userData,q0=d.p;d.p=(d.p+dt*.07)%1;if(q0<.93&&d.p>=.93)fl=1;m.position.y=8-d.p*128;m.scale.setScalar(4+d.p*25);m.material.opacity=.95*Math.min(1,d.p*30)*(d.p>.9?(1-d.p)*10:1)});
- fl=Math.max(0,fl-dt*1.4);bm.forEach(m=>m.opacity=Math.min(1,m.userData.o*(1+.6*fl)));bglow.scale.setScalar(16+fl*16);
+ fl=Math.max(0,fl-dt*1.4);bm.forEach(m=>m.opacity=Math.min(1,m.userData.o*(1+.6*fl))*.38;bglow.scale.setScalar(16+fl*16);
  base.rotation.y=t*.06;orbit.rotation.y=-t*.3;rx.rotation.y=t*.8;rx.rotation.x=t*.5;rx2.rotation.y=-t*1.4;rx2.rotation.z=t*.9;rx.scale.setScalar(1+fl*.25);
  rip.forEach((m,i)=>{const q=(t*.22+i/3)%1;m.scale.setScalar(2+q*31);m.material.opacity=(1-q)*.95*Math.min(1,q*12)});
  for(let i=0;i<SPN;i++){const k=i*3;spa[k+1]+=dt*spv[i];if(spa[k+1]>38){const a=Math.random()*6.283,r=Math.sqrt(Math.random())*29;spa[k]=Math.cos(a)*r;spa[k+1]=0;spa[k+2]=Math.sin(a)*r}}spg.attributes.position.needsUpdate=true;
  crown.rotation.y=Math.sin(t*.25)*.2;crown.scale.y=1+Math.sin(t*.7)*.03;arm.rotation.y=t*.5;arm.children[0].rotation.x=t*.8;arm.children[1].rotation.z=-t*.6;arm.children[2].rotation.x=t*1.1;ac.rotation.y=t;
  buds.forEach(b=>b.g.scale.setScalar(1.6+b.s*.5+Math.sin(t*3+b.ph)*.6));
  sap.forEach(o=>{o.u=(o.u+dt*o.v)%1;const m=o.m.pts,f=o.u*(m.length-1),i=f|0,q=m[i],r=m[Math.min(i+1,m.length-1)],e=f-i;o.g.position.set(q.x+(r.x-q.x)*e,q.y+(r.y-q.y)*e,q.z+(r.z-q.z)*e)});
- if(bloom)bloom.strength=.85+fl*.45;
+ if(bloom)bloom.strength=.32+fl*.12;
  pil.forEach(p=>{const u=(t*p.s+p.o)%1;p.g.position.set(p.x,-2.4+u*PH0,p.z)});
  orbs.forEach((o,i)=>{const u=(t*o.s+o.o)%1,a=o.a+t*o.v,r=3.6+Math.sin(t*.8+i)*1.4+u*2;o.g.position.set(Math.cos(a)*r,8-u*128,Math.sin(a)*r);o.g.material.opacity=Math.min(1,u*10)*Math.min(1,(1-u)*10)});
  // particles + rain wrap around the camera
