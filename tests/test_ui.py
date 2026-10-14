@@ -321,12 +321,6 @@ def test_command_endpoint_rejects_arbitrary_shell(monkeypatch):
     assert "unsupported command" in body["error"]
 
 
-):
-    status, body = _post_to_test_server({"command": "rm -rf /"}, "/api/command")
-    assert status == 400
-    assert body["success"] is False
-    assert "unsupported command" in body["error"]
-
 
 def test_live_status_bundle_connects_project_defence_hydra_and_data_fabric():
     bundle = ui._live_status_bundle()
