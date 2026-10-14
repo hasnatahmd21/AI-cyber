@@ -9,7 +9,7 @@ def test_ui_exposes_live_operational_routes():
     assert "/api/command" in inspect.getsource(ui.Handler.do_POST)
     assert "/api/events" in ui.TEMPLATE
     assert "/api/command" in ui.TEMPLATE
-    assert "NEURAL PHASE FABRIC" in ui.TEMPLATE
+    assert "CYBER OS // Neural Phase Fabric" in ui.TEMPLATE
     assert len(ui.VALID_PHASES) == 28
     assert ui.VALID_PHASES == {"all", *{f"phase{i}" for i in range(1, 28)}}
 
