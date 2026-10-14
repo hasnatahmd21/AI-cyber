@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -78,16 +79,24 @@ def _guarded_operation(operation: str, payload: Any, action):
     body = json.dumps(payload, sort_keys=True, default=str, ensure_ascii=False)
     # The gate receives bounded untrusted input, not an arbitrary shell command.
     argv = ["ui-operation", str(operation)[:80], body[:4096]]
+    outcome: dict[str, Any] = {}
+    def safely_call_action():
+        try:
+            outcome["result"] = action()
+        except Exception as exc:
+            # Preserve business/runtime errors; only guard failures become a denial.
+            outcome["error"] = exc
+        return {"ui_operation_invoked": True}
     try:
-        result = run_guarded(argv, action)
-    except PermissionError:
-        raise
+        run_guarded(argv, safely_call_action)
     except Exception as exc:
         # A broken/unavailable guard is a deny, never a route to an unguarded action.
         raise PermissionError(f"defence preflight refused operation ({type(exc).__name__})") from None
     finally:
         live_surface.invalidate_status_cache()
-    return result
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome.get("result")
 
 
 def _data_fabric_status() -> dict[str, Any]:
@@ -358,6 +367,10 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
 
         if path == "/":
+            ui_check = live_surface.verify_ui_asset()
+            if ui_check.get("state") != "passed":
+                self._send(503, {"success": False, "error": "UI integrity verification failed", "ui": ui_check})
+                return
             self._send(200, TEMPLATE, "text/html")
             return
 
@@ -637,6 +650,11 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.host not in {"127.0.0.1", "localhost", "::1"}:
         parser.error("UI is intentionally local-only")
+
+    ui_check = live_surface.verify_ui_asset()
+    if ui_check.get("state") != "passed":
+        print("UI integrity verification failed; refusing to serve the console.", file=sys.stderr)
+        return 5
 
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}"
