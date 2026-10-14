@@ -59,7 +59,7 @@ canvas.sp{width:100%;height:36px;display:block;margin-bottom:6px}
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
 <script>
 // ====== EDIT YOUR PHASES HERE ======
-const PH=["OS SECURITY DEPTH","NETWORK FABRIC","THREAT INTEL INGEST","CVE / EPSS SCORING","ATT&CK MAPPING","SIGMA DETECTION","SURICATA RULES","ZEEK INTEL","AI TRIAGE CORE","AUTONOMOUS RESPONSE","FORENSIC RECON","RESILIENCE FABRIC","DECEPTION GRID","FINAL HARDENING"];
+const PH=["SIGNED INTEGRITY","OUTER BARRIER","LAYER 1 FILTER","LAYER 2 DEFENCE","LAYER 3 AUTHORITY","ISOLATION ZONE","VERIFIED REGENERATION","CRYPTOGRAPHY CORE","HYDRA SUPERVISOR","KNOWLEDGE / RAG","DATASET PIPELINE","THREAT INTEL STORE","AUDIT CHAIN","DATA FABRIC"];
 const COL=["#00f0ff","#ff2bd6","#39ff88","#ff2a3d"],HEX=[0x00f0ff,0xff2bd6,0x39ff88,0xff2a3d],HR=12,STEP=7;
 const V=["poll","verify","correlate","index","review","contain","recover","audit","enrich","block"],T=["runtime","hydra","barrier","dataset","audit","fabric"];
 let liveLines=["WAITING FOR BACKEND TELEMETRY"],liveLineIndex=0;
@@ -105,7 +105,7 @@ PH.forEach((name,i)=>{
  const frame=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(8.2,5.2)),new THREE.LineBasicMaterial({color:HEX[i%4],fog:false}));const fr2=new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(8.5,5.5)),new THREE.LineBasicMaterial({color:HEX[i%4],transparent:true,opacity:.6,fog:false,blending:THREE.AdditiveBlending}));const pg0=glow(HEX[i%4],15);pg0.material.opacity=.5;pg0.material.fog=false;pg0.position.z=-.2;
  const halo=new THREE.Mesh(new THREE.PlaneGeometry(9.2,6.2),new THREE.MeshBasicMaterial({color:HEX[i%4],transparent:true,opacity:.2,depthWrite:false,fog:false,blending:THREE.AdditiveBlending}));halo.position.z=-.05;
  inner.add(plane,frame,fr2,halo,pg0);grp.add(inner);
- grp.userData={i,name,col,g:cv.getContext("2d"),tex,pr:Math.random(),bars:Array.from({length:12},()=>Math.random()),log:Array.from({length:7},L),ph:Math.random()*6,inner,frame,base:1};
+ grp.userData={i,name,col,g:cv.getContext("2d"),tex,pr:0,bars:Array(12).fill(0),log:Array.from({length:7},L),ph:Math.random()*6,inner,frame,base:1};
  S.add(grp);panels.push(grp);hit.push(plane);
  const ring=add(new THREE.Mesh(new THREE.TorusGeometry(HR+4,.03,6,128),new THREE.MeshBasicMaterial({color:HEX[i%4],transparent:true,opacity:1})),true);ring.rotation.x=Math.PI/2;gates.push(ring);
 });
@@ -366,22 +366,30 @@ const MM=new THREE.ShaderMaterial({uniforms:{tx:{value:new THREE.CanvasTexture(a
 const mrain=new THREE.Points(mg,MM);mrain.frustumCulled=false;S.add(mrain);
 
 function draw(P,t){const g=P.g,W=512,H=320,c=P.col;
- g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,W,H);g.fillStyle="rgba(0,10,22,.95)";g.fillRect(0,0,W,H);g.globalAlpha=.6;g.strokeStyle=c;g.lineWidth=4;g.strokeRect(2,2,W-4,H-4);g.globalAlpha=1;
+ const bundle=window.CYBER_OS_STATE&&window.CYBER_OS_STATE.bundle;
+ const components=(bundle&&bundle.defence&&bundle.defence.components)||{};
+ const statuses=["integrity","barrier","l1","l2","l3","iso","regen","crypto","hydra","fabric","fabric","project","crypto","fabric"];
+ const key=statuses[P.i]||"project",component=components[key]||{},status=String(component.state||"unknown").toLowerCase();
+ const SCOLOR={passed:"#39ff88",blocked:"#ff2a3d",failed:"#ff2a3d",isolated:"#ffd23a",checking:"#00f0ff",idle:"#8995a7",unknown:"#7d8aa6",offline:"#ff2a3d",degraded:"#ffd23a"};
+ const sc=SCOLOR[status]||SCOLOR.unknown,ratio=status==="passed"?1:status==="idle"?.28:status==="checking"?.58:["blocked","failed","isolated"].includes(status)?1:0;
+ const events=(bundle&&bundle.telemetry&&bundle.telemetry.events)||[],recent=events.slice(-12);
+ P.pr=ratio;P.bars=Array.from({length:12},(_,i)=>{const e=recent[i],v=String(e&&e.status||"").toUpperCase();return !e?0:["ERROR","FAIL","FAILED"].includes(v)?1:["BLOCKED","BLOCK"].includes(v)?.82:["PASS","COMPLETE","VERIFIED"].includes(v)?.52:.24});
+ g.setTransform(2,0,0,2,0,0);g.clearRect(0,0,W,H);g.fillStyle="rgba(0,10,22,.95)";g.fillRect(0,0,W,H);
+ g.globalAlpha=.6;g.strokeStyle=c;g.lineWidth=4;g.strokeRect(2,2,W-4,H-4);g.globalAlpha=1;
  g.globalAlpha=.1;g.fillStyle=c;g.fillRect(0,(t*90+P.i*40)%H,W,12);g.globalAlpha=1;
  g.strokeStyle=c;g.lineWidth=3;g.beginPath();[[2,24,2,2,24,2],[W-24,2,W-2,2,W-2,24],[2,H-24,2,H-2,24,H-2],[W-24,H-2,W-2,H-2,W-2,H-24]].forEach(a=>{g.moveTo(a[0],a[1]);g.lineTo(a[2],a[3]);g.lineTo(a[4],a[5])});g.stroke();
- g.fillStyle=c;g.font="bold 15px monospace";g.fillText("PHASE "+String(P.i+1).padStart(2,"0")+" // ACTIVE",18,30);
- if(Math.sin(t*6)>0)g.fillRect(W-30,20,10,10);
- g.font="bold 24px monospace";g.fillText(P.name,18,62);
- P.pr+=Math.random()*.02;if(P.pr>=1&&Math.random()<.06)P.pr=0;P.pr=Math.min(1,P.pr);
- g.lineWidth=2;g.strokeRect(18,76,W-36,10);g.fillRect(18,76,(W-36)*P.pr,10);
- g.font="bold 14px monospace";g.fillStyle="rgba(240,255,250,1)";P.log.forEach((l,k)=>g.fillText(l,18,110+k*17));
- P.bars=P.bars.map(v=>Math.max(.06,Math.min(1,v+(Math.random()-.5)*.3)));
+ g.fillStyle=sc;g.font="bold 15px monospace";g.fillText("COMPONENT "+String(P.i+1).padStart(2,"0")+" // "+status.toUpperCase(),18,30);
+ if(status==="checking"&&Math.sin(t*6)>0)g.fillRect(W-30,20,10,10);
+ g.font="bold 24px monospace";g.fillStyle=c;g.fillText(P.name,18,62);
+ g.lineWidth=2;g.strokeStyle=c;g.strokeRect(18,76,W-36,10);g.fillStyle=sc;g.fillRect(18,76,(W-36)*ratio,10);
+ g.font="bold 14px monospace";g.fillStyle="rgba(240,255,250,1)";P.log.forEach((l,k)=>g.fillText(String(l).slice(0,56),18,110+k*17));
  g.lineWidth=5;g.strokeStyle="rgba(255,255,255,.12)";g.beginPath();g.arc(400,142,28,0,6.283);g.stroke();
- g.strokeStyle=c;g.beginPath();g.arc(400,142,28,-1.5708,-1.5708+6.283*P.pr);g.stroke();
- g.textAlign="center";g.font="bold 15px monospace";g.fillStyle=c;g.fillText(Math.round(P.pr*100)+"%",400,148);g.textAlign="left";
- P.bars.forEach((v,j)=>g.fillRect(318+j*14,224-v*34,8,v*34));
- g.strokeStyle=c;g.lineWidth=2;g.beginPath();for(let x=0;x<W-36;x+=4){const y=270+Math.sin(x*.05+t*3+P.i)*14*Math.sin(x*.01+t)+(Math.random()-.5)*5;x?g.lineTo(18+x,y):g.moveTo(18,y)}g.stroke();
- g.fillStyle=c;g.fillText("AI-CORE "+(60+Math.random()*39|0)+"%  CONF "+(.9+Math.random()*.09).toFixed(3),18,308);
+ g.strokeStyle=sc;g.beginPath();g.arc(400,142,28,-1.5708,-1.5708+6.283*ratio);g.stroke();
+ g.textAlign="center";g.font="bold 11px monospace";g.fillStyle=sc;g.fillText(status.toUpperCase().slice(0,8),400,148);g.textAlign="left";
+ P.bars.forEach((v,j)=>{if(v>0){g.fillStyle=v>=.8?"#ff2a3d":v>=.5?"#39ff88":"#00f0ff";g.fillRect(318+j*14,224-v*34,8,v*34)}});
+ // Decorative waveform only; status and event bars above come from backend evidence.
+ g.strokeStyle=c;g.lineWidth=2;g.beginPath();for(let x=0;x<W-36;x+=4){const y=270+Math.sin(x*.05+t*3+P.i)*14*Math.sin(x*.01+t);x?g.lineTo(18+x,y):g.moveTo(18,y)}g.stroke();
+ g.fillStyle=sc;g.font="bold 14px monospace";g.fillText("EVENTS "+events.length+" · SOURCE "+(bundle?"BACKEND":"CONNECTING"),18,308);
  P.tex.needsUpdate=true}
 // ===== free camera + grab-any-panel input =====
 let yaw=0,pitch=-.12,auto=true,grab=null,pd=0,pm=null,hold=0,fly=null,dn=null;const vel=new THREE.Vector3(),lv={y:0,p:0};
@@ -437,6 +445,7 @@ addEventListener("resize",size);size();place();C.position.set(0,6,-PR+38);
 // ===== HEAVY UI =====
 {const $=i=>document.getElementById(i),sheet=$("sheet"),SC={tw:$("s-tw"),th:$("s-th"),sy:$("s-sy"),mp:$("s-mp"),cs:$("s-cs"),df:$("s-df"),fb:$("s-fb")},pad=n=>String(n).padStart(2,"0"),NMX=[...NM,"DATA FABRIC","REGENERATION CORE","CRYPTOGRAPHY CORE"],T0=performance.now();let op=null,alertUntil=0,critAt=0;
 window.CYBER_OS_STATE=window.CYBER_OS_STATE||{bundle:null,events:[],defence:null};
+window.CYBER_OS_STATE.setLiveLines=lines=>{liveLines=Array.isArray(lines)&&lines.length?lines:["WAITING FOR BACKEND TELEMETRY"];liveLineIndex=0};
 const stateColour=st=>({passed:"#39ff88",blocked:"#ff2a3d",failed:"#ff2a3d",isolated:"#ffd23a",checking:"#00f0ff",idle:"#8995a7",unknown:"#7d8aa6",preview:"#9d7bff",offline:"#ff2a3d"}[st]||"#7d8aa6");
  const tab=k=>{op=op===k?null:k;sheet.style.display=op?"block":"none";for(const q in SC)SC[q].style.display=q===op?"block":"none";document.querySelectorAll("#tabs button[data-t]").forEach(b=>b.classList.toggle("on",b.dataset.t===op))};
  document.querySelectorAll("#tabs button[data-t]").forEach(b=>b.onclick=()=>tab(b.dataset.t));
@@ -607,7 +616,7 @@ const SHAPE_KEYS=["regen","barrier","l1","l2","l3","iso","crypto"];
   const showFabricResult=result=>{const e=$("fbresult");if(e)e.textContent=JSON.stringify(result,null,2).slice(0,8000)};
   const renderFabric=f=>{if(!f)return;fabricReady=true;text("fb-records",f.records);text("fb-relations",f.relations);text("fb-datasets",(f.datasets||[]).length);text("fb-manifests",f.manifest_count);text("fbsource",(f.ready?"READY":"NOT READY")+" · "+(f.engine||"database unknown")+" · "+(f.retrieval||"retrieval unknown")+" · schema "+(f.schema_version??"unknown"));const sel=$("fbmanifest");if(sel){const old=sel.value;sel.replaceChildren();const manifests=f.manifests||[];if(!manifests.length){const opt=document.createElement("option");opt.value="";opt.textContent="No manifests found in project";sel.appendChild(opt)}else{manifests.forEach(m=>{const opt=document.createElement("option");opt.value=m.path;opt.textContent=m.path+" ("+m.bytes+" bytes)";sel.appendChild(opt)});if(manifests.some(m=>m.path===old))sel.value=old}}};
   const renderTop=b=>{const p=b.project||{},proj=p.project||{},hydra=p.hydra||{},def=(b.defence&&b.defence.components)||{};setStatus("acore",hydra.state||"idle");text("n",String(proj.required_files_present??"—")+"/"+String(proj.required_files_total??"—"));const events=(b.telemetry&&b.telemetry.events)||[];text("b",events.filter(e=>["BLOCKED","BLOCK"].includes(String(e.status||"").toUpperCase())).length);const required=["integrity","barrier","l1","l2","l3"].map(k=>(def[k]||{}).state||"unknown");const overall=required.includes("failed")?"failed":required.every(s=>s==="passed")?"passed":required.includes("checking")?"checking":"unknown";setStatus("dh",overall);setStatus("tl",events.length?"events "+events.length:"no events");const eventEl=$("tl");if(eventEl)eventEl.style.color=events.some(e=>["FAIL","ERROR","BLOCKED"].includes(String(e.status||"").toUpperCase()))?"#ff2a3d":"#00f0ff";};
-  const renderThreat=events=>{const c=[0,0,0,0],map=e=>{const s=String(e.status||"INFO").toUpperCase();return ["ERROR","FAIL","FAILED"].includes(s)?3:["BLOCKED","BLOCK"].includes(s)?2:["PASS","COMPLETE","VERIFIED"].includes(s)?1:0};const rows=(Array.isArray(events)?events:[]).slice(-15);rows.forEach(e=>c[map(e)]++);for(let i=0;i<4;i++)text("c"+i,c[i]);const feed=$("feed");if(feed){feed.replaceChildren();rows.slice().reverse().forEach(e=>{const line=document.createElement("div"),idx=map(e),stamp=e.timestamp?new Date(e.timestamp).toLocaleTimeString():"--:--:--";line.className="sv"+idx;line.textContent=stamp+" ["+["INFO","PASS","BLOCKED","ERROR"][idx]+"] "+String(e.type||"event")+" — "+String(e.message||"");feed.appendChild(line)});if(!rows.length)feed.textContent="No runtime events recorded yet. No synthetic threat records are created."}const canvas=$("hist"),ctx=canvas&&canvas.getContext("2d");if(ctx){ctx.clearRect(0,0,360,60);const max=Math.max(1,...c);c.forEach((v,i)=>{ctx.fillStyle=["#00f0ff","#39ff88","#ffd23a","#ff2a3d"][i];ctx.fillRect(14+i*88,60-(v/max*54),54,v/max*54)})}state.events=rows;window.CYBER_OS_STATE=state;};
+  const renderThreat=events=>{const c=[0,0,0,0],map=e=>{const s=String(e.status||"INFO").toUpperCase();return ["ERROR","FAIL","FAILED"].includes(s)?3:["BLOCKED","BLOCK"].includes(s)?2:["PASS","COMPLETE","VERIFIED"].includes(s)?1:0};const rows=(Array.isArray(events)?events:[]).slice(-15);rows.forEach(e=>c[map(e)]++);for(let i=0;i<4;i++)text("c"+i,c[i]);const feed=$("feed");if(feed){feed.replaceChildren();rows.slice().reverse().forEach(e=>{const line=document.createElement("div"),idx=map(e),stamp=e.timestamp?new Date(e.timestamp).toLocaleTimeString():"--:--:--";line.className="sv"+idx;line.textContent=stamp+" ["+["INFO","PASS","BLOCKED","ERROR"][idx]+"] "+String(e.type||"event")+" — "+String(e.message||"");feed.appendChild(line)});if(!rows.length)feed.textContent="No runtime events recorded yet. No synthetic threat records are created."}const canvas=$("hist"),ctx=canvas&&canvas.getContext("2d");if(ctx){ctx.clearRect(0,0,360,60);const max=Math.max(1,...c);c.forEach((v,i)=>{ctx.fillStyle=["#00f0ff","#39ff88","#ffd23a","#ff2a3d"][i];ctx.fillRect(14+i*88,60-(v/max*54),54,v/max*54)})}state.events=rows;state.liveLines=rows.map(e=>"["+String(e.status||"INFO")+"] "+String(e.type||"event")+" "+String(e.message||"").slice(0,90));if(typeof state.setLiveLines==="function")state.setLiveLines(state.liveLines);window.CYBER_OS_STATE=state;};
   const renderTowerEvidence=b=>{const comps=(b.defence&&b.defence.components)||{},keys=["barrier","l1","l2","l3","hydra","fabric","regen","crypto"],rows=document.querySelectorAll("#s-tw .row[data-i]");rows.forEach((r,i)=>{const key=keys[i],x=comps[key]||{},st=x.state||"unknown";const lab=r.querySelector(".st"),fill=r.querySelector(".bar i"),small=r.querySelector("small");if(lab){lab.textContent=st.toUpperCase();lab.style.color=colour(st)}r.style.color=colour(st);r.dataset.state=st;if(fill){fill.style.width=st==="passed"?"100%":st==="idle"?"35%":st==="checking"?"60%":["blocked","failed","isolated"].includes(st)?"100%":"0%";fill.style.background=colour(st)}if(small)small.textContent=String(x.evidence||"No verified event yet").slice(0,180)})};
   const renderBundle=b=>{state.bundle=b;state.defence=b.defence;window.CYBER_OS_STATE=state;renderTop(b);renderFabric(b.data_fabric);renderThreat((b.telemetry&&b.telemetry.events)||[]);renderTowerEvidence(b);if(typeof state.updatePanels==="function")state.updatePanels();};
   const refresh=async()=>{if(refreshing)return;refreshing=true;try{const bundle=await jsonFetch("/api/live/summary");renderBundle(bundle);const events=await jsonFetch("/api/events?since=0");renderThreat(events.events||[]);if(window.CYBER_OS_STATE&&window.CYBER_OS_STATE.bundle){window.CYBER_OS_STATE.bundle.telemetry=events;window.CYBER_OS_STATE.events=events.events||[]}const d=$("dinfo");if(d&&bundle.defence&&bundle.defence.last_decision){const x=bundle.defence.last_decision;d.textContent="LAST ENFORCEMENT: "+(x.decision||"unknown")+" · reason: "+(x.reason||"n/a")+" · trace: "+((x.trace||[]).join(" → ")||"no trace")}}catch(e){setStatus("acore","offline");setStatus("dh","offline");text("fbsource","BACKEND OFFLINE · "+String(e.message||e));const root=$("dsrc");if(root){root.textContent="BACKEND OFFLINE · "+String(e.message||e);root.style.color="#ff2a3d"}}finally{refreshing=false}};
