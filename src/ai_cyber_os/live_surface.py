@@ -259,9 +259,21 @@ def defence_status(*, fabric: dict[str, Any] | None = None,
     if audit.get("chainOk") is False:
         components["crypto"] = _state("failed", "Latest encrypted audit could not be authenticated or its hash chain failed.", observed_at=audit.get("timestamp"))
     elif integrity["state"] == "passed" and audit.get("chainOk") is True:
-        components["crypto"] = _state("passed", "HMAC-SHA256 signed baselines verified; AES-GCM encrypted audit and hash chain verified.", observed_at=audit.get("timestamp"))
+        components["crypto"] = _state("passed", "HMAC-SHA256 signed baselines and the AES-GCM encrypted audit/hash chain both verified.", observed_at=audit.get("timestamp"))
     elif integrity["state"] == "passed":
-        components["crypto"] = _state("passed", "HMAC-SHA256 signed baselines verified and AES-GCM support is available; no persisted audit chain exists yet.")
+        try:
+            if DEFENCE_ROOT.parent not in map(Path, sys.path):
+                sys.path.insert(0, str(DEFENCE_ROOT.parent))
+            from ai_cyber.crypto_integrity import aead_available
+            encryption_available = aead_available()
+        except Exception:
+            encryption_available = False
+        components["crypto"] = _state(
+            "checking" if encryption_available else "failed",
+            "HMAC-SHA256 signed baselines verify; AES-GCM is available, but no persisted encrypted audit has yet been verified."
+            if encryption_available else
+            "HMAC-SHA256 baseline integrity passed, but AES-GCM support is unavailable.",
+        )
     elif integrity["state"] == "failed":
         components["crypto"] = _state("failed", "Cryptographic trust cannot be reported healthy while integrity verification fails.")
     else:
@@ -301,12 +313,12 @@ def defence_status(*, fabric: dict[str, Any] | None = None,
     elif integrity["state"] == "failed" or any(components[k]["state"] == "failed" for k in ("barrier", "l1", "l2", "l3")):
         project_state = "failed"
         project_evidence = "At least one critical integrity/defence component has a failure state."
-    elif integrity["state"] == "unknown":
-        project_state = "checking"
-        project_evidence = "Core files exist; signed integrity is not yet verified."
     elif components["ui"]["state"] != "passed":
         project_state = "failed"
         project_evidence = "The served UI asset failed its pinned SHA-256 check."
+    elif integrity["state"] == "unknown":
+        project_state = "checking"
+        project_evidence = "Core files exist; signed integrity is not yet verified."
     else:
         project_state = "passed"
         project_evidence = "Required core files, pinned UI asset, and signed integrity currently verify."
@@ -391,21 +403,35 @@ def project_summary(*, runtime_state: dict[str, Any] | None = None,
         hydra_state = "checking"
     else:
         hydra_state = "idle"
+    components = (defence or {}).get("components", {})
+    integrity_state = components.get("integrity", {}).get("state", "unknown")
+    ui_state = components.get("ui", {}).get("state", "unknown")
+    layer_states = [components.get(key, {}).get("state", "unknown") for key in ("barrier", "l1", "l2", "l3")]
+    critical_states = [ui_state, integrity_state, *layer_states]
+    if len(existing) != len(root_files):
+        project_state, project_evidence = "failed", "One or more required runtime source files are missing."
+    elif any(value == "failed" for value in critical_states):
+        project_state, project_evidence = "degraded", "A critical UI/integrity/defence component has a verified failure state."
+    elif any(value in {"unknown", "checking"} for value in critical_states):
+        project_state, project_evidence = "checking", "Core files exist, but not all key components have verified live evidence yet."
+    else:
+        project_state, project_evidence = "ready", "Core UI, signed integrity, and live defence evidence are available."
+    runtime_label = str(runtime_state.get("runtime", "unknown")).lower()
+    if runtime_label not in {"online", "degraded", "blocked", "starting", "unknown"}:
+        runtime_label = "unknown"
+
     return {
         "timestamp": _now(),
         "app": {
-            "state": "online",
+            "state": runtime_label,
             "ui": "CYBER_OS_defence.html",
             "host_scope": "localhost-only",
             "uptime_seconds": round(time.monotonic() - _SERVICE_STARTED, 1),
         },
         "repository": _git_info(),
         "project": {
-            "state": "failed" if len(existing) != len(root_files) else (
-                "degraded" if defence and defence.get("components", {}).get("integrity", {}).get("state") == "failed" else (
-                    "checking" if defence and defence.get("components", {}).get("integrity", {}).get("state") == "unknown" else "ready"
-                )
-            ),
+            "state": project_state,
+            "evidence": project_evidence,
             "required_files_present": len(existing),
             "required_files_total": len(root_files),
             "python_files": total_py,
