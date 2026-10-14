@@ -51,7 +51,7 @@ def test_handler_home_and_invalid_api(monkeypatch):
         conn.request("GET", "/")
         response = conn.getresponse()
         assert response.status == 200
-        assert "27 PHASE MATRIX" in response.read().decode()
+        assert "DATA FABRIC // EVIDENCE + PROVENANCE" in response.read().decode()
 
         conn.request("GET", "/not-found")
         response = conn.getresponse()
@@ -67,7 +67,9 @@ def test_ui_does_not_claim_unverified_subsystems():
     assert "DATABASE<br><span class=\"ok\">ONLINE" not in ui.TEMPLATE
     assert "EVENT BUS<br><span class=\"ok\">ONLINE" not in ui.TEMPLATE
     assert "GOVERNANCE<br><span class=\"ok\">ONLINE" not in ui.TEMPLATE
-    assert "const P=[...Array(27)].map((_,i)=>i+1)" in ui.TEMPLATE
+    assert "HYDRA // 27 PHASES" in ui.TEMPLATE
+    assert "DATA FABRIC // EVIDENCE + PROVENANCE" in ui.TEMPLATE
+    assert "/api/live/summary" in ui.TEMPLATE
 
 
 def _post_to_test_server(payload, path="/api/run"):
@@ -181,11 +183,11 @@ def test_test_center_rejects_unknown_kind():
     assert "invalid test kind" in body["error"]
 
 
-def test_ui_has_operational_test_center():
-    assert "OPERATIONAL TEST CENTER" in ui.TEMPLATE
-    assert "RUN LOCAL RED-TEAM" in ui.TEMPLATE
-    assert "RUN REGRESSION TESTS" in ui.TEMPLATE
-    assert "/api/test" in ui.TEMPLATE
+def test_ui_has_live_hydra_and_data_fabric_controls():
+    assert "HYDRA // 27 PHASES" in ui.TEMPLATE
+    assert "DATA FABRIC // EVIDENCE + PROVENANCE" in ui.TEMPLATE
+    assert "BUILD RAG CONTEXT (EVIDENCE ONLY)" in ui.TEMPLATE
+    assert "/api/command" in ui.TEMPLATE
 
 
 
