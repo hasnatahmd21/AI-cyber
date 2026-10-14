@@ -22,3 +22,18 @@ def test_nested_hardening_keeps_outer_operation_active():
     assert telemetry.snapshot()["run"]["active"] is True
     telemetry.complete("hydra", success=True, phase="all")
     assert telemetry.snapshot()["run"]["active"] is False
+
+
+def test_cyber_os_is_the_only_served_ui_and_live_status_is_wired():
+    from pathlib import Path
+
+    source = inspect.getsource(ui.Handler.do_GET)
+    assert "/api/live/summary" in source
+    assert "/api/data-fabric/status" in source
+    assert "/api/hydra/phases" in source
+    assert "CYBER_OS_defence.html" in source
+    assert 'id="s-fb"' in ui.TEMPLATE
+    assert "DATA FABRIC // EVIDENCE + PROVENANCE" in ui.TEMPLATE
+    assert "setInterval(ev,700)" not in ui.TEMPLATE
+    assert "RUN SAMPLE REQUEST" not in ui.TEMPLATE
+    assert not (Path(ui.PROJECT_ROOT) / "src" / "ai_cyber_os" / "ui_template.html").exists()
