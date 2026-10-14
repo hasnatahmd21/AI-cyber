@@ -22,14 +22,16 @@ from .rag import build_context as build_rag_context
 from .runtime_intelligence import analyze as intelligence_analyze
 from .dataset_pipeline import ingest_manifest, inspect_dataset
 from .threat_intel import ingest_source, PARSERS
-from . import telemetry
+from . import telemetry, live_surface
 from .command_gateway import execute as execute_command
 
 HOST = "127.0.0.1"
 PORT = 8765
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 VALID_PHASES = {"all", *{f"phase{i}" for i in range(1, 28)}}
-TEMPLATE = Path(__file__).with_name("ui_template.html").read_text(encoding="utf-8")
+# The uploaded 3D command centre is the sole production UI. The legacy template is not served.
+TEMPLATE_PATH = PROJECT_ROOT / "CYBER_OS_defence.html"
+TEMPLATE = TEMPLATE_PATH.read_text(encoding="utf-8")
 
 STATE_LOCK = threading.Lock()
 def _assert_inside_project(path: Path, label: str = "path") -> Path:
@@ -55,6 +57,117 @@ STATE: dict[str, Any] = {
 def _snapshot() -> dict[str, Any]:
     with STATE_LOCK:
         return json.loads(json.dumps(STATE, default=str))
+
+
+
+def _guarded_operation(operation: str, payload: Any, action):
+    """Run every user-triggered POST operation through the existing integrity/barrier/layer gate."""
+    from ._defence import run_guarded
+
+    body = json.dumps(payload, sort_keys=True, default=str, ensure_ascii=False)
+    # The gate receives bounded untrusted input, not an arbitrary shell command.
+    argv = ["ui-operation", str(operation)[:80], body[:4096]]
+    try:
+        result = run_guarded(argv, action)
+    except PermissionError:
+        raise
+    except Exception as exc:
+        # A broken/unavailable guard is a deny, never a route to an unguarded action.
+        raise PermissionError(f"defence preflight refused operation ({type(exc).__name__})") from None
+    finally:
+        live_surface.invalidate_status_cache()
+    return result
+
+
+def _data_fabric_status() -> dict[str, Any]:
+    status = knowledge_status(db_path=DEFAULT_DB)
+    manifests: list[dict[str, Any]] = []
+    for base in (PROJECT_ROOT / "datasets" / "manifests", PROJECT_ROOT / "docs" / "datasets"):
+        try:
+            if base.is_dir() and not base.is_symlink():
+                for item in sorted(base.glob("*.json")):
+                    if item.is_file() and not item.is_symlink():
+                        manifests.append({
+                            "path": item.relative_to(PROJECT_ROOT).as_posix(),
+                            "name": item.name,
+                            "bytes": item.stat().st_size,
+                        })
+        except OSError:
+            continue
+    # Do not expose the local user's absolute home-directory path in API responses.
+    status = dict(status)
+    status["db"] = "~/.ai-cyber/knowledge.db"
+    status.update(
+        source="live",
+        timestamp=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        engine="SQLite FTS5",
+        retrieval="deterministic lexical retrieval",
+        provenance_enabled=True,
+        manifests=manifests,
+        manifest_count=len(manifests),
+    )
+    return status
+
+
+def _hydra_status() -> dict[str, Any]:
+    state = _snapshot()
+    report = load_report()
+    last_phase = state.get("last_phase")
+    last_success = state.get("last_success")
+    live = telemetry.snapshot()
+    if last_success is True:
+        status = "passed"
+    elif last_success is False:
+        status = "failed"
+    elif live.get("run", {}).get("active"):
+        status = "checking"
+    else:
+        status = "idle"
+    phases = []
+    for number in range(1, 28):
+        phase_name = f"phase{number}"
+        phase_status = "unknown"
+        if last_phase == "all":
+            summary = state.get("last_summary") or {}
+            phase_map = summary.get("results", {}) if isinstance(summary, dict) else {}
+            candidate = phase_map.get(phase_name) if isinstance(phase_map, dict) else None
+            if isinstance(candidate, dict):
+                phase_status = "passed" if candidate.get("success") is True or candidate.get("verified") is True else "failed" if candidate.get("success") is False or candidate.get("verified") is False else "unknown"
+        elif last_phase == phase_name and last_success is not None:
+            phase_status = "passed" if last_success else "failed"
+        phases.append({"phase": number, "id": phase_name, "state": phase_status})
+    return {
+        "source": "live",
+        "timestamp": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+        "state": status,
+        "available_phases": 27,
+        "last_phase": last_phase,
+        "last_success": last_success,
+        "last_summary": state.get("last_summary"),
+        "latest_report": report,
+        "phases": phases,
+        "telemetry": live.get("run", {}),
+    }
+
+
+def _live_status_bundle() -> dict[str, Any]:
+    state = _snapshot()
+    live = telemetry.snapshot()
+    fabric = _data_fabric_status()
+    defence = live_surface.defence_status(fabric=fabric, runtime_state=state)
+    hydra = _hydra_status()
+    summary = live_surface.project_summary(
+        runtime_state=state, telemetry_state=live, fabric=fabric, defence=defence
+    )
+    return {
+        "success": True,
+        "timestamp": summary["timestamp"],
+        "project": summary,
+        "defence": defence,
+        "hydra": hydra,
+        "data_fabric": fabric,
+        "telemetry": live,
+    }
 
 
 def _execute(phase: str, hardening: bool) -> dict[str, Any]:
@@ -226,6 +339,28 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, TEMPLATE, "text/html")
             return
 
+
+        if path in {"/defence/status", "/api/defence/status"}:
+            fabric = _data_fabric_status()
+            self._send(200, live_surface.defence_status(fabric=fabric, runtime_state=_snapshot()))
+            return
+
+        if path == "/api/live/summary":
+            self._send(200, _live_status_bundle())
+            return
+
+        if path == "/api/hydra/status":
+            self._send(200, _hydra_status())
+            return
+
+        if path == "/api/hydra/phases":
+            self._send(200, {"success": True, **_hydra_status()})
+            return
+
+        if path == "/api/data-fabric/status":
+            self._send(200, _data_fabric_status())
+            return
+
         if path == "/api/status":
             state = _snapshot()
             state.update(
@@ -233,8 +368,9 @@ class Handler(BaseHTTPRequestHandler):
                 phases=27,
                 network_scope="localhost-only",
                 latest_report=load_report(),
-                knowledge=knowledge_status(db_path=DEFAULT_DB),
+                knowledge=_data_fabric_status(),
                 live=telemetry.snapshot(),
+                project=_live_status_bundle()["project"],
             )
             self._send(200, state)
             return
@@ -259,7 +395,7 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/knowledge/status":
-            self._send(200, knowledge_status(db_path=DEFAULT_DB))
+            self._send(200, _data_fabric_status())
             return
 
         self._send(404, {"success": False, "error": "not found"})
@@ -281,13 +417,17 @@ class Handler(BaseHTTPRequestHandler):
                 command = body.get("command")
                 if not isinstance(command, str):
                     raise ValueError("command must be a string")
-                result = execute_command(
-                    command,
-                    run_phase=_execute,
-                    search=lambda query: intelligence_analyze(query, db_path=DEFAULT_DB, limit=10),
-                    status=_command_status,
-                    regression=_run_regression,
-                    red_team=_run_redteam,
+                result = _guarded_operation(
+                    "command",
+                    {"command": command},
+                    lambda: execute_command(
+                        command,
+                        run_phase=_execute,
+                        search=lambda query: intelligence_analyze(query, db_path=DEFAULT_DB, limit=10),
+                        status=_command_status,
+                        regression=_run_regression,
+                        red_team=_run_redteam,
+                    ),
                 )
                 nested = result.get("result")
                 action = result.get("action")
@@ -326,13 +466,15 @@ class Handler(BaseHTTPRequestHandler):
                     if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 50:
                         raise ValueError("limit must be an integer between 1 and 50")
                     if action == "context":
-                        result = build_rag_context(
-                            query.strip(), db_path=DEFAULT_DB, dataset=dataset, limit=limit
+                        result = _guarded_operation(
+                            "knowledge-context", body,
+                            lambda: build_rag_context(query.strip(), db_path=DEFAULT_DB, dataset=dataset, limit=limit),
                         )
                         result["success"] = True
                     else:
-                        result = knowledge_search(
-                            query.strip(), db_path=DEFAULT_DB, dataset=dataset, limit=limit
+                        result = _guarded_operation(
+                            "knowledge-search", body,
+                            lambda: knowledge_search(query.strip(), db_path=DEFAULT_DB, dataset=dataset, limit=limit),
                         )
                         if isinstance(result, list):
                             result = {"success": True, "query": query.strip(), "results": result}
@@ -346,15 +488,18 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("path must be a non-empty string")
                     candidate = (PROJECT_ROOT / raw_path).resolve()
                     _assert_inside_project(candidate, "path")
-                    result = ingest_file(
-                        candidate,
-                        db_path=DEFAULT_DB,
-                        dataset=body.get("dataset"),
-                        source=body.get("source"),
-                        license=body.get("license", ""),
-                        version=body.get("version", ""),
-                        source_uri=body.get("source_uri", ""),
-                        validation_status=body.get("validation_status", "unverified"),
+                    result = _guarded_operation(
+                        "knowledge-ingest", body,
+                        lambda: ingest_file(
+                            candidate,
+                            db_path=DEFAULT_DB,
+                            dataset=body.get("dataset"),
+                            source=body.get("source"),
+                            license=body.get("license", ""),
+                            version=body.get("version", ""),
+                            source_uri=body.get("source_uri", ""),
+                            validation_status=body.get("validation_status", "unverified"),
+                        ),
                     )
                 elif action == "ingest-manifest":
                     raw_manifest = body.get("manifest")
@@ -362,14 +507,20 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("manifest must be a non-empty string")
                     manifest_path = (PROJECT_ROOT / raw_manifest).resolve()
                     _assert_inside_project(manifest_path, "manifest")
-                    result = ingest_manifest(manifest_path, db_path=DEFAULT_DB)
+                    result = _guarded_operation(
+                        "dataset-ingest-manifest", body,
+                        lambda: ingest_manifest(manifest_path, db_path=DEFAULT_DB),
+                    )
                 elif action == "inspect-manifest":
                     raw_manifest = body.get("manifest")
                     if not isinstance(raw_manifest, str) or not raw_manifest:
                         raise ValueError("manifest must be a non-empty string")
                     manifest_path = (PROJECT_ROOT / raw_manifest).resolve()
                     manifest_path.relative_to(PROJECT_ROOT.resolve())
-                    result = inspect_dataset(manifest_path)
+                    result = _guarded_operation(
+                        "dataset-inspect-manifest", body,
+                        lambda: inspect_dataset(manifest_path),
+                    )
                 elif action == "ingest-source":
                     kind = body.get("kind")
                     raw_path = body.get("path")
@@ -379,16 +530,19 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("path must be a non-empty string")
                     candidate = (PROJECT_ROOT / raw_path).resolve()
                     candidate.relative_to(PROJECT_ROOT.resolve())
-                    result = ingest_source(
-                        kind,
-                        candidate,
-                        db_path=DEFAULT_DB,
-                        dataset=body.get("dataset"),
-                        source=body.get("source"),
-                        version=body.get("version", ""),
-                        source_uri=body.get("source_uri", ""),
-                        license=body.get("license", ""),
-                        validation_status=body.get("validation_status", "unverified"),
+                    result = _guarded_operation(
+                        "threat-intel-ingest", body,
+                        lambda: ingest_source(
+                            kind,
+                            candidate,
+                            db_path=DEFAULT_DB,
+                            dataset=body.get("dataset"),
+                            source=body.get("source"),
+                            version=body.get("version", ""),
+                            source_uri=body.get("source_uri", ""),
+                            license=body.get("license", ""),
+                            validation_status=body.get("validation_status", "unverified"),
+                        ),
                     )
                 elif action == "status":
                     result = knowledge_status(db_path=DEFAULT_DB)
@@ -409,16 +563,18 @@ class Handler(BaseHTTPRequestHandler):
                 if unknown:
                     raise ValueError("unknown request fields: " + ", ".join(sorted(str(x) for x in unknown)))
                 kind = body.get("kind")
-                if kind == "full":
-                    result = _execute("all", False)
-                elif kind == "hardening":
-                    result = _execute("all", True)
-                elif kind == "regression":
-                    result = _run_regression()
-                elif kind == "red-team":
-                    result = _run_redteam()
-                else:
+                if kind not in {"full", "hardening", "regression", "red-team"}:
                     raise ValueError("invalid test kind")
+                result = _guarded_operation(
+                    f"test-{kind}",
+                    body,
+                    lambda: (
+                        _execute("all", False) if kind == "full" else
+                        _execute("all", True) if kind == "hardening" else
+                        _run_regression() if kind == "regression" else
+                        _run_redteam()
+                    ),
+                )
                 self._send(200 if result.get("success", False) else 422, result)
                 return
 
@@ -437,8 +593,14 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("phase must be a string")
             if not isinstance(hardening, bool):
                 raise ValueError("hardening must be a boolean")
-            result = _execute(phase, hardening)
+            result = _guarded_operation(
+                "hydra-run",
+                {"phase": phase, "hardening": hardening},
+                lambda: _execute(phase, hardening),
+            )
             self._send(200 if result["success"] else 422, result)
+        except PermissionError as exc:
+            self._send(403, {"success": False, "error": str(exc), "blocked_by": "layered_defence"})
         except Exception as exc:
             self._send(400, {"success": False, "error": f"{type(exc).__name__}: {exc}"})
 
@@ -459,7 +621,14 @@ def main(argv: list[str] | None = None) -> int:
     server = ThreadingHTTPServer((args.host, args.port), Handler)
     url = f"http://{args.host}:{args.port}"
     print(f"AI-CYBER UI: {url}")
-    print("Scope: localhost-only; execution delegates to canonical HYDRA runtime.")
+    # Run one real guarded preflight at startup. It never runs HYDRA, and failures remain visible in status.
+    try:
+        _guarded_operation("ui-startup-preflight", {"ui": "CYBER_OS_defence.html"}, lambda: {"success": True})
+        telemetry.emit("ui_preflight", "CYBER OS startup preflight passed the layered defence gate",
+                       operation="ui", status="PASS", source="ui")
+    except Exception as exc:
+        telemetry.error("ui-preflight", f"CYBER OS startup preflight blocked ({type(exc).__name__})")
+    print("Scope: localhost-only; serving CYBER_OS_defence.html; all POST operations pass the layered defence gate.")
     if not args.no_browser:
         threading.Timer(0.35, lambda: webbrowser.open(url)).start()
 
