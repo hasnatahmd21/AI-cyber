@@ -58,7 +58,7 @@ def test_command_phase_api_dispatches_to_canonical_runtime(api_server, monkeypat
         calls.append((phase, hardening))
         return {"success": True, "phase": phase, "verified": True}
 
-    monkeypatch.setattr(ui, "_execute", fake_execute)
+    monkeypatch.setattr(ui, "_execute_runtime", fake_execute)
 
     status, body = _post_json(
         f"{api_server}/api/command", {"command": "run phase 7"}
@@ -109,7 +109,7 @@ def test_command_search_api_uses_runtime_intelligence(api_server, monkeypatch):
 def test_command_api_never_marks_failed_or_malformed_backend_green(
     api_server, monkeypatch, backend_result
 ):
-    monkeypatch.setattr(ui, "_execute", lambda phase, hardening: backend_result)
+    monkeypatch.setattr(ui, "_execute_runtime", lambda phase, hardening: backend_result)
 
     status, body = _post_json(
         f"{api_server}/api/command", {"command": "run phase 7"}
