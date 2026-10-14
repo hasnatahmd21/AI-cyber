@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from .hydra import run_final_hardening_verification, run_hydra_phase
 from .operations import load_report, run_regression, save_report
 from .knowledge import DEFAULT_DB, ingest_file, search as knowledge_search, status as knowledge_status
 from .rag import build_context as build_rag_context
@@ -57,6 +56,18 @@ STATE: dict[str, Any] = {
 def _snapshot() -> dict[str, Any]:
     with STATE_LOCK:
         return json.loads(json.dumps(STATE, default=str))
+
+
+def run_hydra_phase(*args, **kwargs):
+    """Lazy adapter: load the canonical HYDRA implementation only after the guard passes."""
+    from .intelligence_hydra import run_hydra_phase as implementation
+    return implementation(*args, **kwargs)
+
+
+def run_final_hardening_verification(*args, **kwargs):
+    """Lazy adapter for the existing hardening verifier."""
+    from .hydra import run_final_hardening_verification as implementation
+    return implementation(*args, **kwargs)
 
 
 
@@ -170,7 +181,7 @@ def _live_status_bundle() -> dict[str, Any]:
     }
 
 
-def _execute(phase: str, hardening: bool) -> dict[str, Any]:
+def _execute_runtime(phase: str, hardening: bool) -> dict[str, Any]:
     if phase not in VALID_PHASES:
         raise ValueError("invalid phase selector")
 
@@ -276,6 +287,17 @@ def _execute(phase: str, hardening: bool) -> dict[str, Any]:
     except Exception as exc:
         telemetry.error("hydra", f"HYDRA execution raised {type(exc).__name__}: {exc}", phase=phase)
         raise
+
+
+def _execute(phase: str, hardening: bool) -> dict[str, Any]:
+    """Guard every HYDRA operation before loading or executing the runtime implementation."""
+    if phase not in VALID_PHASES:
+        raise ValueError("invalid phase selector")
+    return _guarded_operation(
+        "hydra-run",
+        {"phase": phase, "hardening": hardening},
+        lambda: _execute_runtime(phase, hardening),
+    )
 
 
 def _run_redteam() -> dict[str, Any]:
@@ -422,7 +444,7 @@ class Handler(BaseHTTPRequestHandler):
                     {"command": command},
                     lambda: execute_command(
                         command,
-                        run_phase=_execute,
+                        run_phase=_execute_runtime,
                         search=lambda query: intelligence_analyze(query, db_path=DEFAULT_DB, limit=10),
                         status=_command_status,
                         regression=_run_regression,
@@ -545,7 +567,9 @@ class Handler(BaseHTTPRequestHandler):
                         ),
                     )
                 elif action == "status":
-                    result = knowledge_status(db_path=DEFAULT_DB)
+                    result = _guarded_operation(
+                        "knowledge-status", body, lambda: _data_fabric_status()
+                    )
                 else:
                     raise ValueError("invalid knowledge action")
 
@@ -569,8 +593,8 @@ class Handler(BaseHTTPRequestHandler):
                     f"test-{kind}",
                     body,
                     lambda: (
-                        _execute("all", False) if kind == "full" else
-                        _execute("all", True) if kind == "hardening" else
+                        _execute_runtime("all", False) if kind == "full" else
+                        _execute_runtime("all", True) if kind == "hardening" else
                         _run_regression() if kind == "regression" else
                         _run_redteam()
                     ),
@@ -593,11 +617,7 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("phase must be a string")
             if not isinstance(hardening, bool):
                 raise ValueError("hardening must be a boolean")
-            result = _guarded_operation(
-                "hydra-run",
-                {"phase": phase, "hardening": hardening},
-                lambda: _execute(phase, hardening),
-            )
+            result = _execute(phase, hardening)
             self._send(200 if result["success"] else 422, result)
         except PermissionError as exc:
             self._send(403, {"success": False, "error": str(exc), "blocked_by": "layered_defence"})
