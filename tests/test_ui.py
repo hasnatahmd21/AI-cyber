@@ -65,9 +65,9 @@ def test_handler_home_and_invalid_api(monkeypatch):
 
 
 def test_ui_does_not_claim_unverified_subsystems():
-    assert "DATABASE<br><span class=\\"ok\\">ONLINE" not in ui.TEMPLATE
-    assert "EVENT BUS<br><span class=\\"ok\\">ONLINE" not in ui.TEMPLATE
-    assert "GOVERNANCE<br><span class=\\"ok\\">ONLINE" not in ui.TEMPLATE
+    assert 'DATABASE<br><span class="ok">ONLINE' not in ui.TEMPLATE
+    assert 'EVENT BUS<br><span class="ok">ONLINE' not in ui.TEMPLATE
+    assert 'GOVERNANCE<br><span class="ok">ONLINE' not in ui.TEMPLATE
     assert "HYDRA // 27 PHASES" in ui.TEMPLATE
     assert "DATA FABRIC // EVIDENCE + PROVENANCE" in ui.TEMPLATE
     assert "/api/live/summary" in ui.TEMPLATE
