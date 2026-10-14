@@ -1,0 +1,94 @@
+name: CYBER OS UI integration
+
+on:
+  push:
+    branches:
+      - "feature/cyber-os-defence-live-wiring"
+    paths:
+      - "CYBER_OS_defence.html"
+      - "src/ai_cyber_os/**"
+      - "layered_defense/ai_cyber/**"
+      - "tests/test_ui.py"
+      - "tests/test_ui_surface.py"
+      - "tests/test_knowledge_ui.py"
+      - "tests/test_rag_ui_integration.py"
+      - ".github/workflows/cyberos-ui-integration.yml"
+  pull_request:
+    branches:
+      - "main"
+    paths:
+      - "CYBER_OS_defence.html"
+      - "src/ai_cyber_os/**"
+      - "layered_defense/ai_cyber/**"
+      - "tests/test_ui.py"
+      - "tests/test_ui_surface.py"
+      - ".github/workflows/cyberos-ui-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-cyber-os-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout exact branch commit
+        uses: actions/checkout@v4
+
+      - name: Configure Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install project and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+
+      - name: Compile Python runtime and defence source
+        run: |
+          python -m compileall -q src/ai_cyber_os layered_defense/ai_cyber
+
+      - name: Verify UI pin and extract inline JavaScript
+        run: |
+          python - <<'PY'
+          import hashlib
+          import re
+          from pathlib import Path
+          html = Path("CYBER_OS_defence.html").read_text(encoding="utf-8")
+          live = Path("src/ai_cyber_os/live_surface.py").read_text(encoding="utf-8")
+          match = re.search(r'UI_ASSET_SHA256 = "([0-9a-f]{64})"', live)
+          assert match, "UI SHA-256 pin is missing"
+          actual = hashlib.sha256(html.encode("utf-8")).hexdigest()
+          assert actual == match.group(1), f"UI asset pin mismatch: {actual}"
+          assert 'id="s-fb"' in html, "Data Fabric UI panel missing"
+          assert "/api/live/summary" in html, "live summary polling missing"
+          assert "setInterval(ev,700)" not in html, "synthetic threat-event timer remains"
+          assert "RUN SAMPLE REQUEST" not in html, "simulated defence action remains"
+          scripts = re.findall(r'<script\b([^>]*)>([\s\S]*?)</script>', html, re.I)
+          inline = [body for attrs, body in scripts if not re.search(r'\bsrc\s*=', attrs, re.I) and body.strip()]
+          assert len(inline) == 2, f"expected 2 inline scripts, found {len(inline)}"
+          for index, body in enumerate(inline):
+              Path(f"/tmp/cyberos-inline-{index}.js").write_text(body, encoding="utf-8")
+          print(f"UI SHA-256 verified; {len(inline)} inline scripts extracted.")
+          PY
+
+      - name: Check inline JavaScript syntax
+        run: |
+          for file in /tmp/cyberos-inline-*.js; do
+            node --check "$file"
+          done
+
+      - name: Test UI and operational wiring
+        run: |
+          python -m pytest -q \
+            tests/test_ui.py \
+            tests/test_ui_surface.py \
+            tests/test_knowledge_ui.py \
+            tests/test_rag_ui_integration.py \
+            tests/test_defence_cli.py \
+            tests/test_security_surface.py \
+            tests/test_situation_telemetry.py \
+            tests/test_telemetry_gateway.py
