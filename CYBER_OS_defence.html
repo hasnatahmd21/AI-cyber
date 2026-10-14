@@ -382,7 +382,7 @@ function draw(P,t){const g=P.g,W=512,H=320,c=P.col;
  if(status==="checking"&&Math.sin(t*6)>0)g.fillRect(W-30,20,10,10);
  g.font="bold 24px monospace";g.fillStyle=c;g.fillText(P.name,18,62);
  g.lineWidth=2;g.strokeStyle=c;g.strokeRect(18,76,W-36,10);g.fillStyle=sc;g.fillRect(18,76,(W-36)*ratio,10);
- g.font="bold 14px monospace";g.fillStyle="rgba(240,255,250,1)";P.log.forEach((l,k)=>g.fillText(String(l).slice(0,56),18,110+k*17));
+ g.font="bold 14px monospace";g.fillStyle="rgba(240,255,250,1)";const panelLines=recent.slice(-7).map(e=>{const stamp=e.timestamp?new Date(e.timestamp).toLocaleTimeString():"--:--:--";return stamp+" ["+String(e.status||"INFO").toUpperCase()+"] "+String(e.type||"event")});for(let k=0;k<7;k++)g.fillText(String(panelLines[k]||"WAITING FOR VERIFIED EVENT").slice(0,56),18,110+k*17);
  g.lineWidth=5;g.strokeStyle="rgba(255,255,255,.12)";g.beginPath();g.arc(400,142,28,0,6.283);g.stroke();
  g.strokeStyle=sc;g.beginPath();g.arc(400,142,28,-1.5708,-1.5708+6.283*ratio);g.stroke();
  g.textAlign="center";g.font="bold 11px monospace";g.fillStyle=sc;g.fillText(status.toUpperCase().slice(0,8),400,148);g.textAlign="left";
