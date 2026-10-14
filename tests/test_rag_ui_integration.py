@@ -27,9 +27,9 @@ def _post_json(url: str, payload: dict):
 
 def test_knowledge_panel_exposes_rag_context_action():
     html = ui.TEMPLATE
-    assert 'onclick="kcontext()"' in html
-    assert "async function kcontext()" in html
-    assert 'JSON.stringify({action:"context",query:q,limit:8})' in html
+    assert 'id="fbcontext"' in html
+    assert 'action:"context"' in html
+    assert "BUILD RAG CONTEXT (EVIDENCE ONLY)" in html
     assert "answer generation disabled" in html
     assert "content_sha256" in html
     assert "validation_status" in html
