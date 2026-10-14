@@ -171,6 +171,55 @@ def _data_fabric_status() -> dict[str, Any]:
     return status
 
 
+def _security_evaluation_status() -> dict[str, Any]:
+    """Report the existing evidence-evaluation gate without running it on a GET."""
+    root = PROJECT_ROOT / "datasets" / "evaluation"
+    cases: list[str] = []
+    outputs: list[str] = []
+    try:
+        if root.is_dir() and not root.is_symlink():
+            for item in sorted(root.glob("*.json")):
+                if not item.is_file() or item.is_symlink():
+                    continue
+                rel = item.relative_to(PROJECT_ROOT).as_posix()
+                lower = item.name.lower()
+                if "output" in lower:
+                    outputs.append(rel)
+                else:
+                    cases.append(rel)
+    except OSError:
+        pass
+    report = load_report()
+    eval_report = report if isinstance(report, dict) and report.get("kind") == "security-evaluation" else None
+    if eval_report is not None:
+        state = "passed" if eval_report.get("success") is True else "failed"
+    elif cases and outputs:
+        state = "checking"
+    elif cases:
+        state = "idle"
+    else:
+        state = "unknown"
+    return {
+        "source": "live",
+        "state": state,
+        "evaluator": "security_evaluation.py",
+        "version": "1.0.0",
+        "cases": cases,
+        "outputs": outputs,
+        "cases_available": len(cases),
+        "outputs_available": len(outputs),
+        "last_run": {
+            key: eval_report.get(key)
+            for key in ("timestamp", "success", "cases_total", "passed", "failed", "aggregate", "gates")
+        } if eval_report else None,
+        "evidence": (
+            f"Last recorded evidence evaluation: {eval_report.get('passed', 0)}/{eval_report.get('cases_total', 0)} passed."
+            if eval_report else
+            "Evaluation gate exists; no completed security-evaluation report has been recorded in this runtime."
+        ),
+    }
+
+
 def _hydra_status() -> dict[str, Any]:
     state = _snapshot()
     report = load_report()
@@ -284,6 +333,7 @@ def _live_status_bundle() -> dict[str, Any]:
             "source": "live",
             **defence["components"].get("intel", {"state": "unknown", "evidence": "Threat-intelligence status unavailable."}),
         },
+        "security_evaluation": _security_evaluation_status(),
         "telemetry": live,
     }
 
@@ -496,6 +546,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, _data_fabric_status())
             return
 
+        if path == "/api/security-evaluation/status":
+            self._send(200, _security_evaluation_status())
+            return
+
         if path == "/api/status":
             state = _snapshot()
             state.update(
@@ -537,11 +591,86 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlparse(self.path).path
-        if path not in {"/api/run", "/api/test", "/api/knowledge", "/api/command"}:
+        if path not in {"/api/run", "/api/test", "/api/knowledge", "/api/command", "/api/security-evaluation"}:
             self._send(404, {"success": False, "error": "not found"})
             return
 
         try:
+            if path == "/api/security-evaluation":
+                length = int(self.headers.get("Content-Length", "0"))
+                if length > 8192:
+                    raise ValueError("request too large")
+                body = json.loads(self.rfile.read(length) or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError("JSON object required")
+                allowed = {
+                    "cases", "outputs", "min_recall_at_k", "min_precision_at_k",
+                    "min_mrr", "min_ndcg_at_k", "min_evidence_quality", "min_output_grounding",
+                }
+                unknown = set(body) - allowed
+                if unknown:
+                    raise ValueError("unknown request fields: " + ", ".join(sorted(str(x) for x in unknown)))
+                raw_cases, raw_outputs = body.get("cases"), body.get("outputs")
+                if not isinstance(raw_cases, str) or not raw_cases.strip():
+                    raise ValueError("cases must be a project-relative JSON path")
+                if not isinstance(raw_outputs, str) or not raw_outputs.strip():
+                    raise ValueError("outputs must be a project-relative JSON path")
+
+                def evaluation_action():
+                    cases_input = PROJECT_ROOT / raw_cases
+                    outputs_input = PROJECT_ROOT / raw_outputs
+                    if cases_input.is_symlink() or outputs_input.is_symlink():
+                        raise ValueError("evaluation inputs must not be symbolic links")
+                    cases_path = _assert_inside_project(cases_input.resolve(), "cases")
+                    outputs_path = _assert_inside_project(outputs_input.resolve(), "outputs")
+                    if cases_path == outputs_path:
+                        raise ValueError("cases and outputs must be separate JSON files")
+                    for label, candidate in (("cases", cases_path), ("outputs", outputs_path)):
+                        if not candidate.is_file():
+                            raise FileNotFoundError(f"{label} file not found inside project")
+                        if candidate.stat().st_size > 2 * 1024 * 1024:
+                            raise ValueError(f"{label} file exceeds the 2 MiB limit")
+                    from .security_evaluation import (
+                        EvaluationThresholds, evaluate_end_to_end, load_cases, load_outputs,
+                    )
+                    thresholds = {}
+                    for field in (
+                        "min_recall_at_k", "min_precision_at_k", "min_mrr",
+                        "min_ndcg_at_k", "min_evidence_quality", "min_output_grounding",
+                    ):
+                        value = body.get(field)
+                        if value is not None:
+                            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                                raise ValueError(f"{field} must be a number between 0 and 1")
+                            if not 0.0 <= float(value) <= 1.0:
+                                raise ValueError(f"{field} must be between 0 and 1")
+                            thresholds[field] = float(value)
+                    case_items = load_cases(cases_path)
+                    outputs_map = load_outputs(outputs_path)
+                    if not case_items or len(case_items) > 200:
+                        raise ValueError("evaluation cases must contain 1-200 cases")
+                    result = evaluate_end_to_end(
+                        case_items, DEFAULT_DB, outputs=outputs_map,
+                        thresholds=EvaluationThresholds(**thresholds),
+                    )
+                    saved = save_report("security-evaluation", result)
+                    return {
+                        "success": result.get("success") is True,
+                        "kind": "security-evaluation",
+                        "timestamp": saved.get("timestamp"),
+                        "cases_total": result.get("cases_total", 0),
+                        "passed": result.get("passed", 0),
+                        "failed": result.get("failed", 0),
+                        "aggregate": result.get("aggregate", {}),
+                        "gates": result.get("gates", {}),
+                    }
+
+                result = _guarded_operation(
+                    "security-evaluation-run", body, evaluation_action
+                )
+                self._send(200 if result.get("success") is True else 422, result)
+                return
+
             if path == "/api/command":
                 length = int(self.headers.get("Content-Length", "0"))
                 if length > 2048:
