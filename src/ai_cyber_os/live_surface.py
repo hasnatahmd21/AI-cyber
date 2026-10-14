@@ -21,7 +21,7 @@ HYDRA_ROOT = PROJECT_ROOT / "src" / "ai_cyber_os"
 DEFENCE_ROOT = PROJECT_ROOT / "layered_defense" / "ai_cyber"
 UI_ASSET_PATH = PROJECT_ROOT / "CYBER_OS_defence.html"
 # Pin the uploaded UI to the reviewed HTML; updating the design requires updating this value too.
-UI_ASSET_SHA256 = "0c5fdff2ee6bf35ba95010f19ec9a42e4381dadea23bae827b09a68ed2e8dd41"
+UI_ASSET_SHA256 = "6a6eca97d684ce493f1aedd56023c6ad3ced2c5aedb412dd77f07d9c5e583821"
 _SERVICE_STARTED = time.monotonic()
 _CACHE_TTL_S = 8.0
 _integrity_cache: dict[str, Any] = {"until": 0.0, "value": None}
