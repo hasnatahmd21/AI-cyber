@@ -26,6 +26,8 @@ def test_knowledge_status_endpoint(monkeypatch):
 
 
 def test_knowledge_search_endpoint(monkeypatch):
+    # The endpoint's business logic is under test here; guard behaviour is covered separately.
+    monkeypatch.setattr(ui, "_guarded_operation", lambda operation, payload, action: action())
     monkeypatch.setattr(ui, "knowledge_search", lambda query, db_path, dataset=None, limit=10: [
         {"record_id": "CVE-TEST", "content": query, "source": "fixture"}
     ])
