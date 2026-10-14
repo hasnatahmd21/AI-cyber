@@ -5,6 +5,7 @@ poll. Mutating/operational requests remain behind the existing defence gate.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import subprocess
 import sys
@@ -18,6 +19,9 @@ STATE_ROOT = PROJECT_ROOT / ".ai_cyber"
 AUDIT_ROOT = STATE_ROOT / "audit"
 HYDRA_ROOT = PROJECT_ROOT / "src" / "ai_cyber_os"
 DEFENCE_ROOT = PROJECT_ROOT / "layered_defense" / "ai_cyber"
+UI_ASSET_PATH = PROJECT_ROOT / "CYBER_OS_defence.html"
+# Pin the uploaded UI to the reviewed HTML; updating the design requires updating this value too.
+UI_ASSET_SHA256 = "0c5fdff2ee6bf35ba95010f19ec9a42e4381dadea23bae827b09a68ed2e8dd41"
 _SERVICE_STARTED = time.monotonic()
 _CACHE_TTL_S = 8.0
 _integrity_cache: dict[str, Any] = {"until": 0.0, "value": None}
@@ -29,6 +33,19 @@ def _now() -> str:
 
 def _state(state: str, evidence: str, **extra: Any) -> dict[str, Any]:
     return {"state": state, "evidence": str(evidence)[:240], **extra}
+
+
+def verify_ui_asset() -> dict[str, Any]:
+    """Verify the exact UI bytes before serving the page; fail closed on a mismatch."""
+    try:
+        if UI_ASSET_PATH.is_symlink() or not UI_ASSET_PATH.is_file():
+            return _state("failed", "Canonical UI asset is missing or is a symbolic link.")
+        digest = hashlib.sha256(UI_ASSET_PATH.read_bytes()).hexdigest()
+        if digest != UI_ASSET_SHA256:
+            return _state("failed", "Canonical UI SHA-256 differs from the reviewed pin.", sha256=digest)
+        return _state("passed", "Canonical CYBER OS UI matches its reviewed SHA-256.", sha256=digest)
+    except OSError as exc:
+        return _state("failed", f"Canonical UI could not be verified ({type(exc).__name__}).")
 
 
 def _audit_file_list() -> list[Path]:
@@ -203,6 +220,7 @@ def defence_status(*, fabric: dict[str, Any] | None = None,
     components: dict[str, dict[str, Any]] = {}
 
     components["integrity"] = dict(integrity)
+    components["ui"] = verify_ui_asset()
     for key, trace_key in (("barrier", "barrier"), ("l1", "layer1"), ("l2", "layer2"), ("l3", "layer3")):
         decision_value = trace.get(trace_key)
         if decision_value:
@@ -286,9 +304,12 @@ def defence_status(*, fabric: dict[str, Any] | None = None,
     elif integrity["state"] == "unknown":
         project_state = "checking"
         project_evidence = "Core files exist; signed integrity is not yet verified."
+    elif components["ui"]["state"] != "passed":
+        project_state = "failed"
+        project_evidence = "The served UI asset failed its pinned SHA-256 check."
     else:
         project_state = "passed"
-        project_evidence = "Required core files exist and signed integrity currently verifies."
+        project_evidence = "Required core files, pinned UI asset, and signed integrity currently verify."
     components["project"] = _state(project_state, project_evidence, files_present=present, files_required=len(project_parts))
 
     return {
@@ -354,7 +375,9 @@ def project_summary(*, runtime_state: dict[str, Any] | None = None,
     existing = [name for name in root_files if (PROJECT_ROOT / name).is_file()]
     total_py = 0
     try:
-        total_py = sum(1 for p in PROJECT_ROOT.rglob("*.py") if ".git" not in p.parts and "__pycache__" not in p.parts)
+        for directory, names, filenames in os.walk(PROJECT_ROOT):
+            names[:] = [name for name in names if name not in {".git", "__pycache__", ".venv", "node_modules", ".ai_cyber"}]
+            total_py += sum(name.endswith(".py") for name in filenames)
     except OSError:
         pass
     phase_summary = runtime_state.get("last_summary")
@@ -410,6 +433,7 @@ def project_summary(*, runtime_state: dict[str, Any] | None = None,
         },
         "defence": {
             "integrity": (defence or {}).get("components", {}).get("integrity", {}).get("state", "unknown"),
+            "ui": (defence or {}).get("components", {}).get("ui", {}).get("state", "unknown"),
             "barrier": (defence or {}).get("components", {}).get("barrier", {}).get("state", "unknown"),
             "layers": [(defence or {}).get("components", {}).get(key, {}).get("state", "unknown") for key in ("l1", "l2", "l3")],
             "isolation": (defence or {}).get("components", {}).get("iso", {}).get("state", "unknown"),
