@@ -211,6 +211,7 @@ def _map_decision(value: str | None) -> str:
 
 def defence_status(*, fabric: dict[str, Any] | None = None,
                    runtime_state: dict[str, Any] | None = None,
+                   telemetry_state: dict[str, Any] | None = None,
                    force_integrity_check: bool = False) -> dict[str, Any]:
     """Return last observed enforcement evidence plus a current signed-tree check."""
     integrity = _integrity_check(force=force_integrity_check)
@@ -294,13 +295,63 @@ def defence_status(*, fabric: dict[str, Any] | None = None,
         else:
             components["hydra"] = _state("idle", "HYDRA is wired but no execution result is currently available.")
 
+    datasets = (fabric or {}).get("datasets", [])
     if fabric and fabric.get("ready") is True:
         count = int(fabric.get("records", 0))
-        components["fabric"] = _state("passed" if count > 0 else "idle",
-                                      f"SQLite/FTS5 knowledge fabric ready: {count} evidence records, {fabric.get('relations', 0)} relationships.",
-                                      records=count, relations=int(fabric.get("relations", 0)))
+        relations = int(fabric.get("relations", 0))
+        components["fabric"] = _state(
+            "passed" if count > 0 else "idle",
+            f"SQLite/FTS5 knowledge fabric ready: {count} evidence records, {relations} relationships.",
+            records=count, relations=relations,
+        )
+        components["rag"] = _state(
+            "passed" if count > 0 else "idle",
+            f"Deterministic lexical RAG store ready; {count} evidence records are indexed. Semantic embeddings are not claimed.",
+            records=count,
+        )
+        dataset_events = [
+            event for event in (telemetry_state or {}).get("events", [])
+            if isinstance(event, dict) and event.get("operation") in {"dataset-ingest-manifest", "dataset-inspect-manifest"}
+        ]
+        latest_dataset = dataset_events[-1] if dataset_events else None
+        if latest_dataset:
+            event_status = str(latest_dataset.get("status", "INFO")).upper()
+            dataset_state = "passed" if event_status == "PASS" else "failed" if event_status in {"FAIL", "ERROR"} else "checking"
+            components["dataset"] = _state(
+                dataset_state,
+                f"Latest guarded dataset action {latest_dataset.get('operation')} reported {event_status}.",
+                observed_at=latest_dataset.get("timestamp"),
+            )
+        elif int((fabric or {}).get("manifest_count", 0)) > 0:
+            components["dataset"] = _state(
+                "checking",
+                f"{int(fabric.get('manifest_count', 0))} manifests discovered; their artifact hashes and counts have not been verified by this UI session.",
+            )
+        else:
+            components["dataset"] = _state("unknown", "No supported dataset manifests were found.")
+        threat_terms = ("cve", "nvd", "kev", "attack", "mitre", "cwe", "cpe", "epss", "sigma", "suricata", "zeek", "capec", "threat", "intel")
+        threat_datasets = [
+            item for item in datasets
+            if isinstance(item, dict) and any(term in str(item.get("dataset", "")).lower() for term in threat_terms)
+        ]
+        threat_records = sum(int(item.get("records", 0)) for item in threat_datasets)
+        components["intel"] = _state(
+            "passed" if threat_records > 0 else "idle",
+            f"Indexed security-intelligence evidence: {threat_records} records across {len(threat_datasets)} matching datasets.",
+            records=threat_records, datasets=[str(item.get("dataset", "")) for item in threat_datasets[:30]],
+        )
     else:
         components["fabric"] = _state("unknown", "Data Fabric status is unavailable.")
+        components["rag"] = _state("unknown", "RAG retrieval store status is unavailable.")
+        components["dataset"] = _state("unknown", "Dataset manifest status is unavailable.")
+        components["intel"] = _state("unknown", "Threat-intelligence dataset status is unavailable.")
+
+    if audit.get("chainOk") is True:
+        components["audit"] = _state("passed", "The latest encrypted audit was decrypted and its hash chain verified.", records=int(audit.get("records", 0)), observed_at=audit.get("timestamp"))
+    elif audit.get("chainOk") is False:
+        components["audit"] = _state("failed", "The latest encrypted audit failed authentication or hash-chain verification.", observed_at=audit.get("timestamp"))
+    else:
+        components["audit"] = _state("unknown", "No persisted encrypted audit chain is available for verification.")
 
     project_parts = [HYDRA_ROOT / "hydra.py", HYDRA_ROOT / "knowledge.py", HYDRA_ROOT / "dataset_pipeline.py",
                      DEFENCE_ROOT / "barrier.py", DEFENCE_ROOT / "layer1.py", DEFENCE_ROOT / "layer2.py",
@@ -456,6 +507,7 @@ def project_summary(*, runtime_state: dict[str, Any] | None = None,
             "records": int((fabric or {}).get("records", 0)),
             "relations": int((fabric or {}).get("relations", 0)),
             "datasets": len((fabric or {}).get("datasets", [])),
+            "manifests": int((fabric or {}).get("manifest_count", 0)),
         },
         "defence": {
             "integrity": (defence or {}).get("components", {}).get("integrity", {}).get("state", "unknown"),
@@ -465,6 +517,10 @@ def project_summary(*, runtime_state: dict[str, Any] | None = None,
             "isolation": (defence or {}).get("components", {}).get("iso", {}).get("state", "unknown"),
             "regeneration": (defence or {}).get("components", {}).get("regen", {}).get("state", "unknown"),
             "cryptography": (defence or {}).get("components", {}).get("crypto", {}).get("state", "unknown"),
+            "rag": (defence or {}).get("components", {}).get("rag", {}).get("state", "unknown"),
+            "dataset": (defence or {}).get("components", {}).get("dataset", {}).get("state", "unknown"),
+            "threat_intel": (defence or {}).get("components", {}).get("intel", {}).get("state", "unknown"),
+            "audit": (defence or {}).get("components", {}).get("audit", {}).get("state", "unknown"),
         },
         "files": {"required": root_files, "present": existing},
     }
