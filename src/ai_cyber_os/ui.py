@@ -121,7 +121,10 @@ def _guarded_operation(operation: str, payload: Any, action):
     )
     if isinstance(result, list):
         verified_success = True
-    event_status = "PASS" if verified_success else "INFO"
+    reported_failure = isinstance(result, dict) and (
+        result.get("success") is False or result.get("ready") is False or result.get("verified") is False
+    )
+    event_status = "FAIL" if reported_failure else "PASS" if verified_success else "INFO"
     keys = sorted(str(key) for key in result)[:30] if isinstance(result, dict) else []
     item_count = len(result) if isinstance(result, (list, tuple)) else None
     telemetry.emit(
@@ -169,6 +172,46 @@ def _data_fabric_status() -> dict[str, Any]:
         manifest_count=len(manifests),
     )
     return status
+
+
+def _threat_intel_sources() -> dict[str, Any]:
+    """List only in-repository files accepted by the existing threat-intel parsers."""
+    parser_labels = {
+        "nvd": "NVD JSON",
+        "cisa-kev": "CISA Known Exploited Vulnerabilities",
+        "attack-stix": "MITRE ATT&CK STIX JSON",
+        "cwe-xml": "MITRE CWE XML",
+        "cpe": "NVD CPE JSONL/GZIP",
+    }
+    source_dirs = {
+        "nvd": ("datasets/raw/nvd", "datasets/raw/cve"),
+        "cisa-kev": ("datasets/raw/cisa_kev",),
+        "attack-stix": ("datasets/raw/mitre_attack",),
+        "cwe-xml": ("datasets/raw/cwe",),
+        "cpe": ("datasets/raw/cpe",),
+    }
+    files: list[dict[str, Any]] = []
+    for kind, dirs in source_dirs.items():
+        for relative in dirs:
+            directory = (PROJECT_ROOT / relative).resolve()
+            try:
+                _assert_inside_project(directory, "source directory")
+                if not directory.is_dir() or directory.is_symlink():
+                    continue
+                for item in sorted(directory.iterdir()):
+                    if item.is_file() and not item.is_symlink():
+                        files.append({
+                            "path": item.relative_to(PROJECT_ROOT).as_posix(),
+                            "kind": kind,
+                            "bytes": item.stat().st_size,
+                        })
+            except OSError:
+                continue
+    return {
+        "source": "live",
+        "parsers": [{"kind": kind, "label": parser_labels.get(kind, kind)} for kind in PARSERS],
+        "files": files[:200],
+    }
 
 
 def _security_evaluation_status() -> dict[str, Any]:
@@ -548,6 +591,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/security-evaluation/status":
             self._send(200, _security_evaluation_status())
+            return
+
+        if path == "/api/threat-intel/sources":
+            self._send(200, _threat_intel_sources())
             return
 
         if path == "/api/status":
