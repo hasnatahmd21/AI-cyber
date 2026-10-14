@@ -90,13 +90,55 @@ def _guarded_operation(operation: str, payload: Any, action):
     try:
         run_guarded(argv, safely_call_action)
     except Exception as exc:
-        # A broken/unavailable guard is a deny, never a route to an unguarded action.
+        telemetry.emit(
+            "ui_operation_blocked",
+            f"Guard blocked or could not authorize UI operation {str(operation)[:80]}.",
+            operation=str(operation)[:80],
+            status="BLOCKED",
+            source="ui",
+            details={"error_type": type(exc).__name__},
+        )
         raise PermissionError(f"defence preflight refused operation ({type(exc).__name__})") from None
     finally:
         live_surface.invalidate_status_cache()
     if "error" in outcome:
-        raise outcome["error"]
-    return outcome.get("result")
+        error = outcome["error"]
+        telemetry.emit(
+            "ui_operation_error",
+            f"Guarded UI operation {str(operation)[:80]} failed.",
+            operation=str(operation)[:80],
+            status="ERROR",
+            source="ui",
+            details={"error_type": type(error).__name__},
+        )
+        raise error
+
+    result = outcome.get("result")
+    verified_success = isinstance(result, dict) and (
+        result.get("success") is True
+        or result.get("ready") is True
+        or (isinstance(result.get("inspection"), dict) and result["inspection"].get("ready") is True)
+    )
+    if isinstance(result, list):
+        verified_success = True
+    event_status = "PASS" if verified_success else "INFO"
+    keys = sorted(str(key) for key in result)[:30] if isinstance(result, dict) else []
+    item_count = len(result) if isinstance(result, (list, tuple)) else None
+    telemetry.emit(
+        "ui_operation_completed",
+        f"Guarded UI operation {str(operation)[:80]} returned.",
+        operation=str(operation)[:80],
+        status=event_status,
+        source="ui",
+        evidence={
+            "result_type": type(result).__name__,
+            "result_keys": keys,
+            "item_count": item_count,
+            "verified_success": bool(verified_success),
+        },
+    )
+    live_surface.invalidate_status_cache()
+    return result
 
 
 def _data_fabric_status() -> dict[str, Any]:
@@ -224,7 +266,9 @@ def _live_status_bundle() -> dict[str, Any]:
     state = _snapshot()
     live = telemetry.snapshot()
     fabric = _data_fabric_status()
-    defence = live_surface.defence_status(fabric=fabric, runtime_state=state)
+    defence = live_surface.defence_status(
+        fabric=fabric, runtime_state=state, telemetry_state=live
+    )
     hydra = _hydra_status()
     summary = live_surface.project_summary(
         runtime_state=state, telemetry_state=live, fabric=fabric, defence=defence
@@ -236,6 +280,10 @@ def _live_status_bundle() -> dict[str, Any]:
         "defence": defence,
         "hydra": hydra,
         "data_fabric": fabric,
+        "threat_intel": {
+            "source": "live",
+            **defence["components"].get("intel", {"state": "unknown", "evidence": "Threat-intelligence status unavailable."}),
+        },
         "telemetry": live,
     }
 
@@ -427,7 +475,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path in {"/defence/status", "/api/defence/status"}:
             fabric = _data_fabric_status()
-            self._send(200, live_surface.defence_status(fabric=fabric, runtime_state=_snapshot()))
+            self._send(200, live_surface.defence_status(
+                fabric=fabric, runtime_state=_snapshot(), telemetry_state=telemetry.snapshot()
+            ))
             return
 
         if path == "/api/live/summary":
