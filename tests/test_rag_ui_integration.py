@@ -50,6 +50,8 @@ def test_rag_context_ui_api_returns_evidence_records(tmp_path, monkeypatch):
     db = tmp_path / "knowledge.db"
     ingest_file(data, db_path=db, dataset="stage9-fixture")
     monkeypatch.setattr(ui, "DEFAULT_DB", db)
+    # Guard fail-closed behavior is tested in test_ui.py; isolate the RAG contract here.
+    monkeypatch.setattr(ui, "_guarded_operation", lambda operation, payload, action: action())
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), ui.Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
