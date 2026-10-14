@@ -134,6 +134,7 @@ def _hydra_status() -> dict[str, Any]:
     report = load_report()
     last_phase = state.get("last_phase")
     last_success = state.get("last_success")
+    last_summary = state.get("last_summary") if isinstance(state.get("last_summary"), dict) else {}
     live = telemetry.snapshot()
     if last_success is True:
         status = "passed"
@@ -143,19 +144,68 @@ def _hydra_status() -> dict[str, Any]:
         status = "checking"
     else:
         status = "idle"
+
+    # A phase is green only when a run reports it passed or all 27 completed successfully.
+    phase_map = last_summary.get("results", last_summary.get("phase_results", {}))
+    if isinstance(phase_map, list):
+        phase_map = {
+            str(item.get("phase", item.get("id", ""))): item
+            for item in phase_map if isinstance(item, dict)
+        }
+    if not isinstance(phase_map, dict):
+        phase_map = {}
+    raw_failed = last_summary.get("failed_phases", state.get("failed_phases", []))
+    if not isinstance(raw_failed, list):
+        raw_failed = []
+    failed_numbers: set[int] = set()
+    for item in raw_failed:
+        candidate = item.get("phase", item.get("id", "")) if isinstance(item, dict) else item
+        digits = "".join(char for char in str(candidate) if char.isdigit())
+        if digits:
+            try:
+                number = int(digits)
+                if 1 <= number <= 27:
+                    failed_numbers.add(number)
+            except ValueError:
+                pass
+
+    phase_count = last_summary.get("phases", 0)
+    if isinstance(phase_count, list):
+        phase_count = len(phase_count)
+    try:
+        phase_count = int(phase_count)
+    except (TypeError, ValueError):
+        phase_count = len(phase_map)
+    all_27_passed = (
+        last_phase == "all"
+        and last_success is True
+        and not failed_numbers
+        and (phase_count >= 27 or len(phase_map) >= 27)
+    )
+
     phases = []
     for number in range(1, 28):
         phase_name = f"phase{number}"
+        candidate = phase_map.get(phase_name, phase_map.get(str(number), phase_map.get(number)))
         phase_status = "unknown"
-        if last_phase == "all":
-            summary = state.get("last_summary") or {}
-            phase_map = summary.get("results", {}) if isinstance(summary, dict) else {}
-            candidate = phase_map.get(phase_name) if isinstance(phase_map, dict) else None
-            if isinstance(candidate, dict):
-                phase_status = "passed" if candidate.get("success") is True or candidate.get("verified") is True else "failed" if candidate.get("success") is False or candidate.get("verified") is False else "unknown"
+        if isinstance(candidate, dict):
+            if candidate.get("success") is True or candidate.get("verified") is True or candidate.get("status") in {"PASS", "PASSED", "VERIFIED"}:
+                phase_status = "passed"
+            elif candidate.get("success") is False or candidate.get("verified") is False or candidate.get("status") in {"FAIL", "FAILED", "ERROR", "BLOCKED"}:
+                phase_status = "failed"
+        elif candidate is True or (isinstance(candidate, str) and candidate.upper() in {"PASS", "PASSED", "VERIFIED"}):
+            phase_status = "passed"
+        elif candidate is False or (isinstance(candidate, str) and candidate.upper() in {"FAIL", "FAILED", "ERROR", "BLOCKED"}):
+            phase_status = "failed"
+
+        if number in failed_numbers:
+            phase_status = "failed"
+        elif all_27_passed:
+            phase_status = "passed"
         elif last_phase == phase_name and last_success is not None:
             phase_status = "passed" if last_success else "failed"
         phases.append({"phase": number, "id": phase_name, "state": phase_status})
+
     return {
         "source": "live",
         "timestamp": __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
@@ -163,7 +213,7 @@ def _hydra_status() -> dict[str, Any]:
         "available_phases": 27,
         "last_phase": last_phase,
         "last_success": last_success,
-        "last_summary": state.get("last_summary"),
+        "last_summary": last_summary,
         "latest_report": report,
         "phases": phases,
         "telemetry": live.get("run", {}),
@@ -662,9 +712,13 @@ def main(argv: list[str] | None = None) -> int:
     # Run one real guarded preflight at startup. It never runs HYDRA, and failures remain visible in status.
     try:
         _guarded_operation("ui-startup-preflight", {"ui": "CYBER_OS_defence.html"}, lambda: {"success": True})
+        with STATE_LOCK:
+            STATE["runtime"] = "online"
         telemetry.emit("ui_preflight", "CYBER OS startup preflight passed the layered defence gate",
                        operation="ui", status="PASS", source="ui")
     except Exception as exc:
+        with STATE_LOCK:
+            STATE["runtime"] = "degraded"
         telemetry.error("ui-preflight", f"CYBER OS startup preflight blocked ({type(exc).__name__})")
     print("Scope: localhost-only; serving CYBER_OS_defence.html; all POST operations pass the layered defence gate.")
     if not args.no_browser:
