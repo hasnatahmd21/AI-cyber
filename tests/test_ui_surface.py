@@ -31,7 +31,9 @@ def test_cyber_os_is_the_only_served_ui_and_live_status_is_wired():
     assert "/api/live/summary" in source
     assert "/api/data-fabric/status" in source
     assert "/api/hydra/phases" in source
-    assert "CYBER_OS_defence.html" in source
+    assert ui.TEMPLATE_PATH.name == "CYBER_OS_defence.html"
+    assert ui.TEMPLATE_PATH.is_file()
+    assert ui.TEMPLATE == ui.TEMPLATE_PATH.read_text(encoding="utf-8")
     assert 'id="s-fb"' in ui.TEMPLATE
     assert "DATA FABRIC // EVIDENCE + PROVENANCE" in ui.TEMPLATE
     assert "setInterval(ev,700)" not in ui.TEMPLATE
