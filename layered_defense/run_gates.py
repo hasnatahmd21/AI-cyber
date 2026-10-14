@@ -53,7 +53,7 @@ def main() -> int:
         "# Gate report",
         f"Generated {datetime.datetime.now(datetime.timezone.utc).isoformat(timespec='seconds')}",
         "",
-        f"Report path: `{report_path}`",
+        "Report path: " + str(report_path),
         "",
         "| Gate | Result | Tests | Time |",
         "|---|---|---|---|",
@@ -65,7 +65,7 @@ def main() -> int:
             [sys.executable, "-m", "unittest", *modules],
             cwd=str(ROOT), capture_output=True, text=True,
         )
-        match = re.search(r"Ran (\\d+) tests?", cp.stderr)
+        match = re.search(r"Ran (\d+) tests?", cp.stderr)
         count = match.group(1) if match else "?"
         ok = cp.returncode == 0
         elapsed = (datetime.datetime.now() - started).total_seconds()
@@ -84,7 +84,7 @@ def main() -> int:
         "A gate passing means only that its defined tests passed; "
         "it is not proof of the security of the whole system.",
     ]
-    report_path.write_text("\\n".join(lines) + "\\n", encoding="utf-8")
+    report_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"Gate report written to: {report_path}")
     return 0 if ok_all else 1
 
