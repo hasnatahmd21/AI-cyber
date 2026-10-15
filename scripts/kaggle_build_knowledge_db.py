@@ -194,19 +194,46 @@ def persist_via_lfs(db_path: Path, report_path: Path, branch: str) -> dict[str, 
 
 
 def _kaggle_credentials() -> dict[str, str]:
-    """Resolve Kaggle CLI auth without exposing credentials in logs/reports."""
+    """Resolve Kaggle API token or legacy credentials without logging secrets."""
     env = os.environ.copy()
+    if env.get("KAGGLE_API_TOKEN"):
+        return env
     if env.get("KAGGLE_USERNAME") and env.get("KAGGLE_KEY"):
         return env
 
-    candidates = []
+    # In Kaggle Notebooks, API tokens can be stored as attached Kaggle Secrets.
+    try:
+        from kaggle_secrets import UserSecretsClient
+        client = UserSecretsClient()
+        for secret_name in ("KAGGLE_API_TOKEN", "kaggle-api-token", "kaggle api token"):
+            try:
+                token = client.get_secret(secret_name)
+            except Exception:
+                continue
+            if isinstance(token, str) and token.strip():
+                env["KAGGLE_API_TOKEN"] = token.strip()
+                return env
+    except Exception:
+        pass
+
+    config_roots: list[Path] = []
     if env.get("KAGGLE_CONFIG_DIR"):
-        candidates.append(Path(env["KAGGLE_CONFIG_DIR"]).expanduser() / "kaggle.json")
-    candidates.extend([
-        Path.home() / ".kaggle" / "kaggle.json",
-        Path.home() / ".config" / "kaggle" / "kaggle.json",
+        config_roots.append(Path(env["KAGGLE_CONFIG_DIR"]).expanduser())
+    config_roots.extend([
+        Path.home() / ".kaggle",
+        Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config"))) / "kaggle",
     ])
-    for candidate in candidates:
+    # New token-based CLI auth uses access_token; legacy auth uses kaggle.json.
+    for root in config_roots:
+        for token_path in (root / "access_token", root / "access_token.txt"):
+            try:
+                token = token_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                continue
+            if token:
+                env["KAGGLE_API_TOKEN"] = token
+                return env
+        candidate = root / "kaggle.json"
         if not candidate.is_file():
             continue
         try:
@@ -218,13 +245,14 @@ def _kaggle_credentials() -> dict[str, str]:
         if isinstance(username, str) and username.strip() and isinstance(key, str) and key.strip():
             env["KAGGLE_USERNAME"] = username.strip()
             env["KAGGLE_KEY"] = key.strip()
-            env["KAGGLE_CONFIG_DIR"] = str(candidate.parent)
+            env["KAGGLE_CONFIG_DIR"] = str(root)
             return env
 
     raise RuntimeError(
-        "Kaggle Dataset persistence was requested, but Kaggle API credentials are unavailable. "
-        "Set KAGGLE_USERNAME and KAGGLE_KEY or configure ~/.kaggle/kaggle.json. "
-        "No database artifact was published."
+        'Kaggle Dataset persistence needs a Kaggle API token or legacy credentials. '
+        'Attach a Kaggle Secret named "KAGGLE_API_TOKEN", set KAGGLE_API_TOKEN, '
+        'or provide ~/.kaggle/access_token or ~/.kaggle/kaggle.json. '
+        'The separate GitHub secret "cyber repo" is not a Kaggle API credential.'
     )
 
 
