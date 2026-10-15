@@ -49,9 +49,12 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
             digest = item["sha256"].strip().lower()
             if len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest):
                 raise ValueError(f"manifest artifact {index} has invalid SHA-256")
+            role = str(item.get("role", "data")).lower()
             if "record_count" not in item:
                 raise ValueError(f"manifest artifact {index} is missing record_count")
             raw_count = item["record_count"]
+            if role == "license" and raw_count is None:
+                continue
             if isinstance(raw_count, bool) or not isinstance(raw_count, int):
                 raise ValueError(f"manifest artifact {index} record_count must be an integer")
             count = raw_count
@@ -118,32 +121,47 @@ def _artifact_inspection(
         actual_sha = sha256_file(local)
         expected_sha = item["sha256"].lower().strip()
 
-        count = sum(
-            1
-            for _ in iter_records(
-                local,
-                dataset=manifest.get("dataset", Path(manifest_path).stem),
-                source=item.get("source", manifest.get("source", "")),
-                license=item.get("license", manifest.get("license", "")),
-                version=item.get("version", manifest.get("version", "")),
-                source_uri=item.get(
-                    "source_uri", manifest.get("source_uri", "")
-                ),
-                validation_status=item.get(
-                    "validation_status",
-                    manifest.get("validation_status", "unverified"),
-                ),
+        role = str(item.get("role", "data")).lower()
+        if role == "license":
+            # License text is integrity-checked but is not a knowledge record.
+            count = 0
+            declared = None
+            count_matches = True
+        else:
+            schema = manifest.get("schema", {})
+            record_elements = schema.get("elements") if isinstance(schema, dict) else None
+            schema_format = str(schema.get("format", "")).lower() if isinstance(schema, dict) else ""
+            record_extensions = {".yml", ".yaml"} if "yaml rules inside archive" in schema_format else None
+            count = sum(
+                1
+                for _ in iter_records(
+                    local,
+                    dataset=manifest.get("dataset", Path(manifest_path).stem),
+                    source=item.get("source", manifest.get("source", "")),
+                    license=item.get("license", manifest.get("license", "")),
+                    version=item.get("version", manifest.get("version", "")),
+                    source_uri=item.get(
+                        "source_uri", manifest.get("source_uri", "")
+                    ),
+                    validation_status=item.get(
+                        "validation_status",
+                        manifest.get("validation_status", "unverified"),
+                    ),
+                    record_elements=record_elements,
+                    record_extensions=record_extensions,
+                )
             )
-        )
+            declared = item["record_count"]
+            count_matches = count == declared
 
-        declared = int(item["record_count"])
         artifacts.append(
             {
                 "path": str(local),
+                "role": role,
                 "sha256": actual_sha,
                 "sha256_matches": actual_sha == expected_sha,
                 "records": count,
-                "record_count_matches": count == declared,
+                "record_count_matches": count_matches,
             }
         )
 
@@ -187,6 +205,8 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
             version=manifest["version"],
             source_uri=manifest["source_uri"],
             validation_status=manifest["validation_status"],
+            record_elements=(manifest.get("schema", {}).get("elements")
+                             if isinstance(manifest.get("schema"), dict) else None),
         )
     )
     declared = int(manifest["record_count"])
@@ -244,7 +264,13 @@ def ingest_manifest(
     if "artifacts" in manifest:
         total = 0
         for item in manifest["artifacts"]:
+            if str(item.get("role", "data")).lower() == "license":
+                continue
             local = (_project_root(manifest_path) / str(item["path"])).resolve()
+            schema = manifest.get("schema", {})
+            record_elements = schema.get("elements") if isinstance(schema, dict) else None
+            schema_format = str(schema.get("format", "")).lower() if isinstance(schema, dict) else ""
+            record_extensions = {".yml", ".yaml"} if "yaml rules inside archive" in schema_format else None
             result = ingest_file(
                 local,
                 db_path=db_path,
@@ -261,6 +287,8 @@ def ingest_manifest(
                     "validation_status",
                     manifest.get("validation_status", "unverified"),
                 ),
+                record_elements=record_elements,
+                record_extensions=record_extensions,
             )
             total += int(result.get("inserted", 0))
 
@@ -283,6 +311,8 @@ def ingest_manifest(
         version=manifest["version"],
         source_uri=manifest["source_uri"],
         validation_status=manifest["validation_status"],
+        record_elements=(manifest.get("schema", {}).get("elements")
+                         if isinstance(manifest.get("schema"), dict) else None),
     )
     result["inspection"] = inspection
     result["manifest"] = str(Path(manifest_path))
