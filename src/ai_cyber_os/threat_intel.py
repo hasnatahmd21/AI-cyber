@@ -6,6 +6,7 @@ validation state come from the dataset manifest and are preserved in records.
 """
 from __future__ import annotations
 
+import gzip
 import hashlib
 import io
 import json
@@ -183,22 +184,30 @@ def parse_cpe(path: str | Path, *, dataset: str = "cpe",
 
 
 def _read_json(path: str | Path) -> Any:
-    """Read JSON while rejecting an unresolved Git LFS pointer explicitly."""
+    """Read JSON/JSON.GZ while rejecting unresolved Git LFS pointer files."""
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(p)
-    text = p.read_text(encoding="utf-8")
-    head = text.lstrip()[:512]
-    if head.startswith("version https://git-lfs.github.com/spec/v1") or (
-        head.startswith("oid sha256:") and "size " in head
+
+    # Inspect raw bytes first: an unresolved pointer can have a .json/.gz name
+    # and must never be treated as a valid dataset even if it looks like text.
+    with p.open("rb") as handle:
+        prefix = handle.read(512).lstrip()
+    if prefix.startswith(b"version https://git-lfs.github.com/spec/v1") or (
+        prefix.startswith(b"oid sha256:") and b"size " in prefix
     ):
         raise ValueError(
             f"Git LFS pointer detected instead of dataset content: {p}. "
             "Restore the LFS object and verify its original SHA-256 and size before parsing."
         )
+
     try:
-        return json.loads(text)
-    except json.JSONDecodeError as exc:
+        if p.name.lower().endswith(".json.gz") or p.suffix.lower() == ".gz":
+            with gzip.open(p, "rt", encoding="utf-8") as handle:
+                return json.load(handle)
+        with p.open("r", encoding="utf-8") as handle:
+            return json.load(handle)
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as exc:
         raise ValueError(f"invalid JSON dataset at {p}: {exc}") from exc
 
 
