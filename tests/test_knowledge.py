@@ -190,3 +190,33 @@ def test_epss_csv_gzip_preserves_cve_as_searchable_record_id(tmp_path: Path):
     assert hits[0]["title"] == "CVE-2026-1234"
     assert hits[0]["source_uri"] == "https://example.invalid/epss"
     assert hits[0]["validation_status"] == "fixture-validated"
+
+
+def test_cpe_jsonl_gzip_preserves_canonical_cpe_name_as_record_id(tmp_path: Path):
+    import gzip
+
+    data = tmp_path / "cpe-products.jsonl.gz"
+    row = {
+        "cpeName": "cpe:2.3:a:apache:log4j:2.14.1:*:*:*:*:java:*:*",
+        "cpeNameId": "11111111-2222-4333-8444-555555555555",
+        "titles": [{"title": "Apache Log4j 2.14.1", "lang": "en"}],
+    }
+    with gzip.open(data, "wt", encoding="utf-8") as handle:
+        handle.write(json.dumps(row) + "\n")
+
+    db = tmp_path / "knowledge.db"
+    result = ingest_file(
+        data,
+        db_path=db,
+        dataset="cpe",
+        source="NVD CPE fixture",
+        source_uri="https://example.invalid/cpe",
+        version="fixture-v1",
+        validation_status="fixture-validated",
+    )
+    hits = search("cpe:2.3:a:apache:log4j:2.14.1", db_path=db, dataset="cpe")
+
+    assert result["inserted"] == 1
+    assert hits and hits[0]["record_id"] == row["cpeName"]
+    assert hits[0]["title"] == row["cpeName"]
+    assert hits[0]["source_uri"] == "https://example.invalid/cpe"
