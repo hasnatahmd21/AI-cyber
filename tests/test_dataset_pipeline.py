@@ -559,18 +559,32 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
     })
     monkeypatch.setattr(builder.shutil, "which", lambda command: "/mock/kaggle")
     calls = []
+    restart_calls = []
 
     def fake_run(command, **kwargs):
         calls.append((list(command), kwargs))
+        if command[1:3] == ["datasets", "download"]:
+            import shutil
+            target = Path(command[command.index("-p") + 1])
+            target.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(db_path, target / "knowledge-v1.sqlite3")
         return SimpleNamespace(returncode=0, stdout="verified fixture status", stderr="")
 
+    def fake_restart(db, cve_id):
+        restart_calls.append((Path(db), cve_id))
+        return {"success": True, "evidence_only": True, "count": 1, "has_citations": True}
+
     monkeypatch.setattr(builder.subprocess, "run", fake_run)
+    monkeypatch.setattr(builder, "restart_smoke_test", fake_restart)
     result = builder.persist_via_kaggle_dataset(
         db_path, report_path, report_data,
         "fixture-user/ai-cyber-knowledge-db", "create",
     )
 
-    assert result["status"] == "published-and-status-checked"
+    assert result["status"] == "published-restored-hash-and-restart-verified"
+    assert result["restored_hash_matches"] is True
+    assert result["restore_restart_test"]["success"] is True
+    assert restart_calls and restart_calls[0][1] == builder.PROBE_CVE
     assert result["access"] == "private; public flag was not used"
     create_call = next(call[0] for call in calls if "create" in call[0])
     assert create_call[:3] == ["/mock/kaggle", "datasets", "create"]
@@ -578,9 +592,13 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
     assert "--dir-mode" in create_call and "skip" in create_call
     status_call = next(call[0] for call in calls if call[0][1:3] == ["datasets", "status"])
     assert status_call[-1] == "fixture-user/ai-cyber-knowledge-db"
+    download_call = next(call[0] for call in calls if call[0][1:3] == ["datasets", "download"])
+    assert "--unzip" in download_call
 
     upload_dir = Path(result["upload_dir"])
+    restore_dir = Path(result["restore_dir"])
     try:
+        assert Path(restart_calls[0][0]).resolve() == (restore_dir / "knowledge-v1.sqlite3").resolve()
         metadata = json.loads((upload_dir / "dataset-metadata.json").read_text(encoding="utf-8"))
         artifact = json.loads((upload_dir / "database-artifact-manifest.json").read_text(encoding="utf-8"))
         uploaded_report = (upload_dir / "knowledge-db-build-report.json").read_text(encoding="utf-8")
@@ -591,6 +609,7 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
     finally:
         import shutil
         shutil.rmtree(upload_dir, ignore_errors=True)
+        shutil.rmtree(restore_dir, ignore_errors=True)
 
 
 def test_kaggle_persistence_checks_metadata_and_sqlite_before_credentials(tmp_path: Path, monkeypatch):
