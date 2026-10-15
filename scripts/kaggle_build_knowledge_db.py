@@ -382,18 +382,59 @@ def persist_via_kaggle_dataset(
                 "Kaggle upload command returned success, but dataset status verification failed: "
                 f"{verification.stderr[-2000:] or verification.stdout[-2000:]}"
             )
+
+        # Existence alone is not proof that the uploaded bytes are readable.
+        # Download the published version in a fresh directory and compare the
+        # exact DB digest before marking persistence confirmed.
+        restore_dir = Path(tempfile.mkdtemp(prefix="ai-cyber-kaggle-restore-", dir=str(db_path.parent)))
+        download = subprocess.run(
+            [
+                kaggle_cli, "datasets", "download", "-d", dataset_id,
+                "-p", str(restore_dir), "--unzip",
+            ],
+            text=True, capture_output=True, check=False,
+            timeout=7200, env=kaggle_env,
+        )
+        if download.returncode != 0:
+            raise RuntimeError(
+                "Kaggle Dataset status exists, but restoring the published DB failed: "
+                f"{download.stderr[-3000:] or download.stdout[-3000:]}"
+            )
+        restored_db = restore_dir / db_upload.name
+        if not restored_db.is_file():
+            candidates = list(restore_dir.rglob(db_upload.name))
+            if len(candidates) == 1:
+                restored_db = candidates[0]
+        if not restored_db.is_file():
+            raise RuntimeError(
+                "Kaggle Dataset download succeeded but did not contain knowledge-v1.sqlite3"
+            )
+        restored_sha = sha256_file(restored_db)
+        source_sha = sha256_file(db_path)
+        if restored_sha != source_sha:
+            raise RuntimeError(
+                f"restored Knowledge DB SHA-256 differs from the published local DB: "
+                f"expected {source_sha}, got {restored_sha}"
+            )
+        restore_restart = restart_smoke_test(restored_db, PROBE_CVE)
+
         return {
-            "status": "published-and-status-checked",
+            "status": "published-restored-hash-and-restart-verified",
             "provider": "Kaggle Dataset",
             "dataset_id": dataset_id,
             "access": "private; public flag was not used",
             "action": action,
-            "database_sha256": sha256_file(db_path),
+            "database_sha256": source_sha,
+            "restored_database_sha256": restored_sha,
+            "restored_hash_matches": restored_sha == source_sha,
             "database_byte_size": db_path.stat().st_size,
             "record_count": record_count,
+            "restore_restart_test": restore_restart,
             "upload_dir": str(upload_dir),
+            "restore_dir": str(restore_dir),
             "cli_output": result.stdout[-2000:],
             "status_output": verification.stdout[-2000:],
+            "download_output": download.stdout[-2000:],
         }
     except Exception:
         # Keep the upload package for diagnosis/retry if a publish attempt fails.
