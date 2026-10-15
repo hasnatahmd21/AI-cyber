@@ -417,9 +417,13 @@ def persist_via_kaggle_dataset(
                 f"expected {source_sha}, got {restored_sha}"
             )
         restore_restart = restart_smoke_test(restored_db, PROBE_CVE)
+        # The restored DB may be several gigabytes; remove the temporary second
+        # copy after exact-hash and fresh-process verification to free workspace.
+        shutil.rmtree(restore_dir, ignore_errors=True)
 
         return {
             "status": "published-restored-hash-and-restart-verified",
+            "restore_directory_cleaned": True,
             "provider": "Kaggle Dataset",
             "dataset_id": dataset_id,
             "access": "private; public flag was not used",
@@ -431,7 +435,6 @@ def persist_via_kaggle_dataset(
             "record_count": record_count,
             "restore_restart_test": restore_restart,
             "upload_dir": str(upload_dir),
-            "restore_dir": str(restore_dir),
             "cli_output": result.stdout[-2000:],
             "status_output": verification.stdout[-2000:],
             "download_output": download.stdout[-2000:],
