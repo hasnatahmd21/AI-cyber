@@ -532,14 +532,14 @@ def main() -> int:
             cvss_ready = "nvd_cve" not in missing_raw_sources
             report["derived_dataset_checks"] = [{
                 "dataset": "cvss",
-                "status": "PASS" if cvss_ready else "BLOCKED",
+                "status": "READY_TO_DERIVE" if cvss_ready else "BLOCKED",
                 "evidence": (
-                    "CVSS derivation prerequisites are present; derived CVSS validation is a separate later gate."
+                    "Verified NVD CVE feed manifests are present; CVSS metrics are not declared PASS until derived records, database persistence, and retrieval are tested."
                     if cvss_ready else
                     "CVSS is derived from NVD CVE data; blocked because the required nvd_cve manifest/artifact is missing."
                 ),
                 "depends_on": ["nvd_cve"],
-                "ingestion_performed": False,
+                "database_derivation_performed": False,
             }]
         else:
             report["manifest_readiness"] = {
