@@ -49,3 +49,21 @@ jobs:
             tests/test_threat_intel.py \
             tests/test_knowledge.py \
             tests/test_rag.py
+      - name: Audit committed real source artifacts without ingestion
+        id: real_source_audit
+        continue-on-error: true
+        env:
+          PYTHONPATH: src
+          PYTHONFAULTHANDLER: "1"
+        run: |
+          mkdir -p artifacts
+          python scripts/kaggle_dataset_parser_readiness_gate.py \
+            --raw-root datasets/raw \
+            --report artifacts/dataset_parser_readiness_report.json
+      - name: Upload the real-source readiness report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dataset-parser-readiness-report
+          path: artifacts/dataset_parser_readiness_report.json
+          if-no-files-found: warn
