@@ -691,17 +691,13 @@ def derive_cvss_from_nvd_database(
                     metric_type = str(metric.get("type") or "unspecified").casefold()
                     metric_source = str(metric.get("source") or metric.get("sourceIdentifier") or "unspecified")
                     vector = str(cvss_data.get("vectorString") or "")
-                    stable_payload = json.dumps(
-                        {
-                            "metric_key": metric_key,
-                            "version": cvss_version,
-                            "type": metric_type,
-                            "source": metric_source,
-                            "cvss_data": cvss_data,
-                        },
-                        ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str,
+                    stable_identity = json.dumps(
+                        [metric_key, cvss_version, metric_type, metric_source],
+                        ensure_ascii=False, separators=(",", ":"), default=str,
                     )
-                    fingerprint = hashlib.sha256(stable_payload.encode("utf-8")).hexdigest()[:16]
+                    fingerprint = hashlib.sha256(stable_identity.encode("utf-8")).hexdigest()[:16]
+                    # Keep identity stable across metric score/vector updates so a
+                    # changed upstream metric replaces the prior evidence record.
                     record_id = f"cvss:{cve_id}:{cvss_version}:{fingerprint}"
                     evidence = {
                         "cve_id": cve_id,
@@ -747,6 +743,43 @@ def derive_cvss_from_nvd_database(
                         validation_status=str(row.get("validation_status") or "unverified"),
                     ))
         counts["cvss_metrics_found"] += len(derived)
+        expected_ids_by_cve: dict[str, set[str]] = {}
+        for record in derived:
+            metadata = json.loads(record["metadata_json"])
+            expected_ids_by_cve.setdefault(str(metadata.get("cve_id") or ""), set()).add(
+                str(record["record_id"])
+            )
+        # Even a CVE whose newest NVD record no longer has CVSS metrics must
+        # be visited; its expected set is empty so stale derived rows are removed.
+        if page:
+            from .knowledge import open_store as _open_store
+            db = _open_store(db_file)
+            try:
+                for source_row in page:
+                    source_meta = json.loads(source_row["metadata_json"])
+                    canonical_cve = str(
+                        source_meta.get("id")
+                        or source_meta.get("external_id")
+                        or source_row["record_id"].rsplit(":", 1)[-1]
+                    )
+                    expected = expected_ids_by_cve.get(canonical_cve, set())
+                    stale_rows = db.execute(
+                        "SELECT record_id FROM knowledge_records "
+                        "WHERE dataset='cvss' AND record_id LIKE ?",
+                        (f"cvss:{canonical_cve}:%",),
+                    ).fetchall()
+                    for stale in stale_rows:
+                        stale_id = str(stale["record_id"])
+                        if stale_id in expected:
+                            continue
+                        db.execute("DELETE FROM knowledge_fts WHERE record_id=?", (stale_id,))
+                        db.execute("DELETE FROM knowledge_chunks_fts WHERE record_id=?", (stale_id,))
+                        db.execute("DELETE FROM knowledge_chunks WHERE record_id=?", (stale_id,))
+                        db.execute("DELETE FROM knowledge_relations WHERE record_id=?", (stale_id,))
+                        db.execute("DELETE FROM knowledge_records WHERE record_id=?", (stale_id,))
+                db.commit()
+            finally:
+                db.close()
 
         existing = _checkpoint_read(
             db_file,
