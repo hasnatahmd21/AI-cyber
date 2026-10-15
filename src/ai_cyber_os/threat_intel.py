@@ -37,6 +37,11 @@ def parse_nvd(path: str | Path, *, dataset: str = "cve", source: str = "NVD",
     items = raw.get("vulnerabilities", raw.get("CVE_Items", [])) if isinstance(raw, dict) else raw
     if not isinstance(items, list):
         raise ValueError("NVD file does not contain a vulnerability list")
+    declared_total = raw.get("totalResults") if isinstance(raw, dict) else None
+    if declared_total is not None and declared_total != len(items):
+        raise ValueError(
+            f"NVD feed totalResults={declared_total} but contains {len(items)} vulnerability records"
+        )
     out = []
     for item in items:
         cve = item.get("cve", item) if isinstance(item, dict) else {}
