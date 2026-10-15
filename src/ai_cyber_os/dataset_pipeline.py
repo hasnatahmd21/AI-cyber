@@ -119,6 +119,9 @@ def _count_artifact_records(
     if count_kind in {"nvd", "nvd-feed", "nvd_cve"}:
         from .threat_intel import iter_parse_nvd
         return sum(1 for _ in iter_parse_nvd(local, **common))
+    if count_kind == "stix_bundle" and common["dataset"] == "mitre_attack":
+        from .threat_intel import iter_parse_attack_bundle
+        return sum(1 for _ in iter_parse_attack_bundle(local, **common))
     if count_kind == "mbc":
         from .threat_intel import parse_mbc_stix
         return len(parse_mbc_stix(local, **common))
@@ -362,6 +365,9 @@ def _specialized_records(
     if kind in {"nvd", "nvd-feed", "nvd_cve"}:
         from .threat_intel import iter_parse_nvd
         return iter_parse_nvd(local, **common)
+    if kind == "stix_bundle" and dataset == "mitre_attack":
+        from .threat_intel import iter_parse_attack_bundle
+        return iter_parse_attack_bundle(local, **common)
     if kind in {"kev", "cisa-kev", "cisa_kev"}:
         from .threat_intel import parse_cisa_kev
         return parse_cisa_kev(local, **common)
