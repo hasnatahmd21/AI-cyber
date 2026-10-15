@@ -147,7 +147,7 @@ def _meta_name(feed_name: str) -> str:
     return feed_name[:-len(suffix)] + ".meta"
 
 
-def process_feed(root: Path, feed_name: str, *, dataset_version: str) -> tuple[dict[str, Any], set[str]]:
+def process_feed(root: Path, feed_name: str, *, dataset_version: str, project_root: Path) -> tuple[dict[str, Any], set[str]]:
     feed_path = root / feed_name
     meta_path = root / _meta_name(feed_name)
     feed_url = f"{BASE_URL}/{feed_name}"
@@ -194,7 +194,7 @@ def process_feed(root: Path, feed_name: str, *, dataset_version: str) -> tuple[d
         raise ValueError(f"duplicate CVE IDs inside one NVD feed: {feed_name}")
 
     artifact = {
-        "path": feed_path.relative_to(REPOSITORY_ROOT).as_posix(),
+        "path": feed_path.relative_to(project_root).as_posix(),
         "role": "data",
         "format": "NVD JSON 2.0 gzip",
         "count_kind": "nvd-feed",
@@ -206,7 +206,7 @@ def process_feed(root: Path, feed_name: str, *, dataset_version: str) -> tuple[d
         "source_uri": feed_url,
         "version": dataset_version,
         "upstream_meta": {
-            "path": meta_path.relative_to(REPOSITORY_ROOT).as_posix(),
+            "path": meta_path.relative_to(project_root).as_posix(),
             "sha256": sha256_file(meta_path),
             "byte_size": meta_path.stat().st_size,
             "last_modified_date": meta.get("lastModifiedDate", ""),
@@ -225,7 +225,7 @@ def process_feed(root: Path, feed_name: str, *, dataset_version: str) -> tuple[d
     return artifact, cve_ids
 
 
-def build_manifest(root: Path, year_start: int, year_end: int, include_updates: bool) -> dict[str, Any]:
+def build_manifest(root: Path, year_start: int, year_end: int, include_updates: bool, *, project_root: Path) -> dict[str, Any]:
     if year_start < 2002 or year_end < year_start:
         raise ValueError("NVD year range must start at or after 2002 and end >= start")
     root.mkdir(parents=True, exist_ok=True)
@@ -243,7 +243,7 @@ def build_manifest(root: Path, year_start: int, year_end: int, include_updates: 
     seen_cve_ids: set[str] = set()
     feed_record_count = 0
     for filename, version in feed_specs:
-        artifact, cve_ids = process_feed(root, filename, dataset_version=version)
+        artifact, cve_ids = process_feed(root, filename, dataset_version=version, project_root=project_root)
         artifacts.append(artifact)
         feed_record_count += int(artifact["record_count"])
         seen_cve_ids.update(cve_ids)
@@ -260,8 +260,8 @@ def build_manifest(root: Path, year_start: int, year_end: int, include_updates: 
         "license": LICENSE_TEXT,
         "license_basis": "Official NVD data-feed provenance; retain NVD attribution",
         "local_path": "datasets/raw/nvd_cve",
-        "sha256": aggregate_sha,
-        "sha256_scheme": "SHA-256 of newline-joined per-artifact compressed SHA-256 digests in manifest order",
+        "artifact_set_sha256": aggregate_sha,
+        "artifact_set_sha256_scheme": "SHA-256 of newline-joined per-artifact compressed SHA-256 digests in manifest order",
         "byte_size": sum(int(item["byte_size"]) for item in artifacts),
         "record_count": feed_record_count,
         "unique_cve_id_count": len(seen_cve_ids),
@@ -322,7 +322,7 @@ def push_snapshot(root: Path, branch: str, manifest_path: Path, report_path: Pat
         check=True,
     )
     subprocess.run(
-        ["git", "-C", str(checkout), "add", "--", "datasets/raw/nvd_cve", str(manifest_path), str(report_path)],
+        ["git", "-C", str(checkout), "add", "--", ".gitattributes", "datasets/raw/nvd_cve", str(manifest_path), str(report_path)],
         check=True,
     )
     status = subprocess.run(
@@ -396,6 +396,7 @@ def main(argv: list[str] | None = None) -> int:
             args.start_year,
             year_end,
             include_updates=not args.skip_update_feeds,
+            project_root=project_root,
         )
         write_json_atomic(manifest_path, manifest)
         report = {
