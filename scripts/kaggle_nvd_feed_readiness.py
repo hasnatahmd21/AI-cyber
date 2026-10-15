@@ -303,8 +303,8 @@ def acquire_github_token() -> str:
         ) from exc
 
 
-def push_snapshot(root: Path, branch: str, manifest_path: Path, report_path: Path) -> None:
-    checkout = REPOSITORY_ROOT
+def push_snapshot(checkout: Path, branch: str, manifest_path: Path, report_path: Path) -> None:
+    checkout = checkout.resolve()
     if not (checkout / ".git").exists():
         raise RuntimeError("--push requires running inside a Git checkout")
     active = subprocess.run(
@@ -426,7 +426,7 @@ def main(argv: list[str] | None = None) -> int:
             "database_created": False,
         }, indent=2))
         if args.push:
-            push_snapshot(raw_root, args.branch, manifest_path, report_path)
+            push_snapshot(project_root, args.branch, manifest_path, report_path)
 
         gate = project_root / "scripts" / "kaggle_dataset_parser_readiness_gate.py"
         if not gate.is_file():
