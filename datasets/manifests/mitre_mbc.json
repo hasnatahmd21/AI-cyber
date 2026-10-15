@@ -22,8 +22,19 @@
           "malware-objective": 21,
           "marking-definition": 1,
           "relationship": 1015
+        },
+        "count_semantics": {
+          "json_file_count": "All JSON members in the source archive, including metadata/non-STIX JSON",
+          "bundle_file_count": "JSON source members containing a STIX bundle/object representation; not the distinct STIX record count",
+          "raw_stix_object_occurrences": "STIX objects encountered before deduplicating repeated objects represented in both catalog and per-object files",
+          "stix_object_count": "Distinct STIX object IDs, matching the manifest record_count"
         }
-      }
+      },
+      "bundle_file_count": 1906,
+      "json_file_count": 1907,
+      "stix_object_count": 1905,
+      "raw_stix_object_occurrences": 3810,
+      "duplicate_stix_object_occurrences": 1905
     },
     {
       "artifact_type": "license_text",
@@ -69,5 +80,12 @@
   "source_uri": "https://github.com/MBCProject/mbc-stix2.1",
   "validation_status": "validated",
   "version": "main",
-  "version_basis": "upstream branch_head"
+  "version_basis": "upstream branch_head",
+  "source_counts": {
+    "json_file_count": 1907,
+    "bundle_file_count": 1906,
+    "raw_stix_object_occurrences": 3810,
+    "distinct_stix_object_count": 1905,
+    "duplicate_stix_object_occurrences": 1905
+  }
 }
