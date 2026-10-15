@@ -297,7 +297,7 @@ def _iter_cwe_xml_stream(
             else:
                 record_id = f"cwe-{element_type.casefold()}-{catalog_id}"
 
-            name = ""
+            name = " ".join(str(elem.attrib.get("Name") or "").split())
             descriptions: list[str] = []
             for child in list(elem):
                 child_name = child.tag.rsplit("}", 1)[-1]
