@@ -308,6 +308,15 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(p)
+    # Git LFS pointer files are plain text, not the dataset bytes they reference.
+    # Reject them before generic text/JSON parsing can count the pointer as data.
+    with p.open("rb") as prefix_handle:
+        prefix = prefix_handle.read(256).lstrip()
+    if prefix.startswith(b"version https://git-lfs.github.com/spec/v1"):
+        raise ValueError(
+            f"Git LFS pointer detected instead of dataset content: {p}. "
+            "Restore the LFS object and verify its original SHA-256 and size before parsing."
+        )
     ds = dataset or p.stem
     src = source or str(p)
     selected_elements = {_local_xml_name(x) for x in (record_elements or ())}
