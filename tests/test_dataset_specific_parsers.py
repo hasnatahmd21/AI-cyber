@@ -102,3 +102,80 @@ def test_lfs_pointer_is_never_parsed_as_attack_json(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Git LFS pointer"):
         parse_attack_stix(path)
+
+
+
+def test_readiness_gate_passes_integrity_checked_manifest(tmp_path: Path):
+    import hashlib
+    from ai_cyber_os.dataset_readiness import readiness_report
+
+    project = tmp_path / "project"
+    datasets = project / "datasets"
+    manifests = datasets / "manifests"
+    manifests.mkdir(parents=True)
+    payload = '{"id":"READY-1","content":"readiness fixture"}\\n'
+    data_path = datasets / "ready.jsonl"
+    data_path.write_text(payload, encoding="utf-8")
+    manifest = manifests / "ready.json"
+    manifest.write_text(json.dumps({
+        "dataset": "ready-fixture",
+        "version": "test-1",
+        "source": "fixture",
+        "source_uri": "https://example.invalid/fixture",
+        "license": "CC0",
+        "local_path": "datasets/ready.jsonl",
+        "sha256": hashlib.sha256(payload.encode("utf-8")).hexdigest(),
+        "record_count": 1,
+        "schema": {"type": "jsonl"},
+        "ingestion_status": "not-started",
+        "validation_status": "fixture-validated",
+    }), encoding="utf-8")
+
+    report = readiness_report(manifests, required_datasets=["ready-fixture"])
+
+    assert report["overall"] == "PASS"
+    assert report["pass"] == 1
+    assert report["ingestion_performed"] is False
+    assert report["datasets"][0]["inspection"]["records"] == 1
+
+
+def test_readiness_gate_blocks_lfs_pointer_and_missing_required_source(tmp_path: Path):
+    import hashlib
+    from ai_cyber_os.dataset_readiness import readiness_report
+
+    datasets = tmp_path / "datasets"
+    manifests = datasets / "manifests"
+    manifests.mkdir(parents=True)
+    pointer = (
+        "version https://git-lfs.github.com/spec/v1\\n"
+        "oid sha256:" + "b" * 64 + "\\n"
+        "size 456789\\n"
+    )
+    data_path = datasets / "enterprise-attack.json"
+    data_path.write_text(pointer, encoding="utf-8")
+    manifest = manifests / "attack.json"
+    manifest.write_text(json.dumps({
+        "dataset": "mitre-attack-enterprise",
+        "version": "19.2",
+        "source": "MITRE ATT&CK",
+        "source_uri": "https://example.invalid/attack",
+        "license": "CC BY 4.0",
+        "local_path": "datasets/enterprise-attack.json",
+        "sha256": hashlib.sha256(pointer.encode("utf-8")).hexdigest(),
+        "record_count": 1,
+        "schema": {"type": "json"},
+        "ingestion_status": "not-started",
+        "validation_status": "unverified",
+    }), encoding="utf-8")
+
+    report = readiness_report(
+        manifests,
+        required_datasets=["mitre-attack-enterprise", "missing-required-fixture"],
+    )
+
+    assert report["overall"] == "BLOCKED"
+    by_name = {row["dataset"]: row for row in report["datasets"]}
+    assert by_name["mitre-attack-enterprise"]["status"] == "BLOCKED"
+    assert "Git LFS pointer" in by_name["mitre-attack-enterprise"]["evidence"]
+    assert by_name["missing-required-fixture"]["status"] == "BLOCKED"
+    assert report["ingestion_performed"] is False
