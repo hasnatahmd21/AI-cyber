@@ -396,10 +396,10 @@ def test_nvd_meta_verification_checks_compressed_and_uncompressed_bytes(tmp_path
         handle.write(raw)
 
     metadata = (
-        "lastModifiedDate:2026-10-15T00:00:00Z\\n"
-        f"size:{len(raw)}\\n"
-        f"gzSize:{feed.stat().st_size}\\n"
-        f"sha256:{hashlib.sha256(raw).hexdigest()}\\n"
+        "lastModifiedDate:2026-10-15T00:00:00Z\n"
+        f"size:{len(raw)}\n"
+        f"gzSize:{feed.stat().st_size}\n"
+        f"sha256:{hashlib.sha256(raw).hexdigest()}\n"
     )
     parsed = parse_meta(metadata)
     evidence = verified_against_meta(feed, parsed)
@@ -418,7 +418,7 @@ def test_nvd_meta_parser_rejects_missing_or_malformed_integrity_fields():
     from scripts.kaggle_nvd_feed_readiness import parse_meta
 
     with pytest.raises(ValueError, match="missing required fields"):
-        parse_meta("lastModifiedDate:2026-10-15T00:00:00Z\\nsize:100\\n")
+        parse_meta("lastModifiedDate:2026-10-15T00:00:00Z\nsize:100\n")
 
     with pytest.raises(ValueError, match="sha256 must be"):
-        parse_meta("size:100\\ngzSize:50\\nsha256:not-a-digest\\n")
+        parse_meta("size:100\ngzSize:50\nsha256:not-a-digest\n")
