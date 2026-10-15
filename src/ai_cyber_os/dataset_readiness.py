@@ -110,7 +110,7 @@ def readiness_report(
         evidence = "At least one required source/artifact is unavailable or intentionally excluded."
     else:
         overall = "PASS"
-        evidence = "Every discovered dataset passed manifest, checksum, and record-count inspection."
+        evidence = "Every discovered dataset passed manifest, SHA-256, byte-size, and record-count inspection."
 
     return {
         "overall": overall,
