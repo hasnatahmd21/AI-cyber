@@ -261,6 +261,7 @@ def main(argv=None) -> int:
                 raise RuntimeError("pinned DB exists but NVD manifest is missing; refusing unsafe resume")
             report["steps"].append({"step": "resume pinned snapshot", "pass": True, "details": reason})
         else:
+            print("STAGE 1/4: acquiring and checksum-verifying NVD feeds; the source gate itself does not create a database.", flush=True)
             nvd = load_nvd_module(root)
             nvd_report = output / "nvd-acquisition-report.json"
             end_year = args.end_year or dt.datetime.now(dt.timezone.utc).year
@@ -275,11 +276,12 @@ def main(argv=None) -> int:
                                "gate_report": gate, "ingestion_performed": False})
                 report["finished_at"] = dt.datetime.now(dt.timezone.utc).isoformat()
                 report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
-                print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
-                print(f"BUILD_REPORT={report_path}")
+                print(json.dumps(report, indent=2, ensure_ascii=False, default=str), flush=True)
+                print(f"BUILD_REPORT={report_path}", flush=True)
                 return 2
             report["steps"].append({"step": "NVD acquisition + combined readiness", "pass": True,
                                     "gate_report_path": str(gate_path), "gate_overall": gate.get("overall")})
+        print("STAGE 2/4: preflighting all manifests and artifacts again before opening the database; this can take time and is intentionally fail-closed.", flush=True)
         from ai_cyber_os.dataset_pipeline import DEFAULT_REQUIRED_DATASETS, ingest_manifest_directory
         result = ingest_manifest_directory(manifests, db_path=db_path,
                                            required_datasets=DEFAULT_REQUIRED_DATASETS, require_checksum=True)
@@ -293,7 +295,12 @@ def main(argv=None) -> int:
             print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
             print(f"BUILD_REPORT={report_path}")
             return 2
+        if not db_path.is_file() or db_path.stat().st_size <= 0:
+            raise RuntimeError("ingestion reported PASS but the target Knowledge DB file is missing or empty; refusing to run verification")
+        print(f"STAGE 3/4: ingestion finished; database_bytes={db_path.stat().st_size}; starting SQLite/FTS and direct RAG verification.", flush=True)
         verification = validate_db_and_rag(db_path, tuple(DEFAULT_REQUIRED_DATASETS))
+        if not db_path.is_file() or db_path.stat().st_size <= 0:
+            raise RuntimeError("database disappeared or became empty during verification")
         report.update({"database_verification": verification, "success": bool(verification["pass"]),
                        "overall": "PASS" if verification["pass"] else "FAIL",
                        "evidence": ("All raw sources ingested; CVSS derived; SQLite/FTS and live RAG probes passed."
@@ -301,9 +308,10 @@ def main(argv=None) -> int:
                        "finished_at": dt.datetime.now(dt.timezone.utc).isoformat()})
         report_path.write_text(json.dumps(report, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
         print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
-        print(f"BUILD_REPORT={report_path}")
-        print(f"DATABASE_PATH={db_path}")
-        return 0 if verification["pass"] else 2
+        print(f"BUILD_REPORT={report_path}", flush=True)
+        print(f"DATABASE_PATH={db_path}", flush=True)
+        print(f"STAGE 4/4: database_build_overall={report['overall']} database_bytes={db_path.stat().st_size if db_path.is_file() else 0}", flush=True)
+        return 0 if verification["pass"] and db_path.is_file() and db_path.stat().st_size > 0 else 2
     except Exception as exc:
         report.update({"overall": "FAIL", "success": False, "error": f"{type(exc).__name__}: {exc}",
                        "finished_at": dt.datetime.now(dt.timezone.utc).isoformat()})
