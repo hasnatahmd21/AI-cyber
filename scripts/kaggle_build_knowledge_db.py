@@ -240,7 +240,7 @@ def persist_via_kaggle_dataset(
     flag and uses the 'other' metadata label because the operational DB contains
     several separately licensed upstream sources.
     """
-    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,48}/[a-z0-9][a-z0-9-]{1,48}", dataset_id):
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,48}/[a-z0-9][a-z0-9-]{2,49}", dataset_id):
         raise ValueError("Kaggle dataset ID must look like owner/slug using lowercase letters, digits and hyphens")
     if action not in {"create", "version"}:
         raise ValueError("Kaggle dataset action must be create or version")
