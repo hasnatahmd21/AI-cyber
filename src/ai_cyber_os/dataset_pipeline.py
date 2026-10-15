@@ -97,6 +97,50 @@ def _project_root(manifest_path: str | Path) -> Path:
     return p.parent.resolve()
 
 
+def _count_artifact_records(
+    local: Path,
+    *,
+    manifest: dict[str, Any],
+    item: dict[str, Any],
+    manifest_path: str | Path,
+) -> int:
+    """Count logical records with format-aware parsers for special source archives."""
+    count_kind = str(item.get("count_kind", "")).casefold()
+    common = {
+        "dataset": manifest.get("dataset", Path(manifest_path).stem),
+        "source": item.get("source", manifest.get("source", "")),
+        "version": item.get("version", manifest.get("version", "")),
+        "source_uri": item.get("source_uri", manifest.get("source_uri", "")),
+        "license": item.get("license", manifest.get("license", "")),
+        "validation_status": item.get("validation_status", manifest.get("validation_status", "unverified")),
+    }
+    if count_kind == "mbc":
+        from .threat_intel import parse_mbc_stix
+        return len(parse_mbc_stix(local, **common))
+    if count_kind == "suricata":
+        from .threat_intel import parse_suricata_rules
+        return len(parse_suricata_rules(local, **common))
+
+    schema = manifest.get("schema", {})
+    record_elements = schema.get("elements") if isinstance(schema, dict) else None
+    schema_format = str(schema.get("format", "")).lower() if isinstance(schema, dict) else ""
+    record_extensions = {".yml", ".yaml"} if "yaml rules inside archive" in schema_format else None
+    return sum(
+        1
+        for _ in iter_records(
+            local,
+            dataset=common["dataset"],
+            source=common["source"],
+            license=common["license"],
+            version=common["version"],
+            source_uri=common["source_uri"],
+            validation_status=common["validation_status"],
+            record_elements=record_elements,
+            record_extensions=record_extensions,
+        )
+    )
+
+
 def _artifact_inspection(
     manifest_path: str | Path, manifest: dict[str, Any]
 ) -> dict[str, Any]:
@@ -119,51 +163,40 @@ def _artifact_inspection(
             raise FileNotFoundError(local)
 
         actual_sha = sha256_file(local)
-        expected_sha = item["sha256"].lower().strip()
+        expected_sha = str(item["sha256"]).lower().strip()
+        actual_size = local.stat().st_size
+        declared_size = item.get("byte_size")
+        size_matches = declared_size is None or (
+            isinstance(declared_size, int) and not isinstance(declared_size, bool)
+            and actual_size == declared_size
+        )
 
         role = str(item.get("role", "data")).lower()
         if role == "license":
             # License text is integrity-checked but is not a knowledge record.
             count = 0
-            declared = None
             count_matches = True
+            declared_count = None
         else:
-            schema = manifest.get("schema", {})
-            record_elements = schema.get("elements") if isinstance(schema, dict) else None
-            schema_format = str(schema.get("format", "")).lower() if isinstance(schema, dict) else ""
-            record_extensions = {".yml", ".yaml"} if "yaml rules inside archive" in schema_format else None
-            count = sum(
-                1
-                for _ in iter_records(
-                    local,
-                    dataset=manifest.get("dataset", Path(manifest_path).stem),
-                    source=item.get("source", manifest.get("source", "")),
-                    license=item.get("license", manifest.get("license", "")),
-                    version=item.get("version", manifest.get("version", "")),
-                    source_uri=item.get(
-                        "source_uri", manifest.get("source_uri", "")
-                    ),
-                    validation_status=item.get(
-                        "validation_status",
-                        manifest.get("validation_status", "unverified"),
-                    ),
-                    record_elements=record_elements,
-                    record_extensions=record_extensions,
-                )
+            count = _count_artifact_records(
+                local, manifest=manifest, item=item, manifest_path=manifest_path
             )
-            declared = item["record_count"]
-            count_matches = count == declared
+            declared_count = item["record_count"]
+            count_matches = count == declared_count
 
-        artifacts.append(
-            {
-                "path": str(local),
-                "role": role,
-                "sha256": actual_sha,
-                "sha256_matches": actual_sha == expected_sha,
-                "records": count,
-                "record_count_matches": count_matches,
-            }
-        )
+        artifacts.append({
+            "path": str(local),
+            "role": role,
+            "sha256": actual_sha,
+            "sha256_matches": actual_sha == expected_sha,
+            "byte_size": actual_size,
+            "declared_byte_size": declared_size,
+            "byte_size_matches": size_matches,
+            "records": count,
+            "declared_record_count": declared_count,
+            "record_count_matches": count_matches,
+            "count_kind": item.get("count_kind"),
+        })
 
     return {
         "dataset": manifest.get("dataset", Path(manifest_path).stem),
@@ -171,7 +204,7 @@ def _artifact_inspection(
         "artifacts": artifacts,
         "records": sum(a["records"] for a in artifacts),
         "ready": all(
-            a["sha256_matches"] and a["record_count_matches"]
+            a["sha256_matches"] and a["byte_size_matches"] and a["record_count_matches"]
             for a in artifacts
         ),
     }
@@ -195,9 +228,14 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
 
     actual_sha = sha256_file(local)
     expected_sha = manifest["sha256"].lower().strip()
+    actual_size = local.stat().st_size
+    declared_size = manifest.get("byte_size")
+    size_matches = declared_size is None or (
+        isinstance(declared_size, int) and not isinstance(declared_size, bool)
+        and actual_size == declared_size
+    )
     records = sum(
-        1
-        for _ in iter_records(
+        1 for _ in iter_records(
             local,
             dataset=manifest["dataset"],
             source=manifest["source"],
@@ -209,7 +247,7 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
                              if isinstance(manifest.get("schema"), dict) else None),
         )
     )
-    declared = int(manifest["record_count"])
+    declared = manifest["record_count"]
 
     return {
         "dataset": manifest["dataset"],
@@ -217,10 +255,14 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
         "path": str(local),
         "sha256": actual_sha,
         "sha256_matches": actual_sha == expected_sha,
+        "byte_size": actual_size,
+        "declared_byte_size": declared_size,
+        "byte_size_matches": size_matches,
         "records": records,
+        "declared_record_count": declared,
         "record_count_matches": records == declared,
         "manifest_validation_status": manifest["validation_status"],
-        "ready": actual_sha == expected_sha and records == declared,
+        "ready": actual_sha == expected_sha and size_matches and records == declared,
     }
 
 
@@ -239,23 +281,27 @@ def ingest_manifest(
     if "artifacts" not in manifest:
         if require_checksum and not inspection["sha256_matches"]:
             raise ValueError("dataset SHA-256 does not match manifest")
+        if not inspection["byte_size_matches"]:
+            raise ValueError("dataset byte size does not match manifest")
         if not inspection["record_count_matches"]:
             raise ValueError("dataset record count does not match manifest")
     else:
         for artifact in inspection["artifacts"]:
             if require_checksum and not artifact["sha256_matches"]:
                 raise ValueError("dataset SHA-256 does not match manifest")
+            if not artifact["byte_size_matches"]:
+                raise ValueError("dataset byte size does not match manifest")
             if not artifact["record_count_matches"]:
                 raise ValueError("dataset record count does not match manifest")
 
     # Checksum enforcement is optional only when explicitly requested; counts
     # and path containment remain mandatory in either mode.
     integrity_ok = (
-        all(a["record_count_matches"] and
+        all(a["record_count_matches"] and a["byte_size_matches"] and
             (a["sha256_matches"] or not require_checksum)
             for a in inspection["artifacts"])
         if "artifacts" in manifest
-        else inspection["record_count_matches"] and
+        else inspection["record_count_matches"] and inspection["byte_size_matches"] and
              (inspection["sha256_matches"] or not require_checksum)
     )
     if not integrity_ok:
