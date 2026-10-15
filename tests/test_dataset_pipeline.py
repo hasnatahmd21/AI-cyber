@@ -731,7 +731,7 @@ def test_manifest_directory_pins_source_snapshot_and_blocks_changed_manifest(tmp
     )
 
     assert blocked["overall"] == "BLOCKED"
-    assert blocked["database_resume_status"] is None
+    assert blocked["database_resume_status"] == "BLOCKED"
     assert blocked["ingestion_performed"] is False
     assert "Source-manifest digests differ" in blocked["evidence"]
     assert hashlib.sha256(db_path.read_bytes()).hexdigest() == before
