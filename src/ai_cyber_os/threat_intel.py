@@ -66,7 +66,7 @@ def parse_cisa_kev(path: str | Path, *, dataset: str = "cisa-kev",
                    source: str = "CISA KEV", version: str = "",
                    source_uri: str = "", license: str = "",
                    validation_status: str = "unverified") -> list[dict[str, Any]]:
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    raw = _read_json(path)
     rows = raw.get("vulnerabilities", []) if isinstance(raw, dict) else raw
     if not isinstance(rows, list):
         raise ValueError("CISA KEV file does not contain vulnerabilities")
@@ -82,7 +82,7 @@ def parse_attack_stix(path: str | Path, *, dataset: str = "mitre-attack",
                       source: str = "MITRE ATT&CK", version: str = "",
                       source_uri: str = "", license: str = "",
                       validation_status: str = "unverified") -> list[dict[str, Any]]:
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    raw = _read_json(path)
     objects = raw.get("objects", []) if isinstance(raw, dict) else raw
     if not isinstance(objects, list):
         raise ValueError("ATT&CK STIX file does not contain objects")
@@ -140,7 +140,7 @@ def parse_cpe(path: str | Path, *, dataset: str = "cpe",
               validation_status: str = "unverified") -> list[dict[str, Any]]:
     """Parse common NVD CPE JSON/XML exports into evidence records."""
     p = Path(path)
-    raw = json.loads(p.read_text(encoding="utf-8")) if p.suffix.lower() == ".json" else None
+    raw = _read_json(p) if p.suffix.lower() == ".json" else None
     candidates: list[Any] = []
     if isinstance(raw, dict):
         candidates = raw.get("matches", raw.get("products", raw.get("cpes", [])))
