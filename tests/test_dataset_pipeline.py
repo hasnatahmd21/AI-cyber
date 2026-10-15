@@ -680,3 +680,55 @@ def test_restart_smoke_test_uses_configured_db_and_returns_cited_evidence(tmp_pa
     assert result["analysis"]["success"] is True
     assert result["analysis"]["evidence_only"] is True
     assert result["analysis"]["has_citations"] is True
+
+
+def test_manifest_directory_pins_source_snapshot_and_blocks_changed_manifest(tmp_path: Path):
+    import hashlib
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+
+    payload = '{"id":"PINNED-1","content":"one versioned evidence record"}\n'
+    manifest = _manifest(tmp_path, payload, count=1)
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+
+    first = ingest_manifest_directory(
+        manifest.parent, db_path=db_path, required_datasets=["fixture-threat-intel"]
+    )
+    assert first["overall"] == "PASS"
+    assert first["database_resume_status"] == "NEW_SOURCE_SNAPSHOT"
+    assert first["source_manifest_digests"]["fixture-threat-intel"] == hashlib.sha256(
+        manifest.read_bytes()
+    ).hexdigest()
+
+    before = hashlib.sha256(db_path.read_bytes()).hexdigest()
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["version"] = "test-2"
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    blocked = ingest_manifest_directory(
+        manifest.parent, db_path=db_path, required_datasets=["fixture-threat-intel"]
+    )
+
+    assert blocked["overall"] == "BLOCKED"
+    assert blocked["database_resume_status"] is None
+    assert blocked["ingestion_performed"] is False
+    assert "Source-manifest digests differ" in blocked["evidence"]
+    assert hashlib.sha256(db_path.read_bytes()).hexdigest() == before
+
+
+def test_manifest_directory_rejects_duplicate_dataset_manifests(tmp_path: Path):
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+
+    payload = '{"id":"DUP-1","content":"duplicate manifest fixture"}\n'
+    manifest = _manifest(tmp_path, payload, count=1)
+    duplicate = manifest.parent / "fixture_duplicate.json"
+    duplicate.write_text(manifest.read_text(encoding="utf-8"), encoding="utf-8")
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+
+    result = ingest_manifest_directory(
+        manifest.parent, db_path=db_path, required_datasets=["fixture-threat-intel"]
+    )
+
+    assert result["overall"] == "FAIL"
+    assert result["ingestion_performed"] is False
+    assert not db_path.exists()
+    assert any("duplicate manifest" in row.get("evidence", "").casefold()
+               for row in result.get("preflight_failures", []))
