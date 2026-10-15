@@ -28,7 +28,7 @@ from typing import Any
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
 
-from ai_cyber_os.threat_intel import parse_nvd  # noqa: E402
+from ai_cyber_os.threat_intel import iter_parse_nvd  # noqa: E402
 
 SOURCE_URI = "https://nvd.nist.gov/vuln/data-feeds"
 LICENSE_TEXT = "NVD data feed terms; preserve source attribution"
@@ -180,7 +180,9 @@ def process_feed(root: Path, feed_name: str, *, dataset_version: str, project_ro
 
     # Parsing checks JSON validity and NVD totalResults in addition to the .meta
     # content hash. This counts real CVE entries; it never counts the .meta file.
-    records = parse_nvd(
+    cve_ids: set[str] = set()
+    record_count = 0
+    for record in iter_parse_nvd(
         feed_path,
         dataset="nvd_cve",
         source="NIST National Vulnerability Database (NVD)",
@@ -188,17 +190,19 @@ def process_feed(root: Path, feed_name: str, *, dataset_version: str, project_ro
         source_uri=SOURCE_URI,
         license=LICENSE_TEXT,
         validation_status="local-integrity-verified",
-    )
-    cve_ids = {str(record["record_id"]) for record in records}
-    if len(cve_ids) != len(records):
-        raise ValueError(f"duplicate CVE IDs inside one NVD feed: {feed_name}")
+    ):
+        cve_id = str(record["record_id"])
+        if cve_id in cve_ids:
+            raise ValueError(f"duplicate CVE ID inside one NVD feed: {feed_name}: {cve_id}")
+        cve_ids.add(cve_id)
+        record_count += 1
 
     artifact = {
         "path": feed_path.relative_to(project_root).as_posix(),
         "role": "data",
         "format": "NVD JSON 2.0 gzip",
         "count_kind": "nvd-feed",
-        "record_count": len(records),
+        "record_count": record_count,
         "byte_size": cache_evidence["compressed_size"],
         "sha256": cache_evidence["compressed_sha256"],
         "uncompressed_byte_size": cache_evidence["uncompressed_size"],
@@ -217,7 +221,7 @@ def process_feed(root: Path, feed_name: str, *, dataset_version: str, project_ro
         "cache_reused": cached_ok,
     }
     print(
-        f"PASS {feed_name}: records={len(records)} compressed={artifact['byte_size']} "
+        f"PASS {feed_name}: records={record_count} compressed={artifact['byte_size']} "
         f"uncompressed={artifact['uncompressed_byte_size']} "
         f"sha256={artifact['sha256']}",
         flush=True,
