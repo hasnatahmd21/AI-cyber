@@ -333,8 +333,8 @@ def parse_suricata_rules(path: str | Path, *, dataset: str = "suricata-rules",
         raise FileNotFoundError(root)
     files = sorted(p for p in root.rglob("*.rules") if p.is_file()) if root.is_dir() else [root]
     action_text = "|".join(sorted(_SURICATA_ACTIONS, key=len, reverse=True))
-    active_re = re.compile(r"^\s*(" + action_text + r")\s+\S+\s*\(")
-    disabled_re = re.compile(r"^\s*#\s*(" + action_text + r")\s+\S+\s*\(")
+    active_re = re.compile(r"^\s*(" + action_text + r")\s+\S+\s+(?=.*\()")
+    disabled_re = re.compile(r"^\s*#\s*(" + action_text + r")\s+\S+\s+(?=.*\()")
     out: list[dict[str, Any]] = []
     for file_path in files:
         if not file_path.is_file():
