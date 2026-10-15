@@ -28,7 +28,7 @@ def parse_nvd(path: str | Path, *, dataset: str = "cve", source: str = "NVD",
               version: str = "", source_uri: str = "", license: str = "",
               validation_status: str = "unverified") -> list[dict[str, Any]]:
     """Parse NVD CVE JSON 1.x/2.x records into the common evidence contract."""
-    raw = json.loads(Path(path).read_text(encoding="utf-8"))
+    raw = _read_json(path)
     items = raw.get("vulnerabilities", raw.get("CVE_Items", [])) if isinstance(raw, dict) else raw
     if not isinstance(items, list):
         raise ValueError("NVD file does not contain a vulnerability list")
@@ -177,12 +177,210 @@ def parse_cpe(path: str | Path, *, dataset: str = "cpe",
                               validation_status=validation_status))
     return out
 
+
+def _read_json(path: str | Path) -> Any:
+    """Read JSON while rejecting an unresolved Git LFS pointer explicitly."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(p)
+    text = p.read_text(encoding="utf-8")
+    head = text.lstrip()[:512]
+    if head.startswith("version https://git-lfs.github.com/spec/v1") or (
+        head.startswith("oid sha256:") and "size " in head
+    ):
+        raise ValueError(
+            f"Git LFS pointer detected instead of dataset content: {p}. "
+            "Restore the LFS object and verify its original SHA-256 and size before parsing."
+        )
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid JSON dataset at {p}: {exc}") from exc
+
+
+def _jsonld_scalar(value: Any) -> str:
+    """Extract a useful scalar from a JSON-LD value without discarding the raw node."""
+    if isinstance(value, dict):
+        for key in ("@value", "@id", "value", "label"):
+            if value.get(key) is not None:
+                return _jsonld_scalar(value[key])
+        return json.dumps(value, ensure_ascii=False, sort_keys=True, default=str)
+    if isinstance(value, list):
+        return "; ".join(part for part in (_jsonld_scalar(item) for item in value) if part)
+    return "" if value is None else str(value)
+
+
+def _jsonld_field(node: dict[str, Any], names: tuple[str, ...]) -> str:
+    for name in names:
+        if name in node:
+            value = _jsonld_scalar(node[name]).strip()
+            if value:
+                return value
+    for key, value in node.items():
+        key_lower = key.lower()
+        if any(key_lower.endswith(suffix) for suffix in names if ":" not in suffix):
+            scalar = _jsonld_scalar(value).strip()
+            if scalar:
+                return scalar
+    return ""
+
+
+def parse_d3fend_jsonld(path: str | Path, *, dataset: str = "mitre-d3fend",
+                        source: str = "MITRE D3FEND", version: str = "",
+                        source_uri: str = "", license: str = "",
+                        validation_status: str = "unverified") -> list[dict[str, Any]]:
+    """Parse D3FEND JSON-LD as its individual @graph nodes, not one JSON document."""
+    raw = _read_json(path)
+    nodes = raw.get("@graph") if isinstance(raw, dict) else None
+    if not isinstance(nodes, list):
+        raise ValueError("D3FEND JSON-LD must contain an @graph list")
+    out: list[dict[str, Any]] = []
+    for node in nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("@id") or node.get("id")
+        if not node_id:
+            # A graph node without a URI is malformed; do not create a fabricated ID.
+            continue
+        label = _jsonld_field(node, ("rdfs:label", "skos:prefLabel", "label", "http://www.w3.org/2000/01/rdf-schema#label"))
+        description = _jsonld_field(node, ("description", "definition", "comment"))
+        payload = {
+            "id": str(node_id),
+            "name": label or str(node_id),
+            "description": description,
+            "type": node.get("@type", ""),
+            "content": json.dumps(node, ensure_ascii=False, sort_keys=True, default=str),
+        }
+        out.append(_normalize(payload, dataset=dataset, source=source, version=version,
+                              source_uri=source_uri, license=license,
+                              validation_status=validation_status))
+    return out
+
+
+def parse_mbc_stix(path: str | Path, *, dataset: str = "mitre-mbc",
+                   source: str = "MITRE Malware Behavior Catalog", version: str = "",
+                   source_uri: str = "", license: str = "",
+                   validation_status: str = "unverified") -> list[dict[str, Any]]:
+    """Parse STIX objects inside one MBC bundle or a directory of bundle JSON files.
+
+    The bundle count is intentionally not used as the record count: every valid
+    STIX object with an ID and type becomes one record. File order is stable.
+    """
+    root = Path(path)
+    if not root.exists():
+        raise FileNotFoundError(root)
+    if root.is_dir():
+        files = sorted(p for p in root.rglob("*.json") if p.is_file())
+    elif root.is_file():
+        files = [root]
+    else:
+        raise ValueError(f"MBC path is neither a file nor directory: {root}")
+    out: list[dict[str, Any]] = []
+    for file_path in files:
+        raw = _read_json(file_path)
+        if isinstance(raw, dict) and isinstance(raw.get("objects"), list):
+            objects = raw["objects"]
+        elif isinstance(raw, list):
+            objects = raw
+        elif isinstance(raw, dict) and raw.get("type") and raw.get("id"):
+            objects = [raw]
+        else:
+            # Catalog manifests and metadata JSON files are not STIX objects.
+            continue
+        try:
+            bundle_file = str(file_path.relative_to(root)) if root.is_dir() else file_path.name
+        except ValueError:
+            bundle_file = file_path.name
+        for obj in objects:
+            if not isinstance(obj, dict) or not obj.get("type") or not obj.get("id"):
+                continue
+            object_text = json.dumps(obj, ensure_ascii=False, sort_keys=True, default=str)
+            record = {
+                "id": str(obj["id"]),
+                "stix_id": str(obj["id"]),
+                "type": str(obj["type"]),
+                "name": obj.get("name") or str(obj["id"]),
+                "description": obj.get("description", ""),
+                "bundle_file": bundle_file,
+                "content": object_text,
+            }
+            out.append(_normalize(record, dataset=dataset, source=source, version=version,
+                                  source_uri=source_uri, license=license,
+                                  validation_status=validation_status))
+    return out
+
+
+_SURICATA_ACTIONS = {
+    "alert", "pass", "drop", "reject", "rejectsrc", "rejectdst",
+    "rejectboth", "rejectpkt", "log", "activate", "dynamic", "bypass",
+}
+
+
+def parse_suricata_rules(path: str | Path, *, dataset: str = "suricata-rules",
+                         source: str = "Suricata rules", version: str = "",
+                         source_uri: str = "", license: str = "",
+                         validation_status: str = "unverified") -> list[dict[str, Any]]:
+    """Parse active and commented-out Suricata rules, excluding ordinary comments.
+
+    A disabled rule is recognized only when a comment marker is followed by a
+    Suricata action and the rest of a plausible rule. The original line and
+    file/line provenance remain available in metadata and content.
+    """
+    root = Path(path)
+    if not root.exists():
+        raise FileNotFoundError(root)
+    files = sorted(p for p in root.rglob("*.rules") if p.is_file()) if root.is_dir() else [root]
+    action_text = "|".join(sorted(_SURICATA_ACTIONS, key=len, reverse=True))
+    active_re = __import__("re").compile(r"^\s*(" + action_text + r")\s+\S+\s*\(")
+    disabled_re = __import__("re").compile(r"^\s*#\s*(" + action_text + r")\s+\S+\s*\(")
+    out: list[dict[str, Any]] = []
+    for file_path in files:
+        if not file_path.is_file():
+            continue
+        try:
+            file_label = str(file_path.relative_to(root)) if root.is_dir() else file_path.name
+        except ValueError:
+            file_label = file_path.name
+        with file_path.open("r", encoding="utf-8", errors="replace") as handle:
+            for line_number, line in enumerate(handle, 1):
+                original = line.rstrip("\r\n")
+                if not original.strip():
+                    continue
+                disabled_match = disabled_re.match(original)
+                active_match = active_re.match(original)
+                if disabled_match:
+                    state, action = "disabled", disabled_match.group(1).lower()
+                    rule = disabled_re.sub(lambda match: match.group(1), original, count=1).lstrip()
+                elif active_match:
+                    state, action, rule = "active", active_match.group(1).lower(), original.strip()
+                else:
+                    continue
+                stable_key = f"{state}\0{file_label}\0{line_number}\0{rule}"
+                digest = __import__("hashlib").sha256(stable_key.encode("utf-8")).hexdigest()
+                payload = {
+                    "id": f"suricata:{state}:{digest}",
+                    "name": f"{state.title()} Suricata {action} rule",
+                    "action": action,
+                    "status": state,
+                    "rule": rule,
+                    "file": file_label,
+                    "line_number": line_number,
+                    "content": rule,
+                }
+                out.append(_normalize(payload, dataset=dataset, source=source, version=version,
+                                      source_uri=source_uri, license=license,
+                                      validation_status=validation_status))
+    return out
+
 PARSERS = {
     "nvd": parse_nvd,
     "cisa-kev": parse_cisa_kev,
     "attack-stix": parse_attack_stix,
     "cwe-xml": parse_cwe_xml,
     "cpe": parse_cpe,
+    "d3fend-jsonld": parse_d3fend_jsonld,
+    "mbc-stix": parse_mbc_stix,
+    "suricata-rules": parse_suricata_rules,
 }
 
 def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> dict[str, int]:
@@ -262,10 +460,17 @@ def ingest_source(kind: str, path: str | Path, *, db_path: str | Path,
     parser = PARSERS[kind]
     records = parser(
         path,
-        dataset=dataset or {"nvd": "cve", "cisa-kev": "cisa-kev",
-                             "attack-stix": "mitre-attack", "cwe-xml": "cwe", "cpe": "cpe"}[kind],
-        source=source or {"nvd": "NVD", "cisa-kev": "CISA KEV",
-                          "attack-stix": "MITRE ATT&CK", "cwe-xml": "MITRE CWE", "cpe": "NVD CPE Dictionary"}[kind],
+        dataset=dataset or {
+            "nvd": "cve", "cisa-kev": "cisa-kev", "attack-stix": "mitre-attack",
+            "cwe-xml": "cwe", "cpe": "cpe", "d3fend-jsonld": "mitre-d3fend",
+            "mbc-stix": "mitre-mbc", "suricata-rules": "suricata-rules",
+        }[kind],
+        source=source or {
+            "nvd": "NVD", "cisa-kev": "CISA KEV", "attack-stix": "MITRE ATT&CK",
+            "cwe-xml": "MITRE CWE", "cpe": "NVD CPE Dictionary",
+            "d3fend-jsonld": "MITRE D3FEND", "mbc-stix": "MITRE MBC",
+            "suricata-rules": "Suricata rules",
+        }[kind],
         version=version, source_uri=source_uri, license=license,
         validation_status=validation_status,
     )
