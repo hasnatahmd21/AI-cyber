@@ -678,8 +678,21 @@ def status(*, db_path: str | Path = DEFAULT_DB) -> dict[str, Any]:
             "SELECT dataset, COUNT(*) AS records FROM knowledge_records GROUP BY dataset ORDER BY dataset"
         ).fetchall()
         relations = db.execute("SELECT COUNT(*) FROM knowledge_relations").fetchone()[0]
-        return {"ready": True, "records": total, "relations": relations,
-                "datasets": [{"dataset": r["dataset"], "records": r["records"]} for r in datasets],
-                "schema_version": SCHEMA_VERSION, "db": str(db_path)}
+        chunks = db.execute("SELECT COUNT(*) FROM knowledge_chunks").fetchone()[0]
+        checkpoint_rows = db.execute(
+            "SELECT status, COUNT(*) AS count FROM knowledge_ingestion_checkpoints GROUP BY status"
+        ).fetchall()
+        checkpoint_counts = {str(row["status"]): int(row["count"]) for row in checkpoint_rows}
+        return {
+            "ready": True,
+            "records": total,
+            "relations": relations,
+            "chunks": chunks,
+            "datasets": [{"dataset": r["dataset"], "records": r["records"]} for r in datasets],
+            "schema_version": SCHEMA_VERSION,
+            "database_version": DATABASE_VERSION,
+            "checkpoints": checkpoint_counts,
+            "db": str(Path(db_path).expanduser().resolve()),
+        }
     finally:
         db.close()
