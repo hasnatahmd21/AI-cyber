@@ -34,10 +34,13 @@ EXPECTED_D3FEND_NODES = 7688
 EXPECTED_MBC_BUNDLES = 1906
 EXPECTED_SURICATA_ACTIVE = 52588
 EXPECTED_SURICATA_DISABLED = 19500
+# Twelve independent raw datasets were intended for the initial Knowledge DB.
+# CVSS is a derived dataset and is reported separately, dependent on the NVD CVE source.
 REQUIRED_DATASET_NAMES = (
     "cisa_kev", "epss", "cwe", "capec", "mitre_d3fend", "mitre_attack",
-    "sigma", "suricata", "zeek_intel", "mitre_mbc", "cpe", "nvd_cve", "cvss",
+    "sigma", "suricata", "zeek_intel", "mitre_mbc", "cpe", "nvd_cve",
 )
+EXPECTED_MBC_STIX_OBJECTS = 1905
 
 ATTACK_RESTORE_URLS = (
     "https://raw.githubusercontent.com/mitre/cti/6cda5ad8462c/enterprise-attack/enterprise-attack.json",
@@ -399,12 +402,16 @@ def inspect_critical_sources(raw_root: Path) -> list[dict[str, Any]]:
                         bundle_files += 1
             records = parse_mbc_stix(mbc_dir, validation_status="readiness-only")
             object_count = len(records)
-            count_ok = bundle_files == EXPECTED_MBC_BUNDLES and object_count > 0
+            count_ok = (
+                bundle_files == EXPECTED_MBC_BUNDLES
+                and object_count == EXPECTED_MBC_STIX_OBJECTS
+            )
             add_result(
                 results, "mitre-mbc", "PASS" if count_ok else "FAIL",
-                f"Found {bundle_files} STIX bundle files among {json_file_count} JSON files; parsed {object_count} actual STIX objects. Expected {EXPECTED_MBC_BUNDLES} bundles.",
+                f"Found {bundle_files} STIX-object/bundle JSON files among {json_file_count} JSON files; parsed {object_count} unique STIX object IDs. Expected {EXPECTED_MBC_BUNDLES} source files and {EXPECTED_MBC_STIX_OBJECTS} distinct objects.",
                 path=str(mbc_dir), json_file_count=json_file_count,
                 bundle_file_count=bundle_files, stix_object_count=object_count,
+                expected_stix_object_count=EXPECTED_MBC_STIX_OBJECTS,
             )
         except Exception as exc:
             add_result(results, "mitre-mbc", "BLOCKED" if "lfs pointer" in str(exc).casefold() else "FAIL",
@@ -495,6 +502,19 @@ def main() -> int:
                     f"Missing manifests for: {', '.join(sorted(set(REQUIRED_DATASET_NAMES) - available_names))}."
                 )
             report["manifest_readiness"] = manifest_summary
+            missing_raw_sources = set(REQUIRED_DATASET_NAMES) - available_names
+            cvss_ready = "nvd_cve" not in missing_raw_sources
+            report["derived_dataset_checks"] = [{
+                "dataset": "cvss",
+                "status": "PASS" if cvss_ready else "BLOCKED",
+                "evidence": (
+                    "CVSS derivation prerequisites are present; derived CVSS validation is a separate later gate."
+                    if cvss_ready else
+                    "CVSS is derived from NVD CVE data; blocked because the required nvd_cve manifest/artifact is missing."
+                ),
+                "depends_on": ["nvd_cve"],
+                "ingestion_performed": False,
+            }]
         else:
             report["manifest_readiness"] = {
                 "overall": "BLOCKED",
