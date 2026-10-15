@@ -31,6 +31,14 @@ def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
+def _is_git_lfs_pointer(path: str | Path) -> bool:
+    try:
+        with Path(path).open("rb") as handle:
+            return handle.read(256).startswith(b"version https://git-lfs.github.com/spec/v1")
+    except OSError:
+        return False
+
+
 def load_manifest(path: str | Path) -> dict[str, Any]:
     p = Path(path)
     data = json.loads(p.read_text(encoding="utf-8"))
@@ -121,6 +129,7 @@ def _artifact_inspection(
         actual_sha = sha256_file(local)
         expected_sha = item["sha256"].lower().strip()
         role = str(item.get("role", "data")).lower()
+        is_lfs_pointer = _is_git_lfs_pointer(local)
         format_key = str(
             item.get("artifact_type") or manifest.get("artifact_type")
             or (manifest.get("schema", {}).get("format", "")
@@ -134,6 +143,20 @@ def _artifact_inspection(
             count_matches = True
             observed_stats: dict[str, Any] = {}
             stat_checks: dict[str, Any] = {}
+        elif is_lfs_pointer:
+            # Never try to JSON-parse or ingest the three-line LFS pointer as
+            # though it were the dataset payload.
+            count = 0
+            declared = item["record_count"]
+            count_matches = False
+            observed_stats = {}
+            stat_checks = {
+                "payload_available": {
+                    "declared": "complete dataset payload",
+                    "observed": "Git LFS pointer only",
+                    "matches": False,
+                }
+            }
         else:
             schema = manifest.get("schema", {})
             record_elements = schema.get("elements") if isinstance(schema, dict) else None
@@ -231,6 +254,8 @@ def _artifact_inspection(
                 "artifact_type": format_key,
                 "sha256": actual_sha,
                 "sha256_matches": actual_sha == expected_sha,
+                "git_lfs_pointer": is_lfs_pointer,
+                "blocked_reason": "Git LFS payload has not been downloaded" if is_lfs_pointer else None,
                 "records": count,
                 "record_count_matches": count_matches,
                 "declared_stats": declared_stats,
@@ -269,6 +294,20 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
 
     actual_sha = sha256_file(local)
     expected_sha = manifest["sha256"].lower().strip()
+    if _is_git_lfs_pointer(local):
+        return {
+            "dataset": manifest["dataset"],
+            "version": manifest["version"],
+            "path": str(local),
+            "sha256": actual_sha,
+            "sha256_matches": actual_sha == expected_sha,
+            "records": 0,
+            "record_count_matches": False,
+            "manifest_validation_status": manifest["validation_status"],
+            "git_lfs_pointer": True,
+            "blocked_reason": "Git LFS pointer detected; download and verify the real artifact",
+            "ready": False,
+        }
     records = sum(
         1
         for _ in iter_records(
