@@ -398,3 +398,52 @@ def test_git_lfs_pointer_is_blocked_without_trying_to_parse_as_json(tmp_path: Pa
     assert result["ready"] is False
     assert result["artifacts"][0]["git_lfs_pointer"] is True
     assert "Git LFS pointer" in result["artifacts"][0]["blocked_reason"]
+
+
+def test_explicitly_unverified_license_blocks_readiness_and_ingestion(tmp_path: Path):
+    payload = '{"id":"license-fixture","content":"evidence"}\\n'
+    manifest = _manifest(tmp_path, payload, count=1)
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["license_verified"] = False
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+
+    inspected = inspect_dataset(manifest)
+    assert inspected["ready"] is False
+    assert inspected["manifest_checks"]["checks"]["license_verified"] is False
+    with pytest.raises(ValueError, match="metadata validation failed"):
+        ingest_manifest(manifest, db_path=tmp_path / "knowledge.db")
+
+
+def test_stix_object_type_statistics_are_enforced(tmp_path: Path):
+    data_dir = tmp_path / "datasets"
+    raw_dir = data_dir / "raw"
+    manifest_dir = data_dir / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir()
+    artifact = raw_dir / "bundle.json"
+    artifact.write_text(json.dumps({"type": "bundle", "objects": [
+        {"type": "indicator", "id": "indicator--1", "name": "one"},
+        {"type": "indicator", "id": "indicator--2", "name": "two"},
+    ]}), encoding="utf-8")
+    manifest = manifest_dir / "stix.json"
+    manifest.write_text(json.dumps({
+        "dataset": "stix-fixture", "version": "1", "source": "fixture",
+        "source_uri": "https://example.invalid/stix", "license": "test",
+        "artifact_type": "stix_2_1_bundle",
+        "schema": {"format": "STIX 2.1 bundle JSON"},
+        "artifacts": [{
+            "path": "datasets/raw/bundle.json",
+            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            "record_count": 2, "role": "data",
+            "artifact_type": "stix_2_1_bundle",
+            "stats": {"object_types": {"indicator": 2}},
+        }],
+    }), encoding="utf-8")
+    assert inspect_dataset(manifest)["ready"] is True
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["artifacts"][0]["stats"]["object_types"]["indicator"] = 1
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    result = inspect_dataset(manifest)
+    assert result["ready"] is False
+    assert result["artifacts"][0]["stat_checks"]["object_types"]["matches"] is False
