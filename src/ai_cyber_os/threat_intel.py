@@ -7,8 +7,10 @@ validation state come from the dataset manifest and are preserved in records.
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import re
+import tarfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Iterable
@@ -263,36 +265,38 @@ def parse_mbc_stix(path: str | Path, *, dataset: str = "mitre-mbc",
                    source: str = "MITRE Malware Behavior Catalog", version: str = "",
                    source_uri: str = "", license: str = "",
                    validation_status: str = "unverified") -> list[dict[str, Any]]:
-    """Parse STIX objects inside one MBC bundle or a directory of bundle JSON files.
+    """Parse actual STIX objects in one bundle, a directory, or a repository tarball.
 
-    The bundle count is intentionally not used as the record count: every valid
-    STIX object with an ID and type becomes one record. File order is stable.
+    Bundle-file count and contained STIX-object count are intentionally different.
+    Tar archives are streamed by member; they are never extracted to disk.
     """
     root = Path(path)
     if not root.exists():
         raise FileNotFoundError(root)
+
+    archive_input = root.is_file() and (
+        root.name.lower().endswith(".tar.gz") or root.suffix.lower() in {".tar", ".tgz"}
+    )
     if root.is_dir():
         files = sorted(p for p in root.rglob("*.json") if p.is_file())
-    elif root.is_file():
+    elif root.is_file() and not archive_input:
         files = [root]
     else:
-        raise ValueError(f"MBC path is neither a file nor directory: {root}")
+        files = []
+
     out: list[dict[str, Any]] = []
-    for file_path in files:
-        raw = _read_json(file_path)
+
+    def append_document(raw: Any, bundle_file: str) -> None:
         if isinstance(raw, dict) and isinstance(raw.get("objects"), list):
             objects = raw["objects"]
         elif isinstance(raw, list):
             objects = raw
-        elif isinstance(raw, dict) and raw.get("type") and raw.get("id"):
+        elif isinstance(raw, dict) and raw.get("type") and raw.get("id") and raw.get("type") != "bundle":
             objects = [raw]
         else:
             # Catalog manifests and metadata JSON files are not STIX objects.
-            continue
-        try:
-            bundle_file = str(file_path.relative_to(root)) if root.is_dir() else file_path.name
-        except ValueError:
-            bundle_file = file_path.name
+            return
+
         for obj in objects:
             if not isinstance(obj, dict) or not obj.get("type") or not obj.get("id"):
                 continue
@@ -309,6 +313,34 @@ def parse_mbc_stix(path: str | Path, *, dataset: str = "mitre-mbc",
             out.append(_normalize(record, dataset=dataset, source=source, version=version,
                                   source_uri=source_uri, license=license,
                                   validation_status=validation_status))
+
+    for file_path in files:
+        raw = _read_json(file_path)
+        try:
+            bundle_file = str(file_path.relative_to(root)) if root.is_dir() else file_path.name
+        except ValueError:
+            bundle_file = file_path.name
+        append_document(raw, bundle_file)
+
+    if archive_input:
+        with tarfile.open(root, "r:*") as archive:
+            for member in sorted(archive.getmembers(), key=lambda entry: entry.name):
+                if not member.isfile() or Path(member.name).suffix.lower() != ".json":
+                    continue
+                handle = archive.extractfile(member)
+                if handle is None:
+                    continue
+                raw_bytes = handle.read()
+                if raw_bytes.lstrip().startswith(b"version https://git-lfs.github.com/spec/v1"):
+                    raise ValueError(
+                        f"Git LFS pointer detected inside MBC archive member {member.name}"
+                    )
+                try:
+                    raw = json.loads(raw_bytes.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise ValueError(f"Invalid JSON in MBC archive member {member.name}: {exc}") from exc
+                append_document(raw, member.name)
+
     return out
 
 
@@ -322,56 +354,79 @@ def parse_suricata_rules(path: str | Path, *, dataset: str = "suricata-rules",
                          source: str = "Suricata rules", version: str = "",
                          source_uri: str = "", license: str = "",
                          validation_status: str = "unverified") -> list[dict[str, Any]]:
-    """Parse active and commented-out Suricata rules, excluding ordinary comments.
+    """Classify active and commented-out rules in files/directories/tar archives.
 
-    A disabled rule is recognized only when a comment marker is followed by a
-    Suricata action and the rest of a plausible rule. The original line and
-    file/line provenance remain available in metadata and content.
+    Ordinary comments are ignored. Compressed archives are read member-by-member
+    and are never extracted to the filesystem.
     """
     root = Path(path)
     if not root.exists():
         raise FileNotFoundError(root)
-    files = sorted(p for p in root.rglob("*.rules") if p.is_file()) if root.is_dir() else [root]
+
+    archive_input = root.is_file() and (
+        root.name.lower().endswith(".tar.gz") or root.suffix.lower() in {".tar", ".tgz"}
+    )
+    if root.is_dir():
+        files = sorted(p for p in root.rglob("*.rules") if p.is_file())
+    elif root.is_file() and not archive_input and root.suffix.lower() == ".rules":
+        files = [root]
+    else:
+        files = []
+
     action_text = "|".join(sorted(_SURICATA_ACTIONS, key=len, reverse=True))
-    active_re = re.compile(r"^\s*(" + action_text + r")\s+\S+\s+(?=.*\()")
-    disabled_re = re.compile(r"^\s*#\s*(" + action_text + r")\s+\S+\s+(?=.*\()")
+    active_re = re.compile(r"^\\s*(" + action_text + r")\\s+\\S+\\s+(?=.*\\()")
+    disabled_re = re.compile(r"^\\s*#\\s*(" + action_text + r")\\s+\\S+\\s+(?=.*\\()")
     out: list[dict[str, Any]] = []
+
+    def consume_lines(lines: Iterable[str], file_label: str) -> None:
+        for line_number, line in enumerate(lines, 1):
+            original = line.rstrip("\\r\\n")
+            if not original.strip():
+                continue
+            disabled_match = disabled_re.match(original)
+            active_match = active_re.match(original)
+            if disabled_match:
+                state, action = "disabled", disabled_match.group(1).lower()
+                rule = re.sub(r"^\\s*#\\s*", "", original, count=1).strip()
+            elif active_match:
+                state, action, rule = "active", active_match.group(1).lower(), original.strip()
+            else:
+                continue
+            stable_key = f"{state}\\0{file_label}\\0{line_number}\\0{rule}"
+            digest = hashlib.sha256(stable_key.encode("utf-8")).hexdigest()
+            payload = {
+                "id": f"suricata:{state}:{digest}",
+                "name": f"{state.title()} Suricata {action} rule",
+                "action": action,
+                "status": state,
+                "rule": rule,
+                "file": file_label,
+                "line_number": line_number,
+                "content": rule,
+            }
+            out.append(_normalize(payload, dataset=dataset, source=source, version=version,
+                                  source_uri=source_uri, license=license,
+                                  validation_status=validation_status))
+
     for file_path in files:
-        if not file_path.is_file():
-            continue
         try:
             file_label = str(file_path.relative_to(root)) if root.is_dir() else file_path.name
         except ValueError:
             file_label = file_path.name
         with file_path.open("r", encoding="utf-8", errors="replace") as handle:
-            for line_number, line in enumerate(handle, 1):
-                original = line.rstrip("\r\n")
-                if not original.strip():
+            consume_lines(handle, file_label)
+
+    if archive_input:
+        with tarfile.open(root, "r:*") as archive:
+            for member in sorted(archive.getmembers(), key=lambda entry: entry.name):
+                if not member.isfile() or Path(member.name).suffix.lower() != ".rules":
                     continue
-                disabled_match = disabled_re.match(original)
-                active_match = active_re.match(original)
-                if disabled_match:
-                    state, action = "disabled", disabled_match.group(1).lower()
-                    rule = re.sub(r"^\s*#\s*", "", original, count=1).strip()
-                elif active_match:
-                    state, action, rule = "active", active_match.group(1).lower(), original.strip()
-                else:
+                handle = archive.extractfile(member)
+                if handle is None:
                     continue
-                stable_key = f"{state}\0{file_label}\0{line_number}\0{rule}"
-                digest = hashlib.sha256(stable_key.encode("utf-8")).hexdigest()
-                payload = {
-                    "id": f"suricata:{state}:{digest}",
-                    "name": f"{state.title()} Suricata {action} rule",
-                    "action": action,
-                    "status": state,
-                    "rule": rule,
-                    "file": file_label,
-                    "line_number": line_number,
-                    "content": rule,
-                }
-                out.append(_normalize(payload, dataset=dataset, source=source, version=version,
-                                      source_uri=source_uri, license=license,
-                                      validation_status=validation_status))
+                text = handle.read().decode("utf-8", errors="replace")
+                consume_lines(io.StringIO(text), member.name)
+
     return out
 
 PARSERS = {
