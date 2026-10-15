@@ -380,8 +380,8 @@ def inspect_critical_sources(raw_root: Path) -> list[dict[str, Any]]:
             count_ok = bundle_files == EXPECTED_MBC_BUNDLES and object_count > 0
             add_result(
                 results, "mitre-mbc", "PASS" if count_ok else "FAIL",
-                f"Found {bundle_files} STIX bundle files among {len(json_files)} JSON files; parsed {object_count} actual STIX objects. Expected {EXPECTED_MBC_BUNDLES} bundles.",
-                path=str(mbc_dir), json_file_count=len(json_files),
+                f"Found {bundle_files} STIX bundle files among {json_file_count} JSON files; parsed {object_count} actual STIX objects. Expected {EXPECTED_MBC_BUNDLES} bundles.",
+                path=str(mbc_dir), json_file_count=json_file_count,
                 bundle_file_count=bundle_files, stix_object_count=object_count,
             )
         except Exception as exc:
