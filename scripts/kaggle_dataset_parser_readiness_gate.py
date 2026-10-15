@@ -518,7 +518,7 @@ def main() -> int:
         else:
             report["manifest_readiness"] = {
                 "overall": "BLOCKED",
-                "evidence": f"No manifests directory found at {manifests_dir}; the full 13-source readiness gate cannot pass.",
+                "evidence": f"No manifests directory found at {manifests_dir}; the full 12-source readiness gate cannot pass.",
                 "count": 0,
             }
 
@@ -534,7 +534,7 @@ def main() -> int:
             else "BLOCKED"
         )
         report["evidence"] = (
-            "Parser-specific raw-source checks and all thirteen requested-source readiness checks passed; no data was ingested."
+            "Parser-specific raw-source checks and all twelve independent raw-source readiness checks passed; no data was ingested."
             if report["overall"] == "PASS"
             else "Readiness is not green. Review per-dataset evidence; do not start ingestion until every required dataset is PASS."
         )
