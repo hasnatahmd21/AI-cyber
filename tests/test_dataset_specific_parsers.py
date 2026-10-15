@@ -294,3 +294,89 @@ def test_mbc_conflicting_duplicate_stix_id_fails_closed(tmp_path: Path):
 
     with pytest.raises(ValueError, match="Conflicting STIX payloads"):
         parse_mbc_stix(archive_path, validation_status="fixture-validated")
+
+
+def test_nvd_gzip_feed_parser_and_readiness_count_match_actual_cve_ids(tmp_path: Path):
+    import gzip
+    import hashlib
+    from ai_cyber_os.dataset_pipeline import inspect_dataset
+    from ai_cyber_os.threat_intel import parse_nvd
+
+    project = tmp_path
+    raw_dir = project / "datasets" / "raw" / "nvd_cve"
+    manifest_dir = project / "datasets" / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir(parents=True)
+
+    payload = {
+        "resultsPerPage": 2,
+        "startIndex": 0,
+        "totalResults": 2,
+        "format": "NVD_CVE",
+        "version": "2.0",
+        "vulnerabilities": [
+            {"cve": {
+                "id": "CVE-2024-10001",
+                "sourceIdentifier": "test@example.invalid",
+                "published": "2024-01-01T00:00:00.000",
+                "lastModified": "2024-01-02T00:00:00.000",
+                "descriptions": [{"lang": "en", "value": "first compressed CVE fixture"}],
+                "metrics": {"cvssMetricV31": [{"type": "Primary", "cvssData": {"baseScore": 7.5}}]},
+            }},
+            {"cve": {
+                "id": "CVE-2024-10002",
+                "sourceIdentifier": "test@example.invalid",
+                "published": "2024-01-03T00:00:00.000",
+                "lastModified": "2024-01-04T00:00:00.000",
+                "descriptions": [{"lang": "en", "value": "second compressed CVE fixture"}],
+                "metrics": {},
+            }},
+        ],
+    }
+    feed = raw_dir / "nvdcve-2.0-2024.json.gz"
+    with gzip.open(feed, "wt", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+
+    records = parse_nvd(
+        feed, dataset="nvd_cve", version="NVD-2.0-2024",
+        source_uri="https://nvd.nist.gov/vuln/data-feeds",
+        validation_status="fixture-validated",
+    )
+    assert len(records) == 2
+    assert {record["record_id"] for record in records} == {
+        "CVE-2024-10001", "CVE-2024-10002"
+    }
+    assert "first compressed CVE fixture" in next(
+        record["content"] for record in records if record["record_id"] == "CVE-2024-10001"
+    )
+
+    manifest = manifest_dir / "nvd_cve.json"
+    manifest.write_text(json.dumps({
+        "dataset": "nvd_cve",
+        "version": "NVD-2.0-2024",
+        "source": "NVD",
+        "source_uri": "https://nvd.nist.gov/vuln/data-feeds",
+        "license": "NVD data feed terms; preserve source attribution",
+        "local_path": "datasets/raw/nvd_cve",
+        "sha256": hashlib.sha256(feed.read_bytes()).hexdigest(),
+        "record_count": 2,
+        "schema": {"format": "NVD 2.0 gzip JSON", "parser_kind": "nvd"},
+        "ingestion_status": "not-started",
+        "validation_status": "fixture-validated",
+        "artifacts": [{
+            "path": "datasets/raw/nvd_cve/nvdcve-2.0-2024.json.gz",
+            "role": "data",
+            "sha256": hashlib.sha256(feed.read_bytes()).hexdigest(),
+            "byte_size": feed.stat().st_size,
+            "record_count": 2,
+            "count_kind": "nvd-feed",
+            "source_uri": "https://nvd.nist.gov/vuln/data-feeds",
+            "version": "NVD-2.0-2024",
+        }],
+    }), encoding="utf-8")
+
+    inspection = inspect_dataset(manifest)
+    assert inspection["ready"] is True
+    assert inspection["records"] == 2
+    assert inspection["artifacts"][0]["byte_size_matches"] is True
+    assert inspection["artifacts"][0]["record_count_matches"] is True
