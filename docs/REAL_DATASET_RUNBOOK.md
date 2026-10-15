@@ -95,19 +95,39 @@ Only proceed to Knowledge DB construction after `OVERALL_READINESS=PASS` and the
 
 ## Permanent Knowledge DB and RAG build (only after real-source PASS)
 
-The committed \`scripts/kaggle_build_knowledge_db.py\` is the approved first-wave builder. It reruns the raw-artifact readiness gate before opening the target DB, then preflights every required manifest. A missing source, Git LFS pointer, checksum/size mismatch, or count mismatch blocks ingestion without creating a new database.
+The approved first-wave builder is scripts/kaggle_build_knowledge_db.py. It reruns the real-artifact gate before opening the target DB, preflights all twelve required raw-source manifests, then ingests through the verified format-specific parser for each source. A missing source, Git LFS pointer, SHA-256/byte-size mismatch, or record-count mismatch blocks ingestion before a new DB is created.
 
-After \`scripts/kaggle_nvd_feed_readiness.py\` reports real NVD artifacts restored and the full readiness report has \`overall: PASS\`, run from the checkout on the intended branch:
+From a fresh Kaggle session, first ensure existing Git LFS files have real bytes (not pointer text):
 
-    python scripts/kaggle_build_knowledge_db.py \\
-      --db-path datasets/knowledge/ai_cyber_knowledge_v1.sqlite3 \\
-      --persist-lfs \\
-      --branch fix/dataset-parser-readiness
+    git lfs install
+    git lfs pull
 
-This creates the versioned \`ai-cyber-knowledge-v1\` SQLite store, stores source provenance and deterministic record IDs, ingests through the same format-specific parsers used by readiness, and resumes completed artifacts from checkpoints on restart. CVSS records are derived from the final ingested NVD CVE evidence with separate deterministic IDs and page checkpoints; it does not download or duplicate a second CVE corpus.
+Then acquire NVD's official JSON 2.0 feeds and create the NVD manifest:
 
-The builder verifies a real CVE query, CVSS retrieval, provenance/citation fields, evidence-only RAG output, database status, and retrieval from a new Python process using the same \`AI_CYBER_KNOWLEDGE_DB\` path. It writes a JSON report alongside the dataset reports.
+    python scripts/kaggle_nvd_feed_readiness.py
 
-**Durability:** \`/kaggle/working\` is ephemeral. \`--persist-lfs\` is mandatory for the builder to return an overall \`PASS\`; it requires Git LFS, a checkout of the exact branch, and the Kaggle Secret \`cyber repo\` (or a valid \`GITHUB_TOKEN\`/\`GH_TOKEN\`). The report records the persistence result and commit. If the repository's Git LFS quota or permissions reject the upload, the build must not be declared complete. In that case retain the DB and reports as a saved Kaggle Notebook Output/Version or on an explicitly configured durable store, then verify it can be reopened in a fresh runtime.
+This verifies the compressed feed size plus upstream .meta uncompressed SHA-256 and size, parses actual CVE IDs, and runs the consolidated source-readiness gate. Proceed only when its full report says overall: PASS; NVD's source acquisition pass alone does not imply all datasets passed.
 
-The no-ingestion readiness gate must still pass separately. A green fixture test or successful local SQLite build is not proof that all real source artifacts are ready or that the DB is durably saved.
+For the first DB build, use a dedicated path under Kaggle working storage, and request a private Kaggle Dataset to make the result durable:
+
+    python scripts/kaggle_build_knowledge_db.py \
+      --db-path /kaggle/working/ai_cyber_knowledge_v1.sqlite3 \
+      --persist-kaggle-dataset-id YOUR_KAGGLE_USERNAME/ai-cyber-knowledge-db \
+      --kaggle-dataset-action create
+
+Configure a Kaggle API token as an attached notebook secret named KAGGLE_API_TOKEN (or provide KAGGLE_API_TOKEN, ~/.kaggle/access_token, or legacy ~/.kaggle/kaggle.json). The separate GitHub secret cyber repo is not a Kaggle API token. Replace YOUR_KAGGLE_USERNAME with the actual owner. The publish flow validates credentials before beginning the lengthy ingestion. It never passes Kaggle's public flag; the dataset remains private by default.
+
+For future rebuilds, change the action to version while keeping the same OWNER/SLUG:
+
+    python scripts/kaggle_build_knowledge_db.py \
+      --db-path /kaggle/working/ai_cyber_knowledge_v1.sqlite3 \
+      --persist-kaggle-dataset-id YOUR_KAGGLE_USERNAME/ai-cyber-knowledge-db \
+      --kaggle-dataset-action version
+
+The builder stores the database version, source manifest hash, artifact hashes, record counts and build report, then checks SQLite integrity before publication. The Knowledge DB retains deterministic IDs, source URI/version/license, content SHA-256, validation status, relationships, FTS/chunk indexes, and per-artifact ingestion checkpoints. CVSS is derived from NVD's indexed metric payload with deterministic IDs and page checkpoints; it is not counted as a thirteenth independent raw source and does not fetch a duplicate CVE corpus.
+
+Before reporting overall PASS, the builder verifies a real CVE query, derived CVSS retrieval, evidence-only RAG output, source/hash/validation citation fields, the shared AI_CYBER_KNOWLEDGE_DB setting, and a separate Python-process restart query. It also records DB file SHA-256 and byte size. A local build without successful durable publication is reported as persistence-pending and exits non-zero by default.
+
+The Kaggle Dataset metadata uses the "other" label because the DB combines sources with separate licenses. This label is not a blanket relicense: per-record source/license metadata remains in the DB, and the published dataset stays private. Do not make it public unless each upstream source's redistribution terms are independently reviewed. Kaggle documents support dataset metadata licenses and private datasets; see the Kaggle dataset metadata reference at https://github.com/Kaggle/kaggle-cli/blob/main/docs/datasets_metadata.md and dataset publishing CLI at https://github.com/Kaggle/kaggle-cli/blob/main/docs/datasets.md.
+
+The raw-source gate still must pass separately. Green fixture tests, a locally populated SQLite file, or a successful upload command by itself is not proof that the full system works: keep the JSON readiness/build reports and repeat the fresh-process retrieval check against the persisted dataset after restoring it in a new runtime.
