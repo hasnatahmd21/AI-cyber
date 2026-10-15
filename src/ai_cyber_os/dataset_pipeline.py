@@ -116,8 +116,8 @@ def _count_artifact_records(
         "validation_status": item.get("validation_status", manifest.get("validation_status", "unverified")),
     }
     if count_kind in {"nvd", "nvd-feed", "nvd_cve"}:
-        from .threat_intel import parse_nvd
-        return len(parse_nvd(local, **common))
+        from .threat_intel import iter_parse_nvd
+        return sum(1 for _ in iter_parse_nvd(local, **common))
     if count_kind == "mbc":
         from .threat_intel import parse_mbc_stix
         return len(parse_mbc_stix(local, **common))
@@ -346,7 +346,7 @@ def _specialized_records(
     source_uri: str,
     license: str,
     validation_status: str,
-) -> list[dict[str, Any]] | None:
+) -> Any:
     common = {
         "dataset": dataset,
         "source": source,
@@ -356,8 +356,8 @@ def _specialized_records(
         "validation_status": validation_status,
     }
     if kind in {"nvd", "nvd-feed", "nvd_cve"}:
-        from .threat_intel import parse_nvd
-        return parse_nvd(local, **common)
+        from .threat_intel import iter_parse_nvd
+        return iter_parse_nvd(local, **common)
     if kind in {"kev", "cisa-kev", "cisa_kev"}:
         from .threat_intel import parse_cisa_kev
         return parse_cisa_kev(local, **common)
