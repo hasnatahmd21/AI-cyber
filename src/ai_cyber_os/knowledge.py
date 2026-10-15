@@ -402,6 +402,22 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
                 elif suffix == ".xml":
                     for value in _iter_xml_values(io.BytesIO(handle.read()), selected_elements):
                         yield normalized(value, item_source)
+                elif suffix in {".yaml", ".yml"} and "sigma" in format_key:
+                    text = handle.read().decode("utf-8", errors="replace")
+                    import yaml
+
+                    raw = yaml.safe_load(text)
+                    if not isinstance(raw, dict):
+                        raise ValueError(f"Sigma rule must be a YAML mapping: {member.name}")
+                    if not isinstance(raw.get("title"), str) or not raw["title"].strip():
+                        raise ValueError(f"Sigma rule has no non-empty title: {member.name}")
+                    if not isinstance(raw.get("logsource"), dict):
+                        raise ValueError(f"Sigma rule has no logsource mapping: {member.name}")
+                    if not isinstance(raw.get("detection"), dict):
+                        raise ValueError(f"Sigma rule has no detection mapping: {member.name}")
+                    raw = dict(raw)
+                    raw["content"] = yaml.safe_dump(raw, sort_keys=True, allow_unicode=True)
+                    yield normalized(raw, item_source)
                 elif suffix == ".rules" or "suricata" in format_key:
                     text = handle.read().decode("utf-8", errors="replace")
                     for value in _iter_suricata_rule_values(text):
