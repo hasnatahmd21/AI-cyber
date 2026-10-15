@@ -182,7 +182,7 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
                version: str = "", source_uri: str = "",
                validation_status: str = "unverified") -> dict[str, Any]:
     if isinstance(raw, dict):
-        title = _text(raw.get("title") or raw.get("name") or raw.get("id"))
+        title = _text(raw.get("title") or raw.get("name") or raw.get("rdfs:label") or raw.get("skos:prefLabel") or raw.get("id") or raw.get("@id"))
         explicit_content = raw.get("content") or raw.get("text") or raw.get("description")
         content = _text(explicit_content) if explicit_content is not None else _text(raw)
         record_source = _text(raw.get("source") or source)
@@ -204,7 +204,8 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
     content = content.strip()
     if not content:
         raise ValueError("record content is empty")
-    rid = _text(raw.get("id")) if isinstance(raw, dict) and raw.get("id") else ""
+    rid_value = (raw.get("id") or raw.get("@id")) if isinstance(raw, dict) else None
+    rid = _text(rid_value) if rid_value else ""
     record_id = rid or _safe_id(dataset, record_source, content)
     return {
         "record_id": record_id,
@@ -224,7 +225,7 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
 
 def _iter_json_value(raw: Any) -> Iterable[Any]:
     if isinstance(raw, dict):
-        for key in ("vulnerabilities", "products", "objects", "rules", "data", "items"):
+        for key in ("@graph", "vulnerabilities", "products", "objects", "rules", "data", "items"):
             value = raw.get(key)
             if isinstance(value, list):
                 yield from value
