@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -83,25 +84,46 @@ def restore_lfs_exact_match(path: Path, expected: dict[str, Any]) -> dict[str, A
     """Attempt native git-lfs, then official versioned URLs; never accept a mismatch."""
     attempts: list[dict[str, Any]] = []
 
+    git_roots: list[Path] = []
     for parent in (path.parent, *path.parents):
-        if not (parent / ".git").exists():
-            continue
+        if (parent / ".git").exists() and parent not in git_roots:
+            git_roots.append(parent)
+    # The Kaggle raw-artifact workspace may be separate from the repo checkout.
+    # In that case, try the tracked copy in this checkout, then copy only if the
+    # source bytes match the exact LFS pointer digest and size.
+    if REPOSITORY_ROOT.is_dir() and REPOSITORY_ROOT not in git_roots:
+        git_roots.append(REPOSITORY_ROOT)
+
+    for git_root in git_roots:
         try:
-            relative = path.relative_to(parent)
+            relative = path.relative_to(git_root)
         except ValueError:
-            continue
+            relative = Path("datasets") / "raw" / "mitre_attack" / path.name
         result = subprocess.run(
-            ["git", "-C", str(parent), "lfs", "pull", f"--include={relative.as_posix()}"],
+            ["git", "-C", str(git_root), "lfs", "pull", f"--include={relative.as_posix()}"],
             text=True, capture_output=True, timeout=180,
         )
+        candidate = git_root / relative
         attempts.append({
             "method": "git-lfs",
-            "repository": str(parent),
+            "repository": str(git_root),
+            "artifact": str(candidate),
             "returncode": result.returncode,
             "output": (result.stderr or result.stdout)[-1200:],
         })
-        if _matches_pointer(path, expected):
-            return {"restored": True, "method": "git-lfs", "attempts": attempts}
+        if candidate.resolve() == path.resolve() and _matches_pointer(path, expected):
+            return {"restored": True, "method": "git-lfs-exact-match", "attempts": attempts}
+        if _matches_pointer(candidate, expected):
+            fd, temp_name = tempfile.mkstemp(prefix=".attack-restore-", dir=str(path.parent))
+            os.close(fd)
+            temp_path = Path(temp_name)
+            try:
+                shutil.copyfile(candidate, temp_path)
+                if _matches_pointer(temp_path, expected):
+                    os.replace(temp_path, path)
+                    return {"restored": True, "method": "git-lfs-checkout-copy-exact-match", "attempts": attempts}
+            finally:
+                temp_path.unlink(missing_ok=True)
 
     for url in ATTACK_RESTORE_URLS:
         temp_path: Path | None = None
