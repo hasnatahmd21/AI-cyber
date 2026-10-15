@@ -292,9 +292,9 @@ def test_suricata_parser_preserves_active_disabled_and_sid_fields(tmp_path: Path
 
     path = tmp_path / "suricata.tar.gz"
     rules = (
-        'alert tcp any any -> any 80 (msg:"active rule"; sid:1001; rev:1;)\\n'
-        '# alert tcp any any -> any 443 (msg:"disabled rule"; sid:1002; rev:2;)\\n'
-        '# just a comment\\n\\n'
+        'alert tcp any any -> any 80 (msg:"active rule"; sid:1001; rev:1;)\n'
+        '# alert tcp any any -> any 443 (msg:"disabled rule"; sid:1002; rev:2;)\n'
+        '# just a comment\n\n'
     ).encode("utf-8")
     with tarfile.open(path, "w:gz") as archive:
         info = tarfile.TarInfo("rules/test.rules")
@@ -315,13 +315,13 @@ def test_gzip_jsonl_records_are_streamed_and_counted(tmp_path: Path):
 
     path = tmp_path / "cpe.jsonl.gz"
     with gzip.open(path, "wt", encoding="utf-8") as handle:
-        handle.write('{"id":"cpe-1","title":"one"}\\n')
-        handle.write('{"id":"cpe-2","title":"two"}\\n')
+        handle.write('{"id":"cpe-1","title":"one"}\n')
+        handle.write('{"id":"cpe-2","title":"two"}\n')
     rows = list(iter_records(path, dataset="cpe-fixture"))
     assert [row["record_id"] for row in rows] == ["cpe-1", "cpe-2"]
 
 
-def test_multia_artifact_stats_are_part_of_readiness(tmp_path: Path):
+def test_multi_artifact_stats_are_part_of_readiness(tmp_path: Path):
     import io
     import tarfile
 
@@ -332,8 +332,8 @@ def test_multia_artifact_stats_are_part_of_readiness(tmp_path: Path):
     manifest_dir.mkdir()
     artifact = raw_dir / "rules.tar.gz"
     rules = (
-        'alert tcp any any -> any 80 (msg:"active"; sid:1; rev:1;)\\n'
-        '# alert tcp any any -> any 443 (msg:"disabled"; sid:2; rev:1;)\\n'
+        'alert tcp any any -> any 80 (msg:"active"; sid:1; rev:1;)\n'
+        '# alert tcp any any -> any 443 (msg:"disabled"; sid:2; rev:1;)\n'
     ).encode()
     with tarfile.open(artifact, "w:gz") as archive:
         info = tarfile.TarInfo("rules/a.rules")
