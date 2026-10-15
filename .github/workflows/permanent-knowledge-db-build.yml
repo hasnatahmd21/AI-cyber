@@ -1,0 +1,127 @@
+name: Permanent Knowledge DB Build and Full RAG Verification
+
+on:
+  push:
+    branches:
+      - work/permanent-knowledge-db-build
+    paths:
+      - ".github/workflows/permanent-knowledge-db-build.yml"
+      - "scripts/build_permanent_knowledge_db.py"
+      - "scripts/verify_live_rag_api.py"
+      - "tests/test_resumable_download.py"
+      - "src/ai_cyber_os/knowledge.py"
+      - "src/ai_cyber_os/dataset_pipeline.py"
+      - "src/ai_cyber_os/threat_intel.py"
+      - "src/ai_cyber_os/rag.py"
+      - "src/ai_cyber_os/ui.py"
+      - "datasets/manifests/**"
+      - "datasets/raw/**"
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: permanent-knowledge-db-\${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-ingest-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      AI_CYBER_KNOWLEDGE_DB: \${{ github.workspace }}/build-output/ai_cyber_knowledge.sqlite3
+      PYTHONPATH: src:layered_defense
+      PYTHONFAULTHANDLER: "1"
+
+    steps:
+      - name: Free disk for versioned feeds and SQLite FTS indexes
+        shell: bash
+        run: |
+          set +e
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc \
+            /usr/local/share/powershell /usr/local/.ghcup
+          sudo docker system prune -af
+          set -e
+          df -h /
+
+      - name: Checkout isolated database-build branch and restore tracked LFS assets
+        uses: actions/checkout@v4
+        with:
+          ref: work/permanent-knowledge-db-build
+          fetch-depth: 1
+          lfs: true
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: false
+
+      - name: Install project dependencies and pytest
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+          python -m pip check
+          python --version
+
+      - name: Acquire and verify NVD, preflight all 12 datasets, create DB, ingest and derive CVSS
+        shell: bash
+        run: |
+          mkdir -p build-output
+          set -o pipefail
+          python scripts/build_permanent_knowledge_db.py \
+            --project-root . \
+            --db-path "$AI_CYBER_KNOWLEDGE_DB" \
+            --report build-output/knowledge-db-build-report.json \
+            2>&1 | tee build-output/knowledge-db-build.log
+
+      - name: Run non-legacy-UI regression suite and populated-DB live RAG/API probes
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p build-output
+          set +e
+          AI_CYBER_KNOWLEDGE_DB="$RUNNER_TEMP/ai-cyber-tests-only.sqlite3" \
+            python -m pytest -q --ignore=tests/test_ui.py \
+            --junitxml=build-output/pytest-report.xml \
+            2>&1 | tee build-output/pytest.log
+          TEST_RC=\${PIPESTATUS[0]}
+
+          python scripts/verify_live_rag_api.py \
+            --db-path "$AI_CYBER_KNOWLEDGE_DB" \
+            --report build-output/live-rag-api-report.json \
+            2>&1 | tee build-output/live-rag-api.log
+          API_RC=\${PIPESTATUS[0]}
+
+          echo "PYTEST_EXIT_CODE=$TEST_RC"
+          echo "LIVE_RAG_API_EXIT_CODE=$API_RC"
+          if [[ "$TEST_RC" -ne 0 || "$API_RC" -ne 0 ]]; then
+            exit 1
+          fi
+
+      - name: Upload reports even when build or tests fail
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-db-build-reports-\${{ github.run_number }}
+          path: |
+            build-output/*.json
+            build-output/*.xml
+            build-output/*.log
+            datasets/acquisition_reports/parser-readiness-*.json
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 3
+
+      - name: Publish verified Knowledge DB artifact
+        if: success() && hashFiles('build-output/ai_cyber_knowledge.sqlite3') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-cyber-permanent-knowledge-db-\${{ github.run_number }}
+          path: build-output/ai_cyber_knowledge.sqlite3
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 1
