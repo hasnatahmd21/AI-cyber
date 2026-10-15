@@ -234,6 +234,99 @@ def parse_cisa_kev(path: str | Path, *, dataset: str = "cisa-kev",
     ]
 
 
+
+def iter_parse_attack_bundle(
+    path: str | Path,
+    *,
+    dataset: str = "mitre_attack",
+    source: str = "MITRE ATT&CK STIX 2.1",
+    version: str = "",
+    source_uri: str = "",
+    license: str = "",
+    validation_status: str = "unverified",
+) -> Iterable[dict[str, Any]]:
+    """Normalize every STIX bundle object and index its external ATT&CK IDs.
+
+    Full source attributes remain in metadata_json. Searchable content also
+    contains a compact list of external IDs, names, aliases and relationship
+    endpoints so techniques such as T1059.001 are retrievable by canonical ID.
+    """
+    raw = _read_json(path)
+    objects = raw.get("objects", []) if isinstance(raw, dict) else raw
+    if not isinstance(objects, list):
+        raise ValueError("ATT&CK STIX file does not contain an objects list")
+    for index, obj in enumerate(objects):
+        if not isinstance(obj, dict):
+            raise ValueError(f"ATT&CK STIX object at index {index} is not a JSON object")
+        stix_id = str(obj.get("id") or "").strip()
+        if not stix_id:
+            raise ValueError(f"ATT&CK STIX object at index {index} is missing its id")
+
+        external_ids: list[str] = []
+        references = obj.get("external_references", [])
+        if references is not None and not isinstance(references, list):
+            raise ValueError(f"ATT&CK external_references is not a list for {stix_id}")
+        for reference in references or []:
+            if not isinstance(reference, dict):
+                continue
+            external_id = reference.get("external_id")
+            if isinstance(external_id, str) and external_id.strip():
+                external_ids.append(external_id.strip())
+        external_ids = sorted(set(external_ids))
+        name = str(obj.get("name") or "").strip()
+        description = str(obj.get("description") or "").strip()
+        aliases = obj.get("aliases", [])
+        if not isinstance(aliases, list):
+            aliases = []
+        relationship_parts = []
+        if obj.get("relationship_type"):
+            relationship_parts.append(f"Relationship type: {obj['relationship_type']}")
+        if obj.get("source_ref"):
+            relationship_parts.append(f"Source object: {obj['source_ref']}")
+        if obj.get("target_ref"):
+            relationship_parts.append(f"Target object: {obj['target_ref']}")
+
+        searchable = [
+            f"STIX ID: {stix_id}",
+            f"Object type: {obj.get('type', '')}",
+            f"Name: {name}" if name else "",
+            f"Description: {description}" if description else "",
+            f"External IDs: {' '.join(external_ids)}" if external_ids else "",
+            f"Aliases: {' '.join(str(alias) for alias in aliases)}" if aliases else "",
+            *relationship_parts,
+        ]
+        raw_record = dict(obj)
+        raw_record["title"] = name or (external_ids[0] if external_ids else stix_id)
+        raw_record["content"] = "\n".join(part for part in searchable if part)
+        raw_record["external_ids"] = external_ids
+        yield _normalize(
+            raw_record,
+            dataset=dataset,
+            source=source,
+            version=version,
+            source_uri=source_uri,
+            license=license,
+            validation_status=validation_status,
+        )
+
+
+def parse_attack_stix_bundle(
+    path: str | Path,
+    *,
+    dataset: str = "mitre_attack",
+    source: str = "MITRE ATT&CK STIX 2.1",
+    version: str = "",
+    source_uri: str = "",
+    license: str = "",
+    validation_status: str = "unverified",
+) -> list[dict[str, Any]]:
+    """Compatibility wrapper for callers requiring a list of all STIX objects."""
+    return list(iter_parse_attack_bundle(
+        path, dataset=dataset, source=source, version=version,
+        source_uri=source_uri, license=license,
+        validation_status=validation_status,
+    ))
+
 def parse_attack_stix(path: str | Path, *, dataset: str = "mitre-attack",
                       source: str = "MITRE ATT&CK", version: str = "",
                       source_uri: str = "", license: str = "",
@@ -738,6 +831,7 @@ PARSERS = {
     "nvd": parse_nvd,
     "cisa-kev": parse_cisa_kev,
     "attack-stix": parse_attack_stix,
+    "attack-stix-bundle": parse_attack_stix_bundle,
     "cwe-xml": parse_cwe_xml,
     "cpe": parse_cpe,
     "d3fend-jsonld": parse_d3fend_jsonld,
