@@ -352,7 +352,7 @@ def parse_suricata_rules(path: str | Path, *, dataset: str = "suricata-rules",
                 active_match = active_re.match(original)
                 if disabled_match:
                     state, action = "disabled", disabled_match.group(1).lower()
-                    rule = re.sub(r"^\\s*#\\s*", "", original, count=1).strip()
+                    rule = re.sub(r"^\s*#\s*", "", original, count=1).strip()
                 elif active_match:
                     state, action, rule = "active", active_match.group(1).lower(), original.strip()
                 else:
