@@ -45,7 +45,8 @@ def sha256_file(path: Path) -> str:
 
 def lfs_pointer(path: Path) -> dict[str, Any] | None:
     try:
-        head = path.read_bytes()[:1024].decode("utf-8", errors="replace").lstrip()
+        with path.open("rb") as handle:
+            head = handle.read(1024).decode("utf-8", errors="replace").lstrip()
     except OSError:
         return None
     if not head.startswith("version https://git-lfs.github.com/spec/v1"):
