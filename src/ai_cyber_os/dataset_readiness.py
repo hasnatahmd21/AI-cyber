@@ -61,8 +61,8 @@ def inspect_manifest_readiness(manifest_path: str | Path) -> dict[str, Any]:
         "dataset": dataset,
         "manifest": str(path),
         "status": "PASS" if inspection.get("ready") is True else "FAIL",
-        "evidence": "SHA-256 and record-count checks passed." if inspection.get("ready") is True
-                    else "SHA-256 and/or record-count check did not match the manifest.",
+        "evidence": "SHA-256, byte-size and record-count checks passed." if inspection.get("ready") is True
+                    else "At least one SHA-256, byte-size or record-count check did not match the manifest.",
         "inspection": inspection,
     }
 
