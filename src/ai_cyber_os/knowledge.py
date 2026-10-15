@@ -227,6 +227,8 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
             raw.get("title") or raw.get("name") or raw.get("rdfs:label")
             or raw.get("skos:prefLabel") or raw.get("id") or raw.get("@id")
             or raw.get("record_id") or raw.get("cve") or raw.get("CVE")
+            or raw.get("cpeName") or raw.get("cpe_name") or raw.get("cpe23Uri")
+            or raw.get("cpe23uri") or raw.get("cpe")
         )
         explicit_content = raw.get("content") or raw.get("text") or raw.get("description")
         content = _text(explicit_content) if explicit_content is not None else _text(raw)
@@ -252,6 +254,8 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
     rid_value = (
         raw.get("id") or raw.get("@id") or raw.get("record_id")
         or raw.get("cve") or raw.get("CVE") or raw.get("cve_id")
+        or raw.get("cpeName") or raw.get("cpe_name") or raw.get("cpe23Uri")
+        or raw.get("cpe23uri") or raw.get("cpe")
     ) if isinstance(raw, dict) else None
     rid = _text(rid_value) if rid_value else ""
     record_id = rid or _safe_id(dataset, record_source, content)
