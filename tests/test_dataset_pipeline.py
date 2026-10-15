@@ -591,3 +591,39 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
     finally:
         import shutil
         shutil.rmtree(upload_dir, ignore_errors=True)
+
+
+def test_kaggle_persistence_checks_metadata_and_sqlite_before_credentials(tmp_path: Path, monkeypatch):
+    import sqlite3
+    from scripts import kaggle_build_knowledge_db as builder
+
+    with pytest.raises(ValueError, match="Kaggle dataset ID"):
+        builder.persist_via_kaggle_dataset(
+            tmp_path / "does-not-exist.sqlite3",
+            tmp_path / "report.json",
+            {},
+            "invalid dataset id",
+            "create",
+        )
+
+    db_path = tmp_path / "knowledge.sqlite3"
+    db = sqlite3.connect(db_path)
+    try:
+        db.execute("CREATE TABLE knowledge_records(record_id TEXT PRIMARY KEY)")
+        db.execute("CREATE TABLE knowledge_meta(key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        db.execute("INSERT INTO knowledge_records(record_id) VALUES ('fixture-record')")
+        db.execute("INSERT INTO knowledge_meta(key,value) VALUES ('database_version','ai-cyber-knowledge-v1')")
+        db.commit()
+    finally:
+        db.close()
+
+    monkeypatch.setattr(
+        builder,
+        "_kaggle_credentials",
+        lambda: (_ for _ in ()).throw(RuntimeError("stubbed credential check")),
+    )
+    with pytest.raises(RuntimeError, match="stubbed credential check"):
+        builder.persist_via_kaggle_dataset(
+            db_path, tmp_path / "report.json", {},
+            "test-owner/ai-cyber-db", "create",
+        )
