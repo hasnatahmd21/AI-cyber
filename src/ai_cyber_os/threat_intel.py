@@ -374,25 +374,25 @@ def parse_suricata_rules(path: str | Path, *, dataset: str = "suricata-rules",
         files = []
 
     action_text = "|".join(sorted(_SURICATA_ACTIONS, key=len, reverse=True))
-    active_re = re.compile(r"^\\s*(" + action_text + r")\\s+\\S+\\s+(?=.*\\()")
-    disabled_re = re.compile(r"^\\s*#\\s*(" + action_text + r")\\s+\\S+\\s+(?=.*\\()")
+    active_re = re.compile(r"^\s*(" + action_text + r")\s+\S+\s+(?=.*\()")
+    disabled_re = re.compile(r"^\s*#\s*(" + action_text + r")\\s+\\S+\\s+(?=.*\\()")
     out: list[dict[str, Any]] = []
 
     def consume_lines(lines: Iterable[str], file_label: str) -> None:
         for line_number, line in enumerate(lines, 1):
-            original = line.rstrip("\\r\\n")
+            original = line.rstrip("\r\n")
             if not original.strip():
                 continue
             disabled_match = disabled_re.match(original)
             active_match = active_re.match(original)
             if disabled_match:
                 state, action = "disabled", disabled_match.group(1).lower()
-                rule = re.sub(r"^\\s*#\\s*", "", original, count=1).strip()
+                rule = re.sub(r"^\s*#\s*", "", original, count=1).strip()
             elif active_match:
                 state, action, rule = "active", active_match.group(1).lower(), original.strip()
             else:
                 continue
-            stable_key = f"{state}\\0{file_label}\\0{line_number}\\0{rule}"
+            stable_key = f"{state}\0{file_label}\0{line_number}\0{rule}"
             digest = hashlib.sha256(stable_key.encode("utf-8")).hexdigest()
             payload = {
                 "id": f"suricata:{state}:{digest}",
