@@ -160,3 +160,33 @@ def test_long_evidence_is_chunked_and_retrieved(tmp_path: Path):
     finally:
         conn.close()
     assert count > 1
+
+
+def test_epss_csv_gzip_preserves_cve_as_searchable_record_id(tmp_path: Path):
+    import gzip
+
+    data = tmp_path / "epss.csv.gz"
+    with gzip.open(data, "wt", encoding="utf-8", newline="") as handle:
+        handle.write("cve,epss,percentile\n")
+        handle.write("CVE-2026-1234,0.8123,0.998\n")
+        handle.write("CVE-2026-5678,0.0042,0.31\n")
+
+    db = tmp_path / "knowledge.db"
+    result = ingest_file(
+        data,
+        db_path=db,
+        dataset="epss",
+        source="EPSS fixture",
+        source_uri="https://example.invalid/epss",
+        version="fixture-v1",
+        validation_status="fixture-validated",
+    )
+
+    assert result["success"] is True
+    assert result["inserted"] == 2
+    hits = search("CVE-2026-1234", db_path=db, dataset="epss")
+    assert len(hits) == 1
+    assert hits[0]["record_id"] == "CVE-2026-1234"
+    assert hits[0]["title"] == "CVE-2026-1234"
+    assert hits[0]["source_uri"] == "https://example.invalid/epss"
+    assert hits[0]["validation_status"] == "fixture-validated"
