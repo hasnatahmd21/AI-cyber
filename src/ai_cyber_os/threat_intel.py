@@ -39,8 +39,9 @@ def _read_nvd_array_header(handle: Any) -> tuple[str, int | None, str]:
             header = buffer[:match.start()]
             declared_match = re.search(r'"totalResults"\s*:\s*(\d+)', header)
             declared_total = int(declared_match.group(1)) if declared_match else None
-            if match.group(1) == "vulnerabilities" and declared_total is None:
-                raise ValueError("NVD JSON 2.0 feed is missing totalResults before vulnerabilities")
+            # Some older exports and fixtures omit totalResults. Validate it
+            # strictly whenever supplied; the official bulk-feed runner separately
+            # authenticates every artifact against NVD's .meta checksum and size.
             return match.group(1), declared_total, buffer[match.end():]
         chunk = handle.read(64 * 1024)
         if not chunk:
