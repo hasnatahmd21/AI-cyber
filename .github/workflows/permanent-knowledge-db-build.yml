@@ -22,7 +22,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: permanent-knowledge-db-\${{ github.ref }}
+  group: permanent-knowledge-db-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 360
     env:
-      AI_CYBER_KNOWLEDGE_DB: \${{ github.workspace }}/build-output/ai_cyber_knowledge.sqlite3
+      AI_CYBER_KNOWLEDGE_DB: ${{ github.workspace }}/build-output/ai_cyber_knowledge.sqlite3
       PYTHONPATH: src:layered_defense
       PYTHONFAULTHANDLER: "1"
 
@@ -88,13 +88,13 @@ jobs:
             python -m pytest -q --ignore=tests/test_ui.py \
             --junitxml=build-output/pytest-report.xml \
             2>&1 | tee build-output/pytest.log
-          TEST_RC=\${PIPESTATUS[0]}
+          TEST_RC=${PIPESTATUS[0]}
 
           python scripts/verify_live_rag_api.py \
             --db-path "$AI_CYBER_KNOWLEDGE_DB" \
             --report build-output/live-rag-api-report.json \
             2>&1 | tee build-output/live-rag-api.log
-          API_RC=\${PIPESTATUS[0]}
+          API_RC=${PIPESTATUS[0]}
 
           echo "PYTEST_EXIT_CODE=$TEST_RC"
           echo "LIVE_RAG_API_EXIT_CODE=$API_RC"
@@ -106,7 +106,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: knowledge-db-build-reports-\${{ github.run_number }}
+          name: knowledge-db-build-reports-${{ github.run_number }}
           path: |
             build-output/*.json
             build-output/*.xml
@@ -120,7 +120,7 @@ jobs:
         if: success() && hashFiles('build-output/ai_cyber_knowledge.sqlite3') != ''
         uses: actions/upload-artifact@v4
         with:
-          name: ai-cyber-permanent-knowledge-db-\${{ github.run_number }}
+          name: ai-cyber-permanent-knowledge-db-${{ github.run_number }}
           path: build-output/ai_cyber_knowledge.sqlite3
           if-no-files-found: error
           retention-days: 90
