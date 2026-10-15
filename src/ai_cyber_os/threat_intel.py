@@ -12,6 +12,7 @@ import io
 import json
 import re
 import tarfile
+import zipfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Iterable
@@ -262,31 +263,162 @@ def parse_attack_stix(path: str | Path, *, dataset: str = "mitre-attack",
     return out
 
 
-def parse_cwe_xml(path: str | Path, *, dataset: str = "cwe",
-                  source: str = "MITRE CWE", version: str = "",
-                  source_uri: str = "", license: str = "",
-                  validation_status: str = "unverified") -> list[dict[str, Any]]:
-    root = ET.parse(path).getroot()
-    out = []
-    for elem in root.iter():
+def _iter_cwe_xml_stream(
+    handle: Any,
+    *,
+    dataset: str,
+    source: str,
+    version: str,
+    source_uri: str,
+    license: str,
+    validation_status: str,
+) -> Iterable[dict[str, Any]]:
+    """Stream logical CWE catalog entries while preserving each complete entry."""
+    selected = {"Weakness", "Category", "View"}
+    stack: list[Any] = []
+    record_depth: int | None = None
+    for event, elem in ET.iterparse(handle, events=("start", "end")):
         tag = elem.tag.rsplit("}", 1)[-1]
-        if tag != "Weakness":
+        if event == "start":
+            stack.append(elem)
+            if len(stack) == 3 and tag in selected:
+                record_depth = len(stack)
             continue
-        wid = elem.attrib.get("ID")
-        name = elem.attrib.get("Name", "")
-        if not wid:
-            continue
-        desc = ""
-        for child in elem.iter():
-            if child.tag.rsplit("}", 1)[-1] == "Description" and child.text:
-                desc = " ".join(child.itertext()).strip()
-                break
-        out.append(_normalize({"id": f"CWE-{wid}", "name": name, "description": desc},
-                              dataset=dataset, source=source, version=version,
-                              source_uri=source_uri, license=license,
-                              validation_status=validation_status))
-    return out
 
+        depth = len(stack)
+        if record_depth is not None and depth == record_depth:
+            element_type = tag
+            catalog_id = str(elem.attrib.get("ID") or elem.attrib.get("Id") or "").strip()
+            if not catalog_id:
+                raise ValueError(f"CWE {element_type} catalog entry is missing ID")
+
+            if element_type == "Weakness":
+                record_id = f"CWE-{catalog_id}"
+            else:
+                record_id = f"cwe-{element_type.casefold()}-{catalog_id}"
+
+            name = ""
+            descriptions: list[str] = []
+            for child in list(elem):
+                child_name = child.tag.rsplit("}", 1)[-1]
+                if child_name == "Name" and not name:
+                    name = " ".join("".join(child.itertext()).split())
+                elif child_name in {
+                    "Description", "Summary", "Extended_Description", "ExtendedDescription",
+                }:
+                    value = " ".join("".join(child.itertext()).split())
+                    if value:
+                        descriptions.append(value)
+
+            xml_text = ET.tostring(elem, encoding="unicode")
+            evidence = {
+                "id": record_id,
+                "catalog_id": catalog_id,
+                "catalog_element": element_type,
+                "name": name,
+                "descriptions": descriptions,
+                "xml": xml_text,
+            }
+            raw = {
+                "id": record_id,
+                "title": f"{record_id}: {name}".strip().rstrip(":"),
+                "content": json.dumps(evidence, ensure_ascii=False, sort_keys=True),
+                "catalog_id": catalog_id,
+                "catalog_element": element_type,
+                "name": name,
+                "descriptions": descriptions,
+            }
+            yield _normalize(
+                raw,
+                dataset=dataset,
+                source=source,
+                version=version,
+                source_uri=source_uri,
+                license=license,
+                validation_status=validation_status,
+            )
+            elem.clear()
+            record_depth = None
+        elif record_depth is None:
+            # Keep descendants intact inside an active catalog record; clearing
+            # them early would erase Name/Description before the parent is read.
+            elem.clear()
+        stack.pop()
+
+
+def iter_parse_cwe_xml(
+    path: str | Path,
+    *,
+    dataset: str = "cwe",
+    source: str = "MITRE CWE",
+    version: str = "",
+    source_uri: str = "",
+    license: str = "",
+    validation_status: str = "unverified",
+) -> Iterable[dict[str, Any]]:
+    """Stream Weakness, Category and View records from CWE XML or a ZIP catalog."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(p)
+    with p.open("rb") as handle:
+        prefix = handle.read(256).lstrip()
+    if prefix.startswith(b"version https://git-lfs.github.com/spec/v1"):
+        raise ValueError(
+            f"Git LFS pointer detected instead of dataset content: {p}. "
+            "Restore the LFS object and verify its original SHA-256 and size before parsing."
+        )
+
+    common = {
+        "dataset": dataset,
+        "source": source,
+        "version": version,
+        "source_uri": source_uri,
+        "license": license,
+        "validation_status": validation_status,
+    }
+    if p.suffix.casefold() == ".zip":
+        with zipfile.ZipFile(p) as archive:
+            members = sorted(
+                name for name in archive.namelist()
+                if not name.endswith("/") and name.casefold().endswith(".xml")
+            )
+            preferred = [name for name in members if "cwec_" in Path(name).name.casefold()]
+            if preferred:
+                members = preferred
+            if len(members) != 1:
+                raise ValueError(
+                    f"CWE ZIP must resolve to exactly one XML catalog; found {len(members)}"
+                )
+            with archive.open(members[0], "r") as handle:
+                yield from _iter_cwe_xml_stream(handle, **common)
+        return
+
+    if p.suffix.casefold() != ".xml":
+        raise ValueError(f"unsupported CWE catalog format: {p.suffix}")
+    with p.open("rb") as handle:
+        yield from _iter_cwe_xml_stream(handle, **common)
+
+
+def parse_cwe_xml(
+    path: str | Path,
+    *,
+    dataset: str = "cwe",
+    source: str = "MITRE CWE",
+    version: str = "",
+    source_uri: str = "",
+    license: str = "",
+    validation_status: str = "unverified",
+) -> list[dict[str, Any]]:
+    """Compatibility wrapper returning the streaming parser's records as a list."""
+    return list(iter_parse_cwe_xml(
+        path,
+        dataset=dataset,
+        source=source,
+        version=version,
+        source_uri=source_uri,
+        license=license,
+        validation_status=validation_status,
+    ))
 
 
 def parse_cpe(path: str | Path, *, dataset: str = "cpe",
