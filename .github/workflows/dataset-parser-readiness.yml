@@ -12,6 +12,8 @@ on:
       - "src/ai_cyber_os/dataset_readiness.py"
       - "tests/test_dataset_specific_parsers.py"
       - "scripts/kaggle_dataset_parser_readiness_gate.py"
+      - "scripts/kaggle_nvd_feed_readiness.py"
+      - "docs/REAL_DATASET_RUNBOOK.md"
       - ".github/workflows/dataset-parser-readiness.yml"
 
 permissions:
@@ -51,6 +53,7 @@ jobs:
             tests/test_rag.py
       - name: Audit committed real source artifacts without ingestion
         id: real_source_audit
+        if: always()
         continue-on-error: true
         env:
           PYTHONPATH: src
