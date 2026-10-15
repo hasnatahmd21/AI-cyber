@@ -96,6 +96,26 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
     return data
 
 
+def _manifest_quality_checks(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Check provenance/placeholder metadata without inventing missing claims."""
+    checks: dict[str, bool] = {}
+    placeholder_tokens = ("REPLACE_WITH_", "TODO_FILL_", "YOUR_SOURCE_URI")
+    for field in ("dataset", "version", "source", "source_uri", "license"):
+        if field not in manifest:
+            continue
+        value = manifest.get(field)
+        checks[field] = (
+            isinstance(value, str)
+            and bool(value.strip())
+            and not any(token in value for token in placeholder_tokens)
+        )
+    # If a manifest explicitly says the license has not been verified, keep the
+    # artifact blocked even when its bytes and parser counts are otherwise valid.
+    if "license_verified" in manifest:
+        checks["license_verified"] = manifest.get("license_verified") is True
+    return {"checks": checks, "all_pass": all(checks.values())}
+
+
 def _project_root(manifest_path: str | Path) -> Path:
     """Resolve repository/project root from a manifest path."""
     p = Path(manifest_path).resolve()
@@ -265,15 +285,19 @@ def _artifact_inspection(
             }
         )
 
+    metadata_quality = _manifest_quality_checks(manifest)
+    artifact_integrity = all(
+        a["sha256_matches"] and a["record_count_matches"] and a["stats_match"]
+        for a in artifacts
+    )
     return {
         "dataset": manifest.get("dataset", Path(manifest_path).stem),
         "version": manifest.get("version", ""),
         "artifacts": artifacts,
         "records": sum(a["records"] for a in artifacts),
-        "ready": all(
-            a["sha256_matches"] and a["record_count_matches"] and a["stats_match"]
-            for a in artifacts
-        ),
+        "manifest_checks": metadata_quality,
+        "artifact_integrity": artifact_integrity,
+        "ready": artifact_integrity and metadata_quality["all_pass"],
     }
 
 def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
@@ -292,6 +316,7 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
     if not local.is_file():
         raise FileNotFoundError(local)
 
+    metadata_quality = _manifest_quality_checks(manifest)
     actual_sha = sha256_file(local)
     expected_sha = manifest["sha256"].lower().strip()
     if _is_git_lfs_pointer(local):
@@ -336,7 +361,9 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
         "records": records,
         "record_count_matches": records == declared,
         "manifest_validation_status": manifest["validation_status"],
-        "ready": actual_sha == expected_sha and records == declared,
+        "manifest_checks": metadata_quality,
+        "ready": (actual_sha == expected_sha and records == declared
+                  and metadata_quality["all_pass"]),
     }
 
 
@@ -363,6 +390,16 @@ def ingest_manifest(
                 raise ValueError("dataset SHA-256 does not match manifest")
             if not artifact["record_count_matches"]:
                 raise ValueError("dataset record count does not match manifest")
+
+    manifest_checks = inspection.get("manifest_checks", {"all_pass": True})
+    if not manifest_checks.get("all_pass", True):
+        failed = [
+            key for key, passed in manifest_checks.get("checks", {}).items()
+            if not passed
+        ]
+        raise ValueError(
+            "dataset manifest metadata validation failed: " + ", ".join(failed)
+        )
 
     # Checksum enforcement is optional only when explicitly requested; counts
     # and path containment remain mandatory in either mode.
