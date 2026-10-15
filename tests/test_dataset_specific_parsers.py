@@ -472,3 +472,48 @@ def test_cwe_xml_parser_canonicalizes_weakness_ids_and_streams_catalog_types(tmp
     assert by_id["CWE-79"]["source_uri"] == "https://example.invalid/cwe"
     assert by_id["CWE-79"]["validation_status"] == "fixture-validated"
     assert len(parse_cwe_xml(plain, dataset="cwe", validation_status="fixture-validated")) == 4
+
+
+def test_sigma_zip_parser_preserves_rule_ids_detection_and_provenance(tmp_path: Path):
+    import zipfile
+    from ai_cyber_os.threat_intel import iter_parse_sigma_rules
+
+    archive_path = tmp_path / "sigma-fixture.zip"
+    rule = """title: Suspicious PowerShell
+id: 11111111-2222-4333-8444-555555555555
+status: stable
+description: Detects encoded PowerShell commands
+references:
+  - https://example.invalid/sigma-rule
+tags:
+  - attack.execution
+  - attack.t1059.001
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection:
+    Image|endswith: '\\\\powershell.exe'
+  condition: selection
+"""
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("rules/windows/process_creation/suspicious_powershell.yml", rule)
+        archive.writestr("README.md", "not a Sigma rule")
+
+    records = list(iter_parse_sigma_rules(
+        archive_path,
+        dataset="sigma",
+        source="Sigma fixture",
+        version="fixture-v1",
+        source_uri="https://example.invalid/sigma",
+        license="fixture license",
+        validation_status="fixture-validated",
+    ))
+    assert len(records) == 1
+    row = records[0]
+    assert row["record_id"] == "11111111-2222-4333-8444-555555555555"
+    assert row["title"] == "Suspicious PowerShell"
+    assert "attack.t1059.001" in row["content"]
+    assert "process_creation" in row["content"]
+    assert row["source_uri"] == "https://example.invalid/sigma"
+    assert row["validation_status"] == "fixture-validated"
