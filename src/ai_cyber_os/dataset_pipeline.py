@@ -608,7 +608,7 @@ def derive_cvss_from_nvd_database(
     manifest digest and the exact page's content hashes, so restarts skip pages
     already derived from the same source evidence.
     """
-    if isinstance(batch_size, bool) or batch_size < 1:
+    if isinstance(batch_size, bool) or not isinstance(batch_size, int) or batch_size < 1:
         raise ValueError("batch_size must be a positive integer")
     from .knowledge import _normalize
     from .threat_intel import ingest_parsed
