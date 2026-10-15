@@ -236,3 +236,295 @@ def test_license_artifact_is_hash_checked_but_not_ingested(tmp_path: Path):
     assert result["inserted"] == 1
     from ai_cyber_os.knowledge import status
     assert status(db_path=db)["records"] == 1
+
+
+def test_jsonld_graph_is_counted_as_individual_records(tmp_path: Path):
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "ontology.json"
+    path.write_text(json.dumps({
+        "@context": {},
+        "@graph": [
+            {"@id": "https://example.invalid/A", "@type": "Thing", "label": "A"},
+            {"@id": "https://example.invalid/B", "@type": "Thing", "label": "B"},
+        ],
+    }), encoding="utf-8")
+    rows = list(iter_records(path, dataset="d3fend-fixture", record_format="ontology_jsonld"))
+    assert len(rows) == 2
+    assert {row["record_id"] for row in rows} == {
+        "https://example.invalid/A", "https://example.invalid/B"
+    }
+
+
+def test_stix_tarball_excludes_repo_manifest_and_yields_bundle_objects(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "mbc.tar.gz"
+    members = {
+        "project/manifest.json": json.dumps({"repository": "metadata-only"}),
+        "project/a.json": json.dumps({"type": "bundle", "objects": [
+            {"type": "indicator", "id": "indicator--one", "name": "one"},
+            {"type": "malware", "id": "malware--two", "name": "two"},
+        ]}),
+    }
+    with tarfile.open(path, "w:gz") as archive:
+        for name, text in members.items():
+            payload = text.encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+
+    rows = list(iter_records(
+        path, dataset="mbc-fixture", record_format="mbc_stix_repo_tarball"
+    ))
+    assert len(rows) == 2
+    assert {json.loads(row["metadata_json"])["type"] for row in rows} == {
+        "indicator", "malware"
+    }
+
+
+def test_suricata_parser_preserves_active_disabled_and_sid_fields(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "suricata.tar.gz"
+    rules = (
+        'alert tcp any any -> any 80 (msg:"active rule"; sid:1001; rev:1;)\n'
+        '# alert tcp any any -> any 443 (msg:"disabled rule"; sid:1002; rev:2;)\n'
+        '# just a comment\n\n'
+    ).encode("utf-8")
+    with tarfile.open(path, "w:gz") as archive:
+        info = tarfile.TarInfo("rules/test.rules")
+        info.size = len(rules)
+        archive.addfile(info, io.BytesIO(rules))
+
+    rows = list(iter_records(path, dataset="suricata-fixture",
+                             record_format="suricata_rules_tar_gz"))
+    assert len(rows) == 2
+    active, disabled = [json.loads(row["metadata_json"]) for row in rows]
+    assert active["enabled"] is True and active["sid"] == "1001"
+    assert disabled["enabled"] is False and disabled["sid"] == "1002"
+
+
+def test_gzip_jsonl_records_are_streamed_and_counted(tmp_path: Path):
+    import gzip
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "cpe.jsonl.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        handle.write('{"id":"cpe-1","title":"one"}\n')
+        handle.write('{"id":"cpe-2","title":"two"}\n')
+    rows = list(iter_records(path, dataset="cpe-fixture"))
+    assert [row["record_id"] for row in rows] == ["cpe-1", "cpe-2"]
+
+
+def test_multi_artifact_stats_are_part_of_readiness(tmp_path: Path):
+    import io
+    import tarfile
+
+    data_dir = tmp_path / "datasets"
+    raw_dir = data_dir / "raw"
+    manifest_dir = data_dir / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir()
+    artifact = raw_dir / "rules.tar.gz"
+    rules = (
+        'alert tcp any any -> any 80 (msg:"active"; sid:1; rev:1;)\n'
+        '# alert tcp any any -> any 443 (msg:"disabled"; sid:2; rev:1;)\n'
+    ).encode()
+    with tarfile.open(artifact, "w:gz") as archive:
+        info = tarfile.TarInfo("rules/a.rules")
+        info.size = len(rules)
+        archive.addfile(info, io.BytesIO(rules))
+    manifest = manifest_dir / "suricata-fixture.json"
+    manifest.write_text(json.dumps({
+        "dataset": "suricata-fixture", "version": "test-1",
+        "source": "fixture", "source_uri": "fixture://rules", "license": "test",
+        "artifact_type": "suricata_rules_tar_gz",
+        "schema": {"format": ".rules text inside tar.gz"},
+        "artifacts": [{
+            "path": "datasets/raw/rules.tar.gz",
+            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            "record_count": 2, "role": "data",
+            "artifact_type": "suricata_rules_tar_gz",
+            "stats": {"active_rules": 1, "disabled_rules": 1,
+                      "duplicate_sid_lines": 0, "rule_files": 1},
+        }],
+    }), encoding="utf-8")
+    assert inspect_dataset(manifest)["ready"] is True
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["artifacts"][0]["stats"]["active_rules"] = 2
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    result = inspect_dataset(manifest)
+    assert result["ready"] is False
+    assert result["artifacts"][0]["stat_checks"]["active_rules"]["matches"] is False
+
+
+def test_git_lfs_pointer_is_blocked_without_trying_to_parse_as_json(tmp_path: Path):
+    data_dir = tmp_path / "datasets"
+    manifest_dir = data_dir / "manifests"
+    raw_dir = data_dir / "raw"
+    manifest_dir.mkdir(parents=True)
+    raw_dir.mkdir()
+    pointer = (
+        "version https://git-lfs.github.com/spec/v1\\n"
+        "oid sha256:" + "a" * 64 + "\\n"
+        "size 1234\\n"
+    )
+    artifact = raw_dir / "large.json"
+    artifact.write_text(pointer, encoding="utf-8")
+    manifest = manifest_dir / "large.json"
+    manifest.write_text(json.dumps({
+        "dataset": "large-fixture",
+        "version": "1",
+        "source": "fixture",
+        "source_uri": "https://example.invalid/large.json",
+        "license": "test",
+        "artifact_type": "stix_2_1_bundle",
+        "schema": {"format": "STIX 2.1 bundle JSON"},
+        "artifacts": [{
+            "path": "datasets/raw/large.json",
+            "sha256": "a" * 64,
+            "record_count": 1,
+            "role": "data",
+            "artifact_type": "stix_2_1_bundle",
+        }],
+    }), encoding="utf-8")
+    result = inspect_dataset(manifest)
+    assert result["ready"] is False
+    assert result["artifacts"][0]["git_lfs_pointer"] is True
+    assert "Git LFS pointer" in result["artifacts"][0]["blocked_reason"]
+
+
+def test_explicitly_unverified_license_blocks_readiness_and_ingestion(tmp_path: Path):
+    payload = '{"id":"license-fixture","content":"evidence"}\\n'
+    manifest = _manifest(tmp_path, payload, count=1)
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["license_verified"] = False
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+
+    inspected = inspect_dataset(manifest)
+    assert inspected["ready"] is False
+    assert inspected["manifest_checks"]["checks"]["license_verified"] is False
+    with pytest.raises(ValueError, match="metadata validation failed"):
+        ingest_manifest(manifest, db_path=tmp_path / "knowledge.db")
+
+
+def test_stix_object_type_statistics_are_enforced(tmp_path: Path):
+    data_dir = tmp_path / "datasets"
+    raw_dir = data_dir / "raw"
+    manifest_dir = data_dir / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir()
+    artifact = raw_dir / "bundle.json"
+    artifact.write_text(json.dumps({"type": "bundle", "objects": [
+        {"type": "indicator", "id": "indicator--1", "name": "one"},
+        {"type": "indicator", "id": "indicator--2", "name": "two"},
+    ]}), encoding="utf-8")
+    manifest = manifest_dir / "stix.json"
+    manifest.write_text(json.dumps({
+        "dataset": "stix-fixture", "version": "1", "source": "fixture",
+        "source_uri": "https://example.invalid/stix", "license": "test",
+        "artifact_type": "stix_2_1_bundle",
+        "schema": {"format": "STIX 2.1 bundle JSON"},
+        "artifacts": [{
+            "path": "datasets/raw/bundle.json",
+            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            "record_count": 2, "role": "data",
+            "artifact_type": "stix_2_1_bundle",
+            "stats": {"object_types": {"indicator": 2}},
+        }],
+    }), encoding="utf-8")
+    assert inspect_dataset(manifest)["ready"] is True
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["artifacts"][0]["stats"]["object_types"]["indicator"] = 1
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    result = inspect_dataset(manifest)
+    assert result["ready"] is False
+    assert result["artifacts"][0]["stat_checks"]["object_types"]["matches"] is False
+
+
+def test_sigma_yaml_archive_validates_rules_and_preserves_detection_content(tmp_path: Path):
+    import zipfile
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "sigma.zip"
+    rule = """title: Example Sigma Rule
+id: 123e4567-e89b-12d3-a456-426614174000
+logsource:
+  product: windows
+detection:
+  selection:
+    EventID: 1
+  condition: selection
+"""
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("rules/example.yml", rule)
+        archive.writestr("README.md", "not a rule")
+    rows = list(iter_records(
+        path, dataset="sigma-fixture", record_extensions={".yml", ".yaml"},
+        record_format="sigma_rules_release_asset",
+    ))
+    assert len(rows) == 1
+    assert "EventID" in rows[0]["content"]
+    assert rows[0]["record_id"] == "123e4567-e89b-12d3-a456-426614174000"
+
+
+def test_sigma_yaml_invalid_document_fails_closed(tmp_path: Path):
+    import zipfile
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "sigma-invalid.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("rules/invalid.yml", "title: missing required Sigma structure\\n")
+    with pytest.raises(ValueError, match="Sigma rule has no logsource mapping"):
+        list(iter_records(
+            path, record_extensions={".yml", ".yaml"},
+            record_format="sigma_rules_release_asset",
+        ))
+
+
+def test_xml_element_type_statistics_are_part_of_readiness(tmp_path: Path):
+    import zipfile
+
+    data_dir = tmp_path / "datasets"
+    raw_dir = data_dir / "raw"
+    manifest_dir = data_dir / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir()
+    artifact = raw_dir / "catalog.zip"
+    xml = """<Catalog><Patterns>
+      <Attack_Pattern ID="1"><Name>one</Name></Attack_Pattern>
+      <Attack_Pattern ID="2"><Name>two</Name></Attack_Pattern>
+    </Patterns><Categories><Category ID="C1"><Name>cat</Name></Category></Categories>
+    </Catalog>"""
+    with zipfile.ZipFile(artifact, "w") as archive:
+        archive.writestr("catalog.xml", xml)
+    manifest = manifest_dir / "catalog.json"
+    manifest.write_text(json.dumps({
+        "dataset": "capec-fixture", "version": "1", "source": "fixture",
+        "source_uri": "https://example.invalid/catalog", "license": "test",
+        "artifact_type": "xml_catalog", "schema": {
+            "format": "xml(zip)", "elements": ["Attack_Pattern", "Category"],
+        },
+        "artifacts": [{
+            "path": "datasets/raw/catalog.zip",
+            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            "record_count": 3, "role": "data",
+            "artifact_type": "xml_catalog",
+            "stats": {"counts": {"Attack_Pattern": 2, "Category": 1}},
+        }],
+    }), encoding="utf-8")
+    assert inspect_dataset(manifest)["ready"] is True
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["artifacts"][0]["stats"]["counts"]["Category"] = 2
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    result = inspect_dataset(manifest)
+    assert result["ready"] is False
+    assert result["artifacts"][0]["stat_checks"]["counts"]["matches"] is False

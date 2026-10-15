@@ -31,6 +31,14 @@ def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
     return h.hexdigest()
 
 
+def _is_git_lfs_pointer(path: str | Path) -> bool:
+    try:
+        with Path(path).open("rb") as handle:
+            return handle.read(256).startswith(b"version https://git-lfs.github.com/spec/v1")
+    except OSError:
+        return False
+
+
 def load_manifest(path: str | Path) -> dict[str, Any]:
     p = Path(path)
     data = json.loads(p.read_text(encoding="utf-8"))
@@ -88,6 +96,26 @@ def load_manifest(path: str | Path) -> dict[str, Any]:
     return data
 
 
+def _manifest_quality_checks(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Check provenance/placeholder metadata without inventing missing claims."""
+    checks: dict[str, bool] = {}
+    placeholder_tokens = ("REPLACE_WITH_", "TODO_FILL_", "YOUR_SOURCE_URI")
+    for field in ("dataset", "version", "source", "source_uri", "license"):
+        if field not in manifest:
+            continue
+        value = manifest.get(field)
+        checks[field] = (
+            isinstance(value, str)
+            and bool(value.strip())
+            and not any(token in value for token in placeholder_tokens)
+        )
+    # If a manifest explicitly says the license has not been verified, keep the
+    # artifact blocked even when its bytes and parser counts are otherwise valid.
+    if "license_verified" in manifest:
+        checks["license_verified"] = manifest.get("license_verified") is True
+    return {"checks": checks, "all_pass": all(checks.values())}
+
+
 def _project_root(manifest_path: str | Path) -> Path:
     """Resolve repository/project root from a manifest path."""
     p = Path(manifest_path).resolve()
@@ -120,62 +148,186 @@ def _artifact_inspection(
 
         actual_sha = sha256_file(local)
         expected_sha = item["sha256"].lower().strip()
-
         role = str(item.get("role", "data")).lower()
+        is_lfs_pointer = _is_git_lfs_pointer(local)
+        format_key = str(
+            item.get("artifact_type") or manifest.get("artifact_type")
+            or (manifest.get("schema", {}).get("format", "")
+                if isinstance(manifest.get("schema"), dict) else "")
+        )
+        declared_stats = item.get("stats", {}) if isinstance(item.get("stats"), dict) else {}
+
         if role == "license":
-            # License text is integrity-checked but is not a knowledge record.
             count = 0
             declared = None
             count_matches = True
+            observed_stats: dict[str, Any] = {}
+            stat_checks: dict[str, Any] = {}
+        elif is_lfs_pointer:
+            # Never try to JSON-parse or ingest the three-line LFS pointer as
+            # though it were the dataset payload.
+            count = 0
+            declared = item["record_count"]
+            count_matches = False
+            observed_stats = {}
+            stat_checks = {
+                "payload_available": {
+                    "declared": "complete dataset payload",
+                    "observed": "Git LFS pointer only",
+                    "matches": False,
+                }
+            }
         else:
             schema = manifest.get("schema", {})
             record_elements = schema.get("elements") if isinstance(schema, dict) else None
             schema_format = str(schema.get("format", "")).lower() if isinstance(schema, dict) else ""
             record_extensions = {".yml", ".yaml"} if "yaml rules inside archive" in schema_format else None
-            count = sum(
-                1
-                for _ in iter_records(
-                    local,
-                    dataset=manifest.get("dataset", Path(manifest_path).stem),
-                    source=item.get("source", manifest.get("source", "")),
-                    license=item.get("license", manifest.get("license", "")),
-                    version=item.get("version", manifest.get("version", "")),
-                    source_uri=item.get(
-                        "source_uri", manifest.get("source_uri", "")
-                    ),
-                    validation_status=item.get(
-                        "validation_status",
-                        manifest.get("validation_status", "unverified"),
-                    ),
-                    record_elements=record_elements,
-                    record_extensions=record_extensions,
-                )
-            )
+
+            count = 0
+            object_types: dict[str, int] = {}
+            xml_element_counts: dict[str, int] = {}
+            yaml_rule_files = 0
+            active_rules = 0
+            disabled_rules = 0
+            active_sid_counts: dict[str, int] = {}
+            active_without_sid = 0
+            rule_sources: set[str] = set()
+
+            for record in iter_records(
+                local,
+                dataset=manifest.get("dataset", Path(manifest_path).stem),
+                source=item.get("source", manifest.get("source", "")),
+                license=item.get("license", manifest.get("license", "")),
+                version=item.get("version", manifest.get("version", "")),
+                source_uri=item.get("source_uri", manifest.get("source_uri", "")),
+                validation_status=item.get(
+                    "validation_status", manifest.get("validation_status", "unverified")
+                ),
+                record_elements=record_elements,
+                record_extensions=record_extensions,
+                record_format=format_key,
+            ):
+                count += 1
+                try:
+                    metadata = json.loads(record.get("metadata_json", "{}"))
+                except (TypeError, json.JSONDecodeError):
+                    metadata = {}
+                object_type = metadata.get("type")
+                if isinstance(object_type, str) and object_type:
+                    object_types[object_type] = object_types.get(object_type, 0) + 1
+                xml_tag = metadata.get("tag")
+                if isinstance(xml_tag, str) and xml_tag:
+                    xml_element_counts[xml_tag] = xml_element_counts.get(xml_tag, 0) + 1
+                if "sigma" in format_key.lower():
+                    yaml_rule_files += 1
+
+                if "suricata" in format_key.lower():
+                    if metadata.get("enabled") is True:
+                        active_rules += 1
+                        sid = metadata.get("sid")
+                        if sid is None or str(sid).strip() == "":
+                            active_without_sid += 1
+                        else:
+                            key = str(sid)
+                            active_sid_counts[key] = active_sid_counts.get(key, 0) + 1
+                        rule_sources.add(str(record.get("source", "")))
+                    elif metadata.get("enabled") is False:
+                        disabled_rules += 1
+                        rule_sources.add(str(record.get("source", "")))
+
             declared = item["record_count"]
             count_matches = count == declared
+            observed_stats = {}
+            stat_checks = {}
+
+            expected_types = declared_stats.get("object_types")
+            if isinstance(expected_types, dict):
+                normalized_expected = {str(k): int(v) for k, v in expected_types.items()}
+                normalized_observed = dict(sorted(object_types.items()))
+                stat_checks["object_types"] = {
+                    "declared": normalized_expected,
+                    "observed": normalized_observed,
+                    "matches": normalized_observed == dict(sorted(normalized_expected.items())),
+                }
+                observed_stats["object_types"] = normalized_observed
+
+            expected_xml_counts = declared_stats.get("counts")
+            if isinstance(expected_xml_counts, dict):
+                normalized_expected = {str(k): int(v) for k, v in expected_xml_counts.items()}
+                normalized_observed = dict(sorted(xml_element_counts.items()))
+                stat_checks["counts"] = {
+                    "declared": normalized_expected,
+                    "observed": normalized_observed,
+                    "matches": normalized_observed == dict(sorted(normalized_expected.items())),
+                }
+                observed_stats["counts"] = normalized_observed
+
+            if "sigma" in format_key.lower():
+                observed_sigma = {"yaml_files": yaml_rule_files, "parse_errors": 0}
+                observed_stats.update(observed_sigma)
+                for key, value in observed_sigma.items():
+                    if key in declared_stats:
+                        stat_checks[key] = {
+                            "declared": declared_stats[key],
+                            "observed": value,
+                            "matches": value == declared_stats[key],
+                        }
+
+            if "suricata" in format_key.lower():
+                duplicate_sid_lines = sum(max(0, n - 1) for n in active_sid_counts.values())
+                observed_rules = {
+                    "active_rules": active_rules,
+                    "disabled_rules": disabled_rules,
+                    "duplicate_sid_lines": duplicate_sid_lines,
+                    "rule_files": len(rule_sources),
+                    "active_rules_without_sid": active_without_sid,
+                }
+                observed_stats.update(observed_rules)
+                for key in ("active_rules", "disabled_rules", "duplicate_sid_lines", "rule_files"):
+                    if key in declared_stats:
+                        stat_checks[key] = {
+                            "declared": declared_stats[key],
+                            "observed": observed_rules[key],
+                            "matches": observed_rules[key] == declared_stats[key],
+                        }
+                stat_checks["active_rules_without_sid"] = {
+                    "declared": 0,
+                    "observed": active_without_sid,
+                    "matches": active_without_sid == 0,
+                }
 
         artifacts.append(
             {
                 "path": str(local),
                 "role": role,
+                "artifact_type": format_key,
                 "sha256": actual_sha,
                 "sha256_matches": actual_sha == expected_sha,
+                "git_lfs_pointer": is_lfs_pointer,
+                "blocked_reason": "Git LFS pointer detected; payload has not been downloaded" if is_lfs_pointer else None,
                 "records": count,
                 "record_count_matches": count_matches,
+                "declared_stats": declared_stats,
+                "observed_stats": observed_stats,
+                "stat_checks": stat_checks,
+                "stats_match": all(check.get("matches", False) for check in stat_checks.values()),
             }
         )
 
+    metadata_quality = _manifest_quality_checks(manifest)
+    artifact_integrity = all(
+        a["sha256_matches"] and a["record_count_matches"] and a["stats_match"]
+        for a in artifacts
+    )
     return {
         "dataset": manifest.get("dataset", Path(manifest_path).stem),
         "version": manifest.get("version", ""),
         "artifacts": artifacts,
         "records": sum(a["records"] for a in artifacts),
-        "ready": all(
-            a["sha256_matches"] and a["record_count_matches"]
-            for a in artifacts
-        ),
+        "manifest_checks": metadata_quality,
+        "artifact_integrity": artifact_integrity,
+        "ready": artifact_integrity and metadata_quality["all_pass"],
     }
-
 
 def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
     manifest = load_manifest(manifest_path)
@@ -193,8 +345,23 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
     if not local.is_file():
         raise FileNotFoundError(local)
 
+    metadata_quality = _manifest_quality_checks(manifest)
     actual_sha = sha256_file(local)
     expected_sha = manifest["sha256"].lower().strip()
+    if _is_git_lfs_pointer(local):
+        return {
+            "dataset": manifest["dataset"],
+            "version": manifest["version"],
+            "path": str(local),
+            "sha256": actual_sha,
+            "sha256_matches": actual_sha == expected_sha,
+            "records": 0,
+            "record_count_matches": False,
+            "manifest_validation_status": manifest["validation_status"],
+            "git_lfs_pointer": True,
+            "blocked_reason": "Git LFS pointer detected; download and verify the real artifact",
+            "ready": False,
+        }
     records = sum(
         1
         for _ in iter_records(
@@ -207,6 +374,9 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
             validation_status=manifest["validation_status"],
             record_elements=(manifest.get("schema", {}).get("elements")
                              if isinstance(manifest.get("schema"), dict) else None),
+            record_format=(manifest.get("artifact_type") or
+                           (manifest.get("schema", {}).get("format", "")
+                            if isinstance(manifest.get("schema"), dict) else "")),
         )
     )
     declared = int(manifest["record_count"])
@@ -220,7 +390,9 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
         "records": records,
         "record_count_matches": records == declared,
         "manifest_validation_status": manifest["validation_status"],
-        "ready": actual_sha == expected_sha and records == declared,
+        "manifest_checks": metadata_quality,
+        "ready": (actual_sha == expected_sha and records == declared
+                  and metadata_quality["all_pass"]),
     }
 
 
@@ -247,6 +419,16 @@ def ingest_manifest(
                 raise ValueError("dataset SHA-256 does not match manifest")
             if not artifact["record_count_matches"]:
                 raise ValueError("dataset record count does not match manifest")
+
+    manifest_checks = inspection.get("manifest_checks", {"all_pass": True})
+    if not manifest_checks.get("all_pass", True):
+        failed = [
+            key for key, passed in manifest_checks.get("checks", {}).items()
+            if not passed
+        ]
+        raise ValueError(
+            "dataset manifest metadata validation failed: " + ", ".join(failed)
+        )
 
     # Checksum enforcement is optional only when explicitly requested; counts
     # and path containment remain mandatory in either mode.
@@ -289,6 +471,8 @@ def ingest_manifest(
                 ),
                 record_elements=record_elements,
                 record_extensions=record_extensions,
+                record_format=(item.get("artifact_type") or manifest.get("artifact_type")
+                               or schema_format),
             )
             total += int(result.get("inserted", 0))
 
@@ -313,6 +497,9 @@ def ingest_manifest(
         validation_status=manifest["validation_status"],
         record_elements=(manifest.get("schema", {}).get("elements")
                          if isinstance(manifest.get("schema"), dict) else None),
+        record_format=(manifest.get("artifact_type") or
+                       (manifest.get("schema", {}).get("format", "")
+                        if isinstance(manifest.get("schema"), dict) else "")),
     )
     result["inspection"] = inspection
     result["manifest"] = str(Path(manifest_path))
