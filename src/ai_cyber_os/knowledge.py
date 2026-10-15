@@ -13,6 +13,7 @@ import gzip
 import hashlib
 import io
 import json
+import os
 import re
 import sqlite3
 import tarfile
@@ -22,8 +23,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
-SCHEMA_VERSION = 4
-DEFAULT_DB = Path.home() / ".ai-cyber" / "knowledge.db"
+SCHEMA_VERSION = 5
+DEFAULT_DB = Path(os.environ.get("AI_CYBER_KNOWLEDGE_DB", str(Path.home() / ".ai-cyber" / "knowledge.db"))).expanduser()
+DATABASE_VERSION = "ai-cyber-knowledge-v1"
 SUPPORTED_SUFFIXES = {".jsonl", ".ndjson", ".json", ".csv", ".txt", ".md", ".xml", ".yaml", ".yml", ".gz", ".zip", ".tgz", ".tar", ".rules", ".zeek"}
 
 _SCHEMA = """
@@ -77,6 +79,28 @@ CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
     content,
     tokenize='unicode61'
 );
+CREATE TABLE IF NOT EXISTS knowledge_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS knowledge_ingestion_checkpoints (
+    manifest_path TEXT NOT NULL,
+    artifact_path TEXT NOT NULL,
+    artifact_sha256 TEXT NOT NULL,
+    dataset TEXT NOT NULL,
+    status TEXT NOT NULL,
+    expected_records INTEGER NOT NULL DEFAULT 0,
+    processed_records INTEGER NOT NULL DEFAULT 0,
+    inserted_records INTEGER NOT NULL DEFAULT 0,
+    updated_records INTEGER NOT NULL DEFAULT 0,
+    duplicate_records INTEGER NOT NULL DEFAULT 0,
+    started_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    error TEXT,
+    PRIMARY KEY (manifest_path, artifact_path, artifact_sha256)
+);
+CREATE INDEX IF NOT EXISTS idx_ingestion_checkpoints_status
+    ON knowledge_ingestion_checkpoints(status, dataset);
 """
 
 
@@ -151,6 +175,22 @@ def open_store(path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
     db = sqlite3.connect(str(db_path))
     db.row_factory = sqlite3.Row
     db.executescript(_SCHEMA)
+    now = _now()
+    db.execute(
+        "INSERT INTO knowledge_meta(key,value) VALUES('schema_version',?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (str(SCHEMA_VERSION),),
+    )
+    db.execute(
+        "INSERT INTO knowledge_meta(key,value) VALUES('database_version',?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (DATABASE_VERSION,),
+    )
+    db.execute(
+        "INSERT INTO knowledge_meta(key,value) VALUES('last_opened_at',?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (now,),
+    )
     columns = {row["name"] for row in db.execute("PRAGMA table_info(knowledge_records)")}
     if "source_uri" not in columns:
         db.execute("ALTER TABLE knowledge_records ADD COLUMN source_uri TEXT")
