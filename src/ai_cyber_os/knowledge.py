@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS knowledge_meta (
 );
 CREATE TABLE IF NOT EXISTS knowledge_ingestion_checkpoints (
     manifest_path TEXT NOT NULL,
+    manifest_sha256 TEXT NOT NULL,
     artifact_path TEXT NOT NULL,
     artifact_sha256 TEXT NOT NULL,
     dataset TEXT NOT NULL,
@@ -97,7 +98,7 @@ CREATE TABLE IF NOT EXISTS knowledge_ingestion_checkpoints (
     started_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     error TEXT,
-    PRIMARY KEY (manifest_path, artifact_path, artifact_sha256)
+    PRIMARY KEY (manifest_path, manifest_sha256, artifact_path, artifact_sha256)
 );
 CREATE INDEX IF NOT EXISTS idx_ingestion_checkpoints_status
     ON knowledge_ingestion_checkpoints(status, dataset);
