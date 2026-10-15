@@ -244,3 +244,53 @@ def test_lfs_pointer_is_rejected_by_generic_json_and_text_ingestion(tmp_path: Pa
     )
     with pytest.raises(ValueError, match="Git LFS pointer"):
         list(iter_records(path, dataset="attack-pointer-fixture"))
+
+
+def test_mbc_deduplicates_catalog_bundle_and_per_object_json_by_stix_id(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.threat_intel import parse_mbc_stix
+
+    archive_path = tmp_path / "mbc-duplicates.tar.gz"
+    one = {"type": "malware", "id": "malware--same", "name": "Same exact object"}
+    two = {"type": "indicator", "id": "indicator--same", "name": "Second object"}
+    payloads = {
+        "catalog/bundle.json": {"type": "bundle", "id": "bundle--catalog", "objects": [one, two]},
+        "objects/malware.json": one,
+        "objects/indicator.json": two,
+        "metadata.json": {"catalog": "metadata only"},
+    }
+    with tarfile.open(archive_path, "w:gz") as archive:
+        for name, payload in payloads.items():
+            raw = json.dumps(payload).encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(raw)
+            archive.addfile(info, io.BytesIO(raw))
+
+    records = parse_mbc_stix(archive_path, validation_status="fixture-validated")
+
+    assert len(payloads) == 4  # three STIX-bearing JSON files + metadata JSON
+    assert len(records) == 2  # exact repeated STIX IDs counted once
+    assert {record["record_id"] for record in records} == {"malware--same", "indicator--same"}
+
+
+def test_mbc_conflicting_duplicate_stix_id_fails_closed(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.threat_intel import parse_mbc_stix
+
+    archive_path = tmp_path / "mbc-conflict.tar.gz"
+    one = {"type": "malware", "id": "malware--duplicate", "name": "Original"}
+    altered = {"type": "malware", "id": "malware--duplicate", "name": "Conflicting"}
+    with tarfile.open(archive_path, "w:gz") as archive:
+        for name, payload in (
+            ("objects/original.json", one),
+            ("objects/conflicting.json", altered),
+        ):
+            raw = json.dumps(payload).encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(raw)
+            archive.addfile(info, io.BytesIO(raw))
+
+    with pytest.raises(ValueError, match="Conflicting STIX payloads"):
+        parse_mbc_stix(archive_path, validation_status="fixture-validated")
