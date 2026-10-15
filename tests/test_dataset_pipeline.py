@@ -409,3 +409,42 @@ def test_suricata_manifest_ingestion_persists_active_and_disabled_state(tmp_path
         db.close()
     assert result["inserted"] == 2
     assert {row["status"] for row in metadata} == {"active", "disabled"}
+
+
+def test_manifest_directory_preflight_blocks_before_database_creation_and_ignores_example(tmp_path: Path):
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+    from ai_cyber_os.knowledge import status
+
+    payload = (
+        '{"id":"READY-1","title":"ready fixture","content":"citation-backed security evidence"}\n'
+        '{"id":"READY-2","title":"second fixture","content":"another verified security record"}\n'
+    )
+    manifest = _manifest(tmp_path, payload, count=2)
+    manifests_dir = manifest.parent
+    (manifests_dir / "example.json").write_text(json.dumps({
+        "dataset": "missing-required-dataset",
+        "local_path": "datasets/does-not-exist.json",
+    }), encoding="utf-8")
+    db_path = tmp_path / "persistent" / "knowledge-v1.sqlite3"
+
+    blocked = ingest_manifest_directory(
+        manifests_dir,
+        db_path=db_path,
+        required_datasets=["fixture-threat-intel", "missing-required-dataset"],
+    )
+    assert blocked["overall"] == "BLOCKED"
+    assert blocked["ingestion_performed"] is False
+    assert blocked["missing_required_datasets"] == ["missing-required-dataset"]
+    assert not db_path.exists(), "preflight blockers must not create an empty/partial database"
+
+    ready = ingest_manifest_directory(
+        manifests_dir,
+        db_path=db_path,
+        required_datasets=["fixture-threat-intel"],
+    )
+    assert ready["overall"] == "PASS"
+    assert ready["success"] is True
+    assert ready["ingestion_performed"] is True
+    assert ready["inserted"] == 2
+    assert status(db_path=db_path)["records"] == 2
+    assert status(db_path=db_path)["database_version"] == "ai-cyber-knowledge-v1"
