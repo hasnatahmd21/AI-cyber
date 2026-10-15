@@ -6,7 +6,9 @@ validation state come from the dataset manifest and are preserved in records.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Iterable
@@ -331,8 +333,8 @@ def parse_suricata_rules(path: str | Path, *, dataset: str = "suricata-rules",
         raise FileNotFoundError(root)
     files = sorted(p for p in root.rglob("*.rules") if p.is_file()) if root.is_dir() else [root]
     action_text = "|".join(sorted(_SURICATA_ACTIONS, key=len, reverse=True))
-    active_re = __import__("re").compile(r"^\s*(" + action_text + r")\s+\S+\s*\(")
-    disabled_re = __import__("re").compile(r"^\s*#\s*(" + action_text + r")\s+\S+\s*\(")
+    active_re = re.compile(r"^\s*(" + action_text + r")\s+\S+\s*\(")
+    disabled_re = re.compile(r"^\s*#\s*(" + action_text + r")\s+\S+\s*\(")
     out: list[dict[str, Any]] = []
     for file_path in files:
         if not file_path.is_file():
@@ -350,13 +352,13 @@ def parse_suricata_rules(path: str | Path, *, dataset: str = "suricata-rules",
                 active_match = active_re.match(original)
                 if disabled_match:
                     state, action = "disabled", disabled_match.group(1).lower()
-                    rule = disabled_re.sub(lambda match: match.group(1), original, count=1).lstrip()
+                    rule = re.sub(r"^\\s*#\\s*", "", original, count=1).strip()
                 elif active_match:
                     state, action, rule = "active", active_match.group(1).lower(), original.strip()
                 else:
                     continue
                 stable_key = f"{state}\0{file_label}\0{line_number}\0{rule}"
-                digest = __import__("hashlib").sha256(stable_key.encode("utf-8")).hexdigest()
+                digest = hashlib.sha256(stable_key.encode("utf-8")).hexdigest()
                 payload = {
                     "id": f"suricata:{state}:{digest}",
                     "name": f"{state.title()} Suricata {action} rule",
