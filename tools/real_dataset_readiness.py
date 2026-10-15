@@ -122,6 +122,8 @@ def inspect(root: Path, *, deep: bool = True) -> dict[str, Any]:
                 "records": result.get("records", 0),
                 "sha256_matches": result.get("sha256_matches"),
                 "record_count_matches": result.get("record_count_matches"),
+                "manifest_checks": result.get("manifest_checks"),
+                "artifact_integrity": result.get("artifact_integrity"),
                 "artifacts": result.get("artifacts", []),
                 "error": None,
             })
