@@ -32,6 +32,8 @@ DEFAULT_REQUIRED = (
     "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel", "nvd_cve",
 )
 PROBE_CVE = "CVE-2021-44228"
+PROBE_CWE = "CWE-79"
+PROBE_ATTACK = "T1059.001"
 
 
 def sha256_file(path: Path) -> str:
@@ -115,6 +117,80 @@ def restart_smoke_test(db_path: Path, cve_id: str) -> dict[str, Any]:
         raise RuntimeError("RAG evidence is missing source URI/hash/validation citation fields")
     return data
 
+
+
+def core_query_smoke_test(
+    db_path: Path,
+    cve_id: str = PROBE_CVE,
+    cwe_id: str = PROBE_CWE,
+    attack_id: str = PROBE_ATTACK,
+) -> dict[str, Any]:
+    """Check real CVE, CWE and ATT&CK retrieval in a fresh Python process."""
+    env = os.environ.copy()
+    env["AI_CYBER_KNOWLEDGE_DB"] = str(db_path)
+    env["PYTHONPATH"] = str(REPOSITORY_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    probes = {
+        "cve": {"query": cve_id, "dataset": "nvd_cve"},
+        "cwe": {"query": cwe_id, "dataset": "cwe"},
+        "attack": {"query": attack_id, "dataset": "mitre_attack"},
+    }
+    program = (
+        "import json\n"
+        "from ai_cyber_os.knowledge import DEFAULT_DB, status\n"
+        "from ai_cyber_os.runtime_intelligence import analyze\n"
+        "probes = " + repr(probes) + "\n"
+        "out = {}\n"
+        "for family, spec in probes.items():\n"
+        "    result = analyze(spec['query'], db_path=DEFAULT_DB, dataset=spec['dataset'], limit=10)\n"
+        "    evidence = result.get('evidence', [])\n"
+        "    out[family] = {\n"
+        "        'query': spec['query'], 'dataset': spec['dataset'],\n"
+        "        'success': result.get('success') is True,\n"
+        "        'evidence_only': result.get('evidence_only') is True,\n"
+        "        'count': len(evidence),\n"
+        "        'has_citations': bool(evidence) and all(\n"
+        "            bool(row.get('source_uri')) and bool(row.get('content_sha256'))\n"
+        "            and bool(row.get('validation_status')) for row in evidence),\n"
+        "        'evidence': [{\n"
+        "            'record_id': row.get('record_id'), 'dataset': row.get('dataset'),\n"
+        "            'source_uri': row.get('source_uri'), 'version': row.get('version'),\n"
+        "            'validation_status': row.get('validation_status'),\n"
+        "            'content_sha256': row.get('content_sha256'),\n"
+        "        } for row in evidence],\n"
+        "    }\n"
+        "print(json.dumps({'default_db': str(DEFAULT_DB.resolve()), 'status': status(), 'queries': out}))\n"
+    )
+    proc = subprocess.run(
+        [sys.executable, "-c", program],
+        cwd=REPOSITORY_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=300,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(f"core query smoke test process failed: {proc.stderr[-3000:]}")
+    data = json.loads(proc.stdout.strip().splitlines()[-1])
+    if Path(data["default_db"]).resolve() != db_path.resolve():
+        raise RuntimeError(
+            f"core query process used the wrong DB path: expected {db_path}, got {data['default_db']}"
+        )
+    if int(data.get("status", {}).get("records", 0)) <= 0:
+        raise RuntimeError("core query process found an empty Knowledge DB")
+    for family, query_result in data["queries"].items():
+        if not query_result.get("success") or not query_result.get("evidence_only"):
+            raise RuntimeError(f"{family.upper()} query did not return an evidence-only runtime result")
+        if int(query_result.get("count", 0)) <= 0:
+            raise RuntimeError(
+                f"{family.upper()} query {query_result.get('query')!r} returned no result "
+                f"from dataset {query_result.get('dataset')!r}"
+            )
+        if not query_result.get("has_citations"):
+            raise RuntimeError(
+                f"{family.upper()} query returned evidence without source URI/hash/validation citation fields"
+            )
+    return data
 
 def persist_via_lfs(db_path: Path, report_path: Path, branch: str) -> dict[str, Any]:
     """Explicit, opt-in durable publishing of the verified SQLite artifact."""
@@ -453,6 +529,9 @@ def persist_via_kaggle_dataset(
                 f"expected {source_sha}, got {restored_sha}"
             )
         restore_restart = restart_smoke_test(restored_db, PROBE_CVE)
+        restore_core_queries = core_query_smoke_test(
+            restored_db, PROBE_CVE, PROBE_CWE, PROBE_ATTACK
+        )
         # The restored DB may be several gigabytes; remove the temporary second
         # copy after exact-hash and fresh-process verification to free workspace.
         shutil.rmtree(restore_dir, ignore_errors=True)
@@ -470,6 +549,7 @@ def persist_via_kaggle_dataset(
             "database_byte_size": db_path.stat().st_size,
             "record_count": record_count,
             "restore_restart_test": restore_restart,
+            "restore_core_query_test": restore_core_queries,
             "upload_dir": str(upload_dir),
             "cli_output": result.stdout[-2000:],
             "status_output": verification.stdout[-2000:],
@@ -487,6 +567,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Explicit versioned SQLite path; default is intentionally not guessed")
     parser.add_argument("--report", type=Path, default=None)
     parser.add_argument("--probe-cve", default=PROBE_CVE)
+    parser.add_argument("--probe-cwe", default=PROBE_CWE)
+    parser.add_argument("--probe-attack", default=PROBE_ATTACK)
     parser.add_argument("--require", action="append", default=[],
                         help="Optional replacement required-source list; may be repeated")
     parser.add_argument("--persist-lfs", action="store_true",
@@ -642,7 +724,12 @@ def main(argv: list[str] | None = None) -> int:
             raise RuntimeError(f"derived CVSS query returned no evidence for {args.probe_cve}")
 
         report["database_status"] = knowledge_status(db_path=db_path)
-        context = build_context(args.probe_cve, db_path=db_path, limit=10)
+        report["core_query_smoke_test"] = core_query_smoke_test(
+            db_path, args.probe_cve, args.probe_cwe, args.probe_attack
+        )
+        context = build_context(
+            args.probe_cve, db_path=db_path, limit=10, dataset="nvd_cve"
+        )
         report["real_cve_query"] = {
             "query": args.probe_cve,
             "count": context.get("count", 0),
