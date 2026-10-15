@@ -24,7 +24,7 @@ from typing import Any, Iterable
 
 SCHEMA_VERSION = 4
 DEFAULT_DB = Path.home() / ".ai-cyber" / "knowledge.db"
-SUPPORTED_SUFFIXES = {".jsonl", ".ndjson", ".json", ".csv", ".txt", ".md", ".xml", ".yaml", ".yml", ".gz", ".zip", ".tgz", ".tar"}
+SUPPORTED_SUFFIXES = {".jsonl", ".ndjson", ".json", ".csv", ".txt", ".md", ".xml", ".yaml", ".yml", ".gz", ".zip", ".tgz", ".tar", ".rules", ".zeek"}
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS knowledge_records (
@@ -316,7 +316,7 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
     }
     default_archive_extensions = {
         ".json", ".jsonl", ".ndjson", ".csv", ".txt", ".md",
-        ".xml", ".yaml", ".yml",
+        ".xml", ".yaml", ".yml", ".rules", ".zeek",
     }
 
     def normalized(value: Any, item_source: str):
