@@ -447,3 +447,84 @@ def test_stix_object_type_statistics_are_enforced(tmp_path: Path):
     result = inspect_dataset(manifest)
     assert result["ready"] is False
     assert result["artifacts"][0]["stat_checks"]["object_types"]["matches"] is False
+
+
+def test_sigma_yaml_archive_validates_rules_and_preserves_detection_content(tmp_path: Path):
+    import zipfile
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "sigma.zip"
+    rule = """title: Example Sigma Rule
+id: 123e4567-e89b-12d3-a456-426614174000
+logsource:
+  product: windows
+detection:
+  selection:
+    EventID: 1
+  condition: selection
+"""
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("rules/example.yml", rule)
+        archive.writestr("README.md", "not a rule")
+    rows = list(iter_records(
+        path, dataset="sigma-fixture", record_extensions={".yml", ".yaml"},
+        record_format="sigma_rules_release_asset",
+    ))
+    assert len(rows) == 1
+    assert "EventID" in rows[0]["content"]
+    assert rows[0]["record_id"] == "123e4567-e89b-12d3-a456-426614174000"
+
+
+def test_sigma_yaml_invalid_document_fails_closed(tmp_path: Path):
+    import zipfile
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "sigma-invalid.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("rules/invalid.yml", "title: missing required Sigma structure\\n")
+    with pytest.raises(ValueError, match="Sigma rule has no logsource mapping"):
+        list(iter_records(
+            path, record_extensions={".yml", ".yaml"},
+            record_format="sigma_rules_release_asset",
+        ))
+
+
+def test_xml_element_type_statistics_are_part_of_readiness(tmp_path: Path):
+    import zipfile
+
+    data_dir = tmp_path / "datasets"
+    raw_dir = data_dir / "raw"
+    manifest_dir = data_dir / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir()
+    artifact = raw_dir / "catalog.zip"
+    xml = """<Catalog><Patterns>
+      <Attack_Pattern ID="1"><Name>one</Name></Attack_Pattern>
+      <Attack_Pattern ID="2"><Name>two</Name></Attack_Pattern>
+    </Patterns><Categories><Category ID="C1"><Name>cat</Name></Category></Categories>
+    </Catalog>"""
+    with zipfile.ZipFile(artifact, "w") as archive:
+        archive.writestr("catalog.xml", xml)
+    manifest = manifest_dir / "catalog.json"
+    manifest.write_text(json.dumps({
+        "dataset": "capec-fixture", "version": "1", "source": "fixture",
+        "source_uri": "https://example.invalid/catalog", "license": "test",
+        "artifact_type": "xml_catalog", "schema": {
+            "format": "xml(zip)", "elements": ["Attack_Pattern", "Category"],
+        },
+        "artifacts": [{
+            "path": "datasets/raw/catalog.zip",
+            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            "record_count": 3, "role": "data",
+            "artifact_type": "xml_catalog",
+            "stats": {"counts": {"Attack_Pattern": 2, "Category": 1}},
+        }],
+    }), encoding="utf-8")
+    assert inspect_dataset(manifest)["ready"] is True
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["artifacts"][0]["stats"]["counts"]["Category"] = 2
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    result = inspect_dataset(manifest)
+    assert result["ready"] is False
+    assert result["artifacts"][0]["stat_checks"]["counts"]["matches"] is False
