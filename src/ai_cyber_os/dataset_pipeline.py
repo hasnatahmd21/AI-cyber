@@ -125,6 +125,9 @@ def _count_artifact_records(
     if count_kind == "suricata":
         from .threat_intel import parse_suricata_rules
         return len(parse_suricata_rules(local, **common))
+    if count_kind in {"xml_cwe", "cwe"}:
+        from .threat_intel import iter_parse_cwe_xml
+        return sum(1 for _ in iter_parse_cwe_xml(local, **common))
 
     schema = manifest.get("schema", {})
     record_elements = schema.get("elements") if isinstance(schema, dict) else None
@@ -371,6 +374,9 @@ def _specialized_records(
     if kind == "suricata":
         from .threat_intel import parse_suricata_rules
         return parse_suricata_rules(local, **common)
+    if kind in {"xml_cwe", "cwe"}:
+        from .threat_intel import iter_parse_cwe_xml
+        return iter_parse_cwe_xml(local, **common)
     return None
 
 
