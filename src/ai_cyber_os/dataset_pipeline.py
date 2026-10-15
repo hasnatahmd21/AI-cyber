@@ -1005,14 +1005,71 @@ def ingest_manifest_directory(
             report["store_status"] = status(db_path=db_file) if db_file.exists() else None
             return report
 
+    report["ingestion_performed"] = True
+    nvd_manifest = next(
+        (
+            (manifest_path, manifest)
+            for manifest_path, manifest in loaded
+            if str(manifest.get("dataset") or manifest_path.stem) == "nvd_cve"
+        ),
+        None,
+    )
+    if nvd_manifest is not None:
+        try:
+            cvss_result = derive_cvss_from_nvd_database(
+                db_file, manifest_path=nvd_manifest[0]
+            )
+            report["derived_datasets"] = [{
+                "dataset": "cvss",
+                "status": "PASS" if cvss_result["derived_records_in_database"] > 0 else "FAIL",
+                "source_dataset": "nvd_cve",
+                "derivation": cvss_result,
+                "evidence": (
+                    "CVSS metrics were extracted from the verified NVD records and persisted with source provenance."
+                    if cvss_result["derived_records_in_database"] > 0
+                    else "NVD source records contained no derivable CVSS metric records."
+                ),
+            }]
+            if cvss_result["derived_records_in_database"] < 1:
+                report.update({
+                    "success": False,
+                    "overall": "FAIL",
+                    "inserted": total_inserted,
+                    "updated": total_updated,
+                    "duplicates": total_duplicates,
+                    "evidence": "Raw dataset ingestion passed, but the derived CVSS dataset produced no records.",
+                    "store_status": status(db_path=db_file),
+                })
+                return report
+        except Exception as exc:
+            report.update({
+                "success": False,
+                "overall": "FAIL",
+                "inserted": total_inserted,
+                "updated": total_updated,
+                "duplicates": total_duplicates,
+                "derived_datasets": [{
+                    "dataset": "cvss",
+                    "status": "FAIL",
+                    "evidence": f"{type(exc).__name__}: {exc}",
+                }],
+                "evidence": "Raw dataset ingestion completed but the CVSS derivation stage failed; rerun to resume from checkpoints.",
+                "store_status": status(db_path=db_file),
+            })
+            return report
+
     report.update({
         "success": True,
         "overall": "PASS",
-        "ingestion_performed": True,
         "inserted": total_inserted,
         "updated": total_updated,
         "duplicates": total_duplicates,
-        "evidence": "All required sources passed preflight and ingestion completed through the configured DB path.",
+        "evidence": (
+            "All required raw sources passed preflight, parser-aware ingestion completed, "
+            "and derived CVSS records were verified in the same configured database."
+            if nvd_manifest is not None else
+            "All required sources passed preflight and ingestion completed through the configured DB path."
+        ),
         "store_status": status(db_path=db_file),
     })
     return report
