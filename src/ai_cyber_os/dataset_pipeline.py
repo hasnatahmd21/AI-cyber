@@ -120,48 +120,123 @@ def _artifact_inspection(
 
         actual_sha = sha256_file(local)
         expected_sha = item["sha256"].lower().strip()
-
         role = str(item.get("role", "data")).lower()
+        format_key = str(
+            item.get("artifact_type") or manifest.get("artifact_type")
+            or (manifest.get("schema", {}).get("format", "")
+                if isinstance(manifest.get("schema"), dict) else "")
+        )
+        declared_stats = item.get("stats", {}) if isinstance(item.get("stats"), dict) else {}
+
         if role == "license":
-            # License text is integrity-checked but is not a knowledge record.
             count = 0
             declared = None
             count_matches = True
+            observed_stats: dict[str, Any] = {}
+            stat_checks: dict[str, Any] = {}
         else:
             schema = manifest.get("schema", {})
             record_elements = schema.get("elements") if isinstance(schema, dict) else None
             schema_format = str(schema.get("format", "")).lower() if isinstance(schema, dict) else ""
             record_extensions = {".yml", ".yaml"} if "yaml rules inside archive" in schema_format else None
-            count = sum(
-                1
-                for _ in iter_records(
-                    local,
-                    dataset=manifest.get("dataset", Path(manifest_path).stem),
-                    source=item.get("source", manifest.get("source", "")),
-                    license=item.get("license", manifest.get("license", "")),
-                    version=item.get("version", manifest.get("version", "")),
-                    source_uri=item.get(
-                        "source_uri", manifest.get("source_uri", "")
-                    ),
-                    validation_status=item.get(
-                        "validation_status",
-                        manifest.get("validation_status", "unverified"),
-                    ),
-                    record_elements=record_elements,
-                    record_extensions=record_extensions,
-                )
-            )
+
+            count = 0
+            object_types: dict[str, int] = {}
+            active_rules = 0
+            disabled_rules = 0
+            active_sid_counts: dict[str, int] = {}
+            active_without_sid = 0
+            rule_sources: set[str] = set()
+
+            for record in iter_records(
+                local,
+                dataset=manifest.get("dataset", Path(manifest_path).stem),
+                source=item.get("source", manifest.get("source", "")),
+                license=item.get("license", manifest.get("license", "")),
+                version=item.get("version", manifest.get("version", "")),
+                source_uri=item.get("source_uri", manifest.get("source_uri", "")),
+                validation_status=item.get(
+                    "validation_status", manifest.get("validation_status", "unverified")
+                ),
+                record_elements=record_elements,
+                record_extensions=record_extensions,
+                record_format=format_key,
+            ):
+                count += 1
+                try:
+                    metadata = json.loads(record.get("metadata_json", "{}"))
+                except (TypeError, json.JSONDecodeError):
+                    metadata = {}
+                object_type = metadata.get("type")
+                if isinstance(object_type, str) and object_type:
+                    object_types[object_type] = object_types.get(object_type, 0) + 1
+
+                if "suricata" in format_key.lower():
+                    if metadata.get("enabled") is True:
+                        active_rules += 1
+                        sid = metadata.get("sid")
+                        if sid is None or str(sid).strip() == "":
+                            active_without_sid += 1
+                        else:
+                            key = str(sid)
+                            active_sid_counts[key] = active_sid_counts.get(key, 0) + 1
+                        rule_sources.add(str(record.get("source", "")))
+                    elif metadata.get("enabled") is False:
+                        disabled_rules += 1
+                        rule_sources.add(str(record.get("source", "")))
+
             declared = item["record_count"]
             count_matches = count == declared
+            observed_stats = {}
+            stat_checks = {}
+
+            expected_types = declared_stats.get("object_types")
+            if isinstance(expected_types, dict):
+                normalized_expected = {str(k): int(v) for k, v in expected_types.items()}
+                normalized_observed = dict(sorted(object_types.items()))
+                stat_checks["object_types"] = {
+                    "declared": normalized_expected,
+                    "observed": normalized_observed,
+                    "matches": normalized_observed == dict(sorted(normalized_expected.items())),
+                }
+                observed_stats["object_types"] = normalized_observed
+
+            if "suricata" in format_key.lower():
+                duplicate_sid_lines = sum(max(0, n - 1) for n in active_sid_counts.values())
+                observed_rules = {
+                    "active_rules": active_rules,
+                    "disabled_rules": disabled_rules,
+                    "duplicate_sid_lines": duplicate_sid_lines,
+                    "rule_files": len(rule_sources),
+                    "active_rules_without_sid": active_without_sid,
+                }
+                observed_stats.update(observed_rules)
+                for key in ("active_rules", "disabled_rules", "duplicate_sid_lines", "rule_files"):
+                    if key in declared_stats:
+                        stat_checks[key] = {
+                            "declared": declared_stats[key],
+                            "observed": observed_rules[key],
+                            "matches": observed_rules[key] == declared_stats[key],
+                        }
+                stat_checks["active_rules_without_sid"] = {
+                    "declared": 0,
+                    "observed": active_without_sid,
+                    "matches": active_without_sid == 0,
+                }
 
         artifacts.append(
             {
                 "path": str(local),
                 "role": role,
+                "artifact_type": format_key,
                 "sha256": actual_sha,
                 "sha256_matches": actual_sha == expected_sha,
                 "records": count,
                 "record_count_matches": count_matches,
+                "declared_stats": declared_stats,
+                "observed_stats": observed_stats,
+                "stat_checks": stat_checks,
+                "stats_match": all(check.get("matches", False) for check in stat_checks.values()),
             }
         )
 
@@ -171,11 +246,10 @@ def _artifact_inspection(
         "artifacts": artifacts,
         "records": sum(a["records"] for a in artifacts),
         "ready": all(
-            a["sha256_matches"] and a["record_count_matches"]
+            a["sha256_matches"] and a["record_count_matches"] and a["stats_match"]
             for a in artifacts
         ),
     }
-
 
 def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
     manifest = load_manifest(manifest_path)
@@ -207,6 +281,9 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
             validation_status=manifest["validation_status"],
             record_elements=(manifest.get("schema", {}).get("elements")
                              if isinstance(manifest.get("schema"), dict) else None),
+            record_format=(manifest.get("artifact_type") or
+                           (manifest.get("schema", {}).get("format", "")
+                            if isinstance(manifest.get("schema"), dict) else "")),
         )
     )
     declared = int(manifest["record_count"])
@@ -289,6 +366,8 @@ def ingest_manifest(
                 ),
                 record_elements=record_elements,
                 record_extensions=record_extensions,
+                record_format=(item.get("artifact_type") or manifest.get("artifact_type")
+                               or schema_format),
             )
             total += int(result.get("inserted", 0))
 
@@ -313,6 +392,9 @@ def ingest_manifest(
         validation_status=manifest["validation_status"],
         record_elements=(manifest.get("schema", {}).get("elements")
                          if isinstance(manifest.get("schema"), dict) else None),
+        record_format=(manifest.get("artifact_type") or
+                       (manifest.get("schema", {}).get("format", "")
+                        if isinstance(manifest.get("schema"), dict) else "")),
     )
     result["inspection"] = inspection
     result["manifest"] = str(Path(manifest_path))
