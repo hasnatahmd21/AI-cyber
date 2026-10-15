@@ -4,14 +4,16 @@ Controlled path for loading actual security datasets.
 
 ## Order
 
-1. Place downloaded/licensed datasets under a local dataset root.
-2. Run tools/real_dataset_readiness.py and preserve its JSON output.
-3. Generate manifests with the existing manifest tooling.
-4. Verify SHA-256 and declared record counts.
-5. Ingest only manifests that pass integrity checks.
-6. Run intelligence evaluation and RAG evidence-contract evaluation.
-7. Run extended HYDRA plus existing regression/hardening.
+1. Place downloaded/licensed datasets under the project dataset root.
+2. Restore any manifest-pinned Git LFS pointer with `python tools/restore_lfs_artifact.py datasets/manifests/<dataset>.json`. The utility only replaces a recognized pointer after HTTPS download, exact byte-size validation, and SHA-256 verification.
+3. Run `python tools/real_dataset_readiness.py . --json-out /kaggle/working/real-dataset-readiness.json` and preserve the report outside the repository.
+4. Resolve every eligible manifest reported as `BLOCKED`. A placeholder example manifest is reported as `TEMPLATE_EXCLUDED`; it is never ingested.
+5. Verify source/version/license provenance, artifact SHA-256, declared versus observed logical-record counts, and any manifest-declared format statistics (such as STIX object types and active/disabled Suricata rules).
+6. Ingest only after the entire intended scope passes the readiness gate; keep real ingestion separate from read-only parser verification.
+7. Run persistent-store integrity/FTS checks, restart-persistence tests, exact identifier retrieval, evidence/citation evaluation, and existing regression/hardening tests.
 8. Only then expose the dataset through the UI.
+
+Do not treat a Git LFS pointer as payload, do not infer verified license status from a successful checksum, and do not mark the whole inventory green when an intended dataset is missing or blocked.
 
 ## Required evidence
 
