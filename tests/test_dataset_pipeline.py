@@ -372,8 +372,8 @@ def test_suricata_manifest_ingestion_persists_active_and_disabled_state(tmp_path
     manifest_dir.mkdir(parents=True)
     archive_path = raw_dir / "rules.tar.gz"
     rules = (
-        "alert tcp any any -> any 80 (msg:\\"active-rule\\"; sid:7001; rev:1;)\\n"
-        "# drop http any any -> any any (msg:\\"disabled-rule\\"; sid:7002; rev:1;)\\n"
+        "alert tcp any any -> any 80 (msg:\"active-rule\"; sid:7001; rev:1;)\n"
+        "# drop http any any -> any any (msg:\"disabled-rule\"; sid:7002; rev:1;)\n"
     ).encode("utf-8")
     with tarfile.open(archive_path, "w:gz") as archive:
         info = tarfile.TarInfo("rules/example.rules")
