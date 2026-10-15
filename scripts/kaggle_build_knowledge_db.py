@@ -6,10 +6,9 @@ This command is deliberately fail-closed:
   2. all required manifests pass checksum, byte-size, and parser-count preflight;
   3. ingestion uses per-artifact checkpoints and can be restarted;
   4. retrieval/citation and a separate-process restart smoke test run afterward;
-  5. permanent GitHub persistence is attempted only when --persist-lfs is explicit.
+  5. durable persistence is explicit: a private Kaggle Dataset version or Git LFS; local-only output is never called permanent.
 
-A database in /kaggle/working is not durable by itself. Use --persist-lfs to
-publish the verified DB via Git LFS, or explicitly save the Kaggle run output.
+A database in /kaggle/working is not durable by itself. Use --persist-kaggle-dataset-id OWNER/SLUG to publish a private, versioned Kaggle Dataset, or use --persist-lfs.
 """
 from __future__ import annotations
 
@@ -18,7 +17,9 @@ import datetime as dt
 import hashlib
 import json
 import os
+import re
 import shutil
+import sqlite3
 import subprocess
 import sys
 import tempfile
