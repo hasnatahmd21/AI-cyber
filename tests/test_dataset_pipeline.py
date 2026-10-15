@@ -448,3 +448,81 @@ def test_manifest_directory_preflight_blocks_before_database_creation_and_ignore
     assert ready["inserted"] == 2
     assert status(db_path=db_path)["records"] == 2
     assert status(db_path=db_path)["database_version"] == "ai-cyber-knowledge-v1"
+
+
+def test_manifest_directory_derives_provenance_backed_cvss_with_checkpoints(tmp_path: Path):
+    import gzip
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+    from ai_cyber_os.knowledge import search, status
+
+    project = tmp_path
+    raw_dir = project / "datasets" / "raw" / "nvd_cve"
+    manifest_dir = project / "datasets" / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir(parents=True)
+    feed = raw_dir / "nvdcve-2.0-2024.json.gz"
+    payload = {
+        "totalResults": 1,
+        "vulnerabilities": [{
+            "cve": {
+                "id": "CVE-2024-76543",
+                "sourceIdentifier": "nvd-fixture",
+                "published": "2024-01-01T00:00:00Z",
+                "lastModified": "2024-01-02T00:00:00Z",
+                "descriptions": [{"lang": "en", "value": "A CVSS-backed fixture vulnerability"}],
+                "metrics": {
+                    "cvssMetricV31": [{
+                        "source": "nvd-fixture",
+                        "type": "Primary",
+                        "cvssData": {
+                            "version": "3.1",
+                            "vectorString": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H",
+                            "baseScore": 9.8,
+                            "baseSeverity": "CRITICAL",
+                        },
+                    }],
+                },
+            },
+        }],
+    }
+    with gzip.open(feed, "wt", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    digest = hashlib.sha256(feed.read_bytes()).hexdigest()
+    manifest = manifest_dir / "nvd_cve.json"
+    manifest.write_text(json.dumps({
+        "dataset": "nvd_cve",
+        "version": "NVD-2.0-2024",
+        "source": "NIST NVD fixture",
+        "source_uri": "https://nvd.nist.gov/vuln/data-feeds",
+        "license": "NVD data-feed terms",
+        "schema": {"format": "NVD JSON 2.0", "parser_kind": "nvd"},
+        "artifacts": [{
+            "path": "datasets/raw/nvd_cve/nvdcve-2.0-2024.json.gz",
+            "role": "data",
+            "sha256": digest,
+            "byte_size": feed.stat().st_size,
+            "record_count": 1,
+            "count_kind": "nvd-feed",
+            "version": "NVD-2.0-2024",
+        }],
+    }), encoding="utf-8")
+
+    db_path = project / "persistent" / "knowledge-v1.sqlite3"
+    first = ingest_manifest_directory(
+        manifest_dir, db_path=db_path, required_datasets=["nvd_cve"]
+    )
+    assert first["overall"] == "PASS"
+    assert first["derived_datasets"][0]["status"] == "PASS"
+    assert first["derived_datasets"][0]["derivation"]["derived_records_in_database"] == 1
+    cvss_hits = search("CVSS 3.1", db_path=db_path, dataset="cvss")
+    assert cvss_hits and cvss_hits[0]["record_id"].startswith("cvss:CVE-2024-76543:")
+    assert cvss_hits[0]["source_uri"] == "https://nvd.nist.gov/vuln/data-feeds"
+    assert cvss_hits[0]["validation_status"] == "fixture-validated" or cvss_hits[0]["validation_status"] == "unverified"
+    assert status(db_path=db_path)["checkpoints"]["complete"] >= 2
+
+    second = ingest_manifest_directory(
+        manifest_dir, db_path=db_path, required_datasets=["nvd_cve"]
+    )
+    assert second["overall"] == "PASS"
+    assert second["derived_datasets"][0]["derivation"]["checkpoint_batches_skipped"] == 1
+    assert len(search("CVSS 3.1", db_path=db_path, dataset="cvss")) == 1
