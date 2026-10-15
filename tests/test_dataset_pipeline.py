@@ -596,9 +596,9 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
     assert "--unzip" in download_call
 
     upload_dir = Path(result["upload_dir"])
-    restore_dir = Path(result["restore_dir"])
     try:
-        assert Path(restart_calls[0][0]).resolve() == (restore_dir / "knowledge-v1.sqlite3").resolve()
+        assert Path(restart_calls[0][0]).name == "knowledge-v1.sqlite3"
+        assert result["restore_directory_cleaned"] is True
         metadata = json.loads((upload_dir / "dataset-metadata.json").read_text(encoding="utf-8"))
         artifact = json.loads((upload_dir / "database-artifact-manifest.json").read_text(encoding="utf-8"))
         uploaded_report = (upload_dir / "knowledge-db-build-report.json").read_text(encoding="utf-8")
@@ -609,7 +609,6 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
     finally:
         import shutil
         shutil.rmtree(upload_dir, ignore_errors=True)
-        shutil.rmtree(restore_dir, ignore_errors=True)
 
 
 def test_kaggle_persistence_checks_metadata_and_sqlite_before_credentials(tmp_path: Path, monkeypatch):
