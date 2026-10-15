@@ -217,9 +217,9 @@ def test_suricata_tarball_classifies_active_disabled_and_ignores_comments(tmp_pa
 
     archive_path = tmp_path / "suricata.tar.gz"
     rule_text = (
-        "alert tcp any any -> any 80 (msg:\"active-in-archive\"; sid:101; rev:1;)\\n"
-        "# alert tcp any any -> any 81 (msg:\"disabled-in-archive\"; sid:102; rev:1;)\\n"
-        "# document comment, not a rule\\n"
+        "alert tcp any any -> any 80 (msg:\"active-in-archive\"; sid:101; rev:1;)\n"
+        "# alert tcp any any -> any 81 (msg:\"disabled-in-archive\"; sid:102; rev:1;)\n"
+        "# document comment, not a rule\n"
     )
     raw = rule_text.encode("utf-8")
     with tarfile.open(archive_path, "w:gz") as archive:
