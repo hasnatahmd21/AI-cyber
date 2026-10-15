@@ -338,6 +338,10 @@ def persist_via_kaggle_dataset(
     report_data: dict[str, Any],
     dataset_id: str,
     action: str,
+    *,
+    cve_id: str = PROBE_CVE,
+    cwe_id: str = PROBE_CWE,
+    attack_id: str = PROBE_ATTACK,
 ) -> dict[str, Any]:
     """Publish the verified SQLite DB to a private, versioned Kaggle Dataset.
 
@@ -530,7 +534,7 @@ def persist_via_kaggle_dataset(
             )
         restore_restart = restart_smoke_test(restored_db, PROBE_CVE)
         restore_core_queries = core_query_smoke_test(
-            restored_db, PROBE_CVE, PROBE_CWE, PROBE_ATTACK
+            restored_db, cve_id, cwe_id, attack_id
         )
         # The restored DB may be several gigabytes; remove the temporary second
         # copy after exact-hash and fresh-process verification to free workspace.
@@ -785,6 +789,7 @@ def main(argv: list[str] | None = None) -> int:
             persistence = persist_via_kaggle_dataset(
                 db_path, report_path, report,
                 args.persist_kaggle_dataset_id, args.kaggle_dataset_action,
+                cve_id=args.probe_cve, cwe_id=args.probe_cwe, attack_id=args.probe_attack,
             )
             report["persistence"] = persistence
             report["permanent_persistence"] = "CONFIRMED_KAGGLE_DATASET_PRIVATE"
