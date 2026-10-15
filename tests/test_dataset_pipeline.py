@@ -236,3 +236,129 @@ def test_license_artifact_is_hash_checked_but_not_ingested(tmp_path: Path):
     assert result["inserted"] == 1
     from ai_cyber_os.knowledge import status
     assert status(db_path=db)["records"] == 1
+
+
+def test_jsonld_graph_is_counted_as_individual_records(tmp_path: Path):
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "ontology.json"
+    path.write_text(json.dumps({
+        "@context": {},
+        "@graph": [
+            {"@id": "https://example.invalid/A", "@type": "Thing", "label": "A"},
+            {"@id": "https://example.invalid/B", "@type": "Thing", "label": "B"},
+        ],
+    }), encoding="utf-8")
+    rows = list(iter_records(path, dataset="d3fend-fixture", record_format="ontology_jsonld"))
+    assert len(rows) == 2
+    assert {row["record_id"] for row in rows} == {
+        "https://example.invalid/A", "https://example.invalid/B"
+    }
+
+
+def test_stix_tarball_excludes_repo_manifest_and_yields_bundle_objects(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "mbc.tar.gz"
+    members = {
+        "project/manifest.json": json.dumps({"repository": "metadata-only"}),
+        "project/a.json": json.dumps({"type": "bundle", "objects": [
+            {"type": "indicator", "id": "indicator--one", "name": "one"},
+            {"type": "malware", "id": "malware--two", "name": "two"},
+        ]}),
+    }
+    with tarfile.open(path, "w:gz") as archive:
+        for name, text in members.items():
+            payload = text.encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(payload)
+            archive.addfile(info, io.BytesIO(payload))
+
+    rows = list(iter_records(
+        path, dataset="mbc-fixture", record_format="mbc_stix_repo_tarball"
+    ))
+    assert len(rows) == 2
+    assert {json.loads(row["metadata_json"])["type"] for row in rows} == {
+        "indicator", "malware"
+    }
+
+
+def test_suricata_parser_preserves_active_disabled_and_sid_fields(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "suricata.tar.gz"
+    rules = (
+        'alert tcp any any -> any 80 (msg:"active rule"; sid:1001; rev:1;)\\n'
+        '# alert tcp any any -> any 443 (msg:"disabled rule"; sid:1002; rev:2;)\\n'
+        '# just a comment\\n\\n'
+    ).encode("utf-8")
+    with tarfile.open(path, "w:gz") as archive:
+        info = tarfile.TarInfo("rules/test.rules")
+        info.size = len(rules)
+        archive.addfile(info, io.BytesIO(rules))
+
+    rows = list(iter_records(path, dataset="suricata-fixture",
+                             record_format="suricata_rules_tar_gz"))
+    assert len(rows) == 2
+    active, disabled = [json.loads(row["metadata_json"]) for row in rows]
+    assert active["enabled"] is True and active["sid"] == "1001"
+    assert disabled["enabled"] is False and disabled["sid"] == "1002"
+
+
+def test_gzip_jsonl_records_are_streamed_and_counted(tmp_path: Path):
+    import gzip
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "cpe.jsonl.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        handle.write('{"id":"cpe-1","title":"one"}\\n')
+        handle.write('{"id":"cpe-2","title":"two"}\\n')
+    rows = list(iter_records(path, dataset="cpe-fixture"))
+    assert [row["record_id"] for row in rows] == ["cpe-1", "cpe-2"]
+
+
+def test_multia_artifact_stats_are_part_of_readiness(tmp_path: Path):
+    import io
+    import tarfile
+
+    data_dir = tmp_path / "datasets"
+    raw_dir = data_dir / "raw"
+    manifest_dir = data_dir / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir()
+    artifact = raw_dir / "rules.tar.gz"
+    rules = (
+        'alert tcp any any -> any 80 (msg:"active"; sid:1; rev:1;)\\n'
+        '# alert tcp any any -> any 443 (msg:"disabled"; sid:2; rev:1;)\\n'
+    ).encode()
+    with tarfile.open(artifact, "w:gz") as archive:
+        info = tarfile.TarInfo("rules/a.rules")
+        info.size = len(rules)
+        archive.addfile(info, io.BytesIO(rules))
+    manifest = manifest_dir / "suricata-fixture.json"
+    manifest.write_text(json.dumps({
+        "dataset": "suricata-fixture", "version": "test-1",
+        "source": "fixture", "source_uri": "fixture://rules", "license": "test",
+        "artifact_type": "suricata_rules_tar_gz",
+        "schema": {"format": ".rules text inside tar.gz"},
+        "artifacts": [{
+            "path": "datasets/raw/rules.tar.gz",
+            "sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            "record_count": 2, "role": "data",
+            "artifact_type": "suricata_rules_tar_gz",
+            "stats": {"active_rules": 1, "disabled_rules": 1,
+                      "duplicate_sid_lines": 0, "rule_files": 1},
+        }],
+    }), encoding="utf-8")
+    assert inspect_dataset(manifest)["ready"] is True
+
+    data = json.loads(manifest.read_text(encoding="utf-8"))
+    data["artifacts"][0]["stats"]["active_rules"] = 2
+    manifest.write_text(json.dumps(data), encoding="utf-8")
+    result = inspect_dataset(manifest)
+    assert result["ready"] is False
+    assert result["artifacts"][0]["stat_checks"]["active_rules"]["matches"] is False
