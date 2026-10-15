@@ -577,6 +577,7 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
     monkeypatch.setattr(builder.shutil, "which", lambda command: "/mock/kaggle")
     calls = []
     restart_calls = []
+    core_query_calls = []
 
     def fake_run(command, **kwargs):
         calls.append((list(command), kwargs))
@@ -591,8 +592,15 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
         restart_calls.append((Path(db), cve_id))
         return {"success": True, "evidence_only": True, "count": 1, "has_citations": True}
 
+    def fake_core_queries(db, cve_id, cwe_id, attack_id):
+        core_query_calls.append((Path(db), cve_id, cwe_id, attack_id))
+        return {"default_db": str(Path(db).resolve()), "queries": {
+            "cve": {"count": 1}, "cwe": {"count": 1}, "attack": {"count": 1},
+        }}
+
     monkeypatch.setattr(builder.subprocess, "run", fake_run)
     monkeypatch.setattr(builder, "restart_smoke_test", fake_restart)
+    monkeypatch.setattr(builder, "core_query_smoke_test", fake_core_queries)
     result = builder.persist_via_kaggle_dataset(
         db_path, report_path, report_data,
         "fixture-user/ai-cyber-knowledge-db", "create",
@@ -602,6 +610,10 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
     assert result["restored_hash_matches"] is True
     assert result["restore_restart_test"]["success"] is True
     assert restart_calls and restart_calls[0][1] == builder.PROBE_CVE
+    assert result["restore_core_query_test"]["queries"]["cwe"]["count"] == 1
+    assert core_query_calls and core_query_calls[0][1:] == (
+        builder.PROBE_CVE, builder.PROBE_CWE, builder.PROBE_ATTACK
+    )
     assert result["access"] == "private; public flag was not used"
     create_call = next(call[0] for call in calls if "create" in call[0])
     assert create_call[:3] == ["/mock/kaggle", "datasets", "create"]
