@@ -1007,7 +1007,7 @@ def ingest_manifest_directory(
                 )
             finally:
                 existing_db.close()
-        except (sqlite3.DatabaseError, OSError) as exc:
+        except (sqlite3.DatabaseError, OSError, ValueError) as exc:
             report.update({
                 "overall": "BLOCKED",
                 "evidence": f"Existing DB cannot be safely resumed: {type(exc).__name__}: {exc}",
