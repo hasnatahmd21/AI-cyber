@@ -250,15 +250,79 @@ def _iter_text_stream(handle: Iterable[str], *, dataset: str, source: str,
                          validation_status=validation_status)
 
 
+def _local_xml_name(tag: str) -> str:
+    return tag.split("}")[-1].split(":")[-1]
+
+
+def _iter_xml_values(stream: Any, record_elements: set[str] | None = None):
+    """Yield XML values, optionally limiting output to logical catalog records.
+
+    With an explicit record element list, only matching entities directly under
+    the catalog's plural container (depth 3: root/container/entity) are emitted.
+    Nested descriptive/reference elements are retained inside the entity payload
+    and are never counted as independent records.
+    """
+    selected = {_local_xml_name(x) for x in (record_elements or set())}
+    if not selected:
+        for _, elem in ET.iterparse(stream, events=("end",)):
+            if (elem.text and elem.text.strip()) or elem.attrib:
+                yield {
+                    "tag": elem.tag,
+                    "attributes": dict(elem.attrib),
+                    "text": (elem.text or "").strip(),
+                }
+            elem.clear()
+        return
+
+    stack = []
+    record_depth = None
+    for event, elem in ET.iterparse(stream, events=("start", "end")):
+        if event == "start":
+            stack.append(elem)
+            if len(stack) == 3 and _local_xml_name(elem.tag) in selected:
+                record_depth = len(stack)
+            continue
+
+        depth = len(stack)
+        if record_depth is not None:
+            if depth == record_depth:
+                yield {
+                    "tag": _local_xml_name(elem.tag),
+                    "attributes": dict(elem.attrib),
+                    "xml": ET.tostring(elem, encoding="unicode"),
+                }
+                elem.clear()
+                record_depth = None
+        else:
+            elem.clear()
+        stack.pop()
+
+
 def iter_records(path: str | Path, *, dataset: str | None = None,
                  source: str | None = None, license: str = "",
                  version: str = "", source_uri: str = "",
-                 validation_status: str = "unverified") -> Iterable[dict[str, Any]]:
+                 validation_status: str = "unverified",
+                 record_elements: Iterable[str] | None = None,
+                 record_extensions: Iterable[str] | None = None) -> Iterable[dict[str, Any]]:
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(p)
     ds = dataset or p.stem
     src = source or str(p)
+    selected_elements = {_local_xml_name(x) for x in (record_elements or ())}
+    selected_extensions = {
+        str(x).lower() if str(x).startswith(".") else "." + str(x).lower()
+        for x in (record_extensions or ())
+    }
+    default_archive_extensions = {
+        ".json", ".jsonl", ".ndjson", ".csv", ".txt", ".md",
+        ".xml", ".yaml", ".yml",
+    }
+
+    def normalized(value: Any, item_source: str):
+        return _normalize(value, dataset=ds, source=item_source, license=license,
+                          version=version, source_uri=source_uri,
+                          validation_status=validation_status)
 
     if p.name.endswith(".tar.gz") or p.suffix.lower() in {".tgz", ".tar"}:
         with tarfile.open(p, "r:*") as archive:
@@ -266,65 +330,97 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
                 if not member.isfile():
                     continue
                 name = Path(member.name)
-                if name.suffix.lower() not in {".json", ".jsonl", ".ndjson", ".csv", ".txt", ".md", ".xml", ".yaml", ".yml"}:
+                suffix = name.suffix.lower()
+                allowed = selected_extensions or default_archive_extensions
+                if suffix not in allowed:
                     continue
                 handle = archive.extractfile(member)
                 if handle is None:
                     continue
-                text = handle.read().decode("utf-8", errors="replace")
-                yield _normalize(text, dataset=ds, source=f"{src}!{member.name}",
-                                 license=license, version=version,
-                                 source_uri=source_uri,
-                                 validation_status=validation_status)
+                item_source = f"{src}!{member.name}"
+                if suffix == ".json":
+                    raw = json.loads(handle.read().decode("utf-8", errors="replace"))
+                    for item in _iter_json_value(raw):
+                        yield normalized(item, item_source)
+                elif suffix in {".jsonl", ".ndjson"}:
+                    text = handle.read().decode("utf-8", errors="replace")
+                    yield from (
+                        normalized_record for normalized_record in
+                        _iter_text_stream(io.StringIO(text), dataset=ds, source=item_source,
+                                          license=license, version=version,
+                                          source_uri=source_uri,
+                                          validation_status=validation_status)
+                    )
+                elif suffix == ".csv":
+                    text = handle.read().decode("utf-8-sig", errors="replace")
+                    for row in csv.DictReader(io.StringIO(text, newline="")):
+                        yield normalized(row, item_source)
+                elif suffix == ".xml":
+                    for value in _iter_xml_values(io.BytesIO(handle.read()), selected_elements):
+                        yield normalized(value, item_source)
+                else:
+                    text = handle.read().decode("utf-8", errors="replace")
+                    yield normalized(text, item_source)
         return
 
     if p.suffix.lower() == ".zip":
         with zipfile.ZipFile(p) as archive:
-            for name in archive.namelist():
-                if name.endswith("/"):
-                    continue
+            names = [name for name in archive.namelist() if not name.endswith("/")]
+            # If a manifest describes a rule archive, it can select YAML files
+            # explicitly so README/version metadata is not counted as a rule.
+            for name in names:
                 suffix = Path(name).suffix.lower()
-                if suffix not in {".json", ".jsonl", ".ndjson", ".csv", ".txt", ".md", ".xml", ".yaml", ".yml"}:
+                allowed = selected_extensions or default_archive_extensions
+                if suffix not in allowed:
                     continue
-                text = archive.read(name).decode("utf-8", errors="replace")
+                raw_bytes = archive.read(name)
+                text = raw_bytes.decode("utf-8", errors="replace")
+                item_source = f"{src}!{name}"
                 if suffix == ".json":
                     raw = json.loads(text)
                     for item in _iter_json_value(raw):
-                        yield _normalize(item, dataset=ds, source=f"{src}!{name}",
-                                          license=license, version=version,
-                                          source_uri=source_uri,
-                                          validation_status=validation_status)
+                        yield normalized(item, item_source)
                 elif suffix in {".jsonl", ".ndjson"}:
                     yield from _iter_text_stream(io.StringIO(text), dataset=ds,
-                                                 source=f"{src}!{name}", license=license,
+                                                 source=item_source, license=license,
                                                  version=version, source_uri=source_uri,
                                                  validation_status=validation_status)
+                elif suffix == ".csv":
+                    for row in csv.DictReader(io.StringIO(text, newline="")):
+                        yield normalized(row, item_source)
+                elif suffix == ".xml":
+                    for value in _iter_xml_values(io.BytesIO(raw_bytes), selected_elements):
+                        yield normalized(value, item_source)
                 else:
-                    yield _normalize(text, dataset=ds, source=f"{src}!{name}",
-                                     license=license, version=version,
-                                     source_uri=source_uri,
-                                     validation_status=validation_status)
+                    yield normalized(text, item_source)
         return
 
     if p.suffix.lower() == ".gz":
         with gzip.open(p, "rb") as fh:
-            text = fh.read().decode("utf-8", errors="replace")
+            raw_bytes = fh.read()
+        text = raw_bytes.decode("utf-8", errors="replace")
         inner_suffix = Path(p.name[:-3]).suffix.lower()
         if inner_suffix == ".json":
             raw = json.loads(text)
             for item in _iter_json_value(raw):
-                yield _normalize(item, dataset=ds, source=src, license=license,
-                                 version=version, source_uri=source_uri,
-                                 validation_status=validation_status)
+                yield normalized(item, src)
         elif inner_suffix in {".jsonl", ".ndjson"}:
             yield from _iter_text_stream(io.StringIO(text), dataset=ds, source=src,
                                          license=license, version=version,
                                          source_uri=source_uri,
                                          validation_status=validation_status)
+        elif inner_suffix == ".csv":
+            lines = text.splitlines()
+            while lines and lines[0].lstrip().startswith("#"):
+                lines.pop(0)
+            reader = csv.DictReader(io.StringIO("\n".join(lines), newline=""))
+            for row in reader:
+                yield normalized(row, src)
+        elif inner_suffix == ".xml":
+            for value in _iter_xml_values(io.BytesIO(raw_bytes), selected_elements):
+                yield normalized(value, src)
         else:
-            yield _normalize(text, dataset=ds, source=src, license=license,
-                             version=version, source_uri=source_uri,
-                             validation_status=validation_status)
+            yield normalized(text, src)
         return
 
     suffix = p.suffix.lower()
@@ -339,33 +435,24 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
     elif suffix == ".json":
         raw = json.loads(p.read_text(encoding="utf-8"))
         for item in _iter_json_value(raw):
-            yield _normalize(item, dataset=ds, source=src, license=license,
-                             version=version, source_uri=source_uri,
-                             validation_status=validation_status)
+            yield normalized(item, src)
     elif suffix == ".csv":
         with p.open(newline="", encoding="utf-8-sig") as handle:
             for row in csv.DictReader(handle):
-                yield _normalize(row, dataset=ds, source=src, license=license,
-                                 version=version, source_uri=source_uri,
-                                 validation_status=validation_status)
+                yield normalized(row, src)
     elif suffix == ".xml":
-        for _, elem in ET.iterparse(p, events=("end",)):
-            if elem.text and elem.text.strip() or elem.attrib:
-                payload = {"tag": elem.tag, "attributes": dict(elem.attrib),
-                           "text": (elem.text or "").strip()}
-                yield _normalize(payload, dataset=ds, source=src, license=license,
-                                 version=version, source_uri=source_uri,
-                                 validation_status=validation_status)
-            elem.clear()
+        for value in _iter_xml_values(p, selected_elements):
+            yield normalized(value, src)
     else:
-        yield _normalize(p.read_text(encoding="utf-8", errors="replace"),
-                         dataset=ds, source=src, license=license, version=version,
-                         source_uri=source_uri, validation_status=validation_status)
+        yield normalized(p.read_text(encoding="utf-8", errors="replace"), src)
+
 
 def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                 dataset: str | None = None, source: str | None = None,
                 license: str = "", version: str = "", source_uri: str = "",
-                validation_status: str = "unverified") -> dict[str, Any]:
+                validation_status: str = "unverified",
+                record_elements: Iterable[str] | None = None,
+                record_extensions: Iterable[str] | None = None) -> dict[str, Any]:
     records_seen = 0
     inserted = 0
     updated = 0
@@ -380,6 +467,8 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
             version=version,
             source_uri=source_uri,
             validation_status=validation_status,
+            record_elements=record_elements,
+            record_extensions=record_extensions,
         ):
             records_seen += 1
             old = db.execute(
