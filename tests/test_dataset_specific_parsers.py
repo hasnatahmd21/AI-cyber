@@ -431,3 +431,44 @@ def test_nvd_meta_parser_rejects_missing_or_malformed_integrity_fields():
     ]) + chr(10)
     with pytest.raises(ValueError, match="sha256 must be"):
         parse_meta(malformed)
+
+
+def test_cwe_xml_parser_canonicalizes_weakness_ids_and_streams_catalog_types(tmp_path: Path):
+    import zipfile
+    from ai_cyber_os.threat_intel import iter_parse_cwe_xml, parse_cwe_xml
+
+    xml = """<Weakness_Catalog>
+      <Weaknesses>
+        <Weakness ID="79" Name="Improper Neutralization of Input During Web Page Generation">
+          <Description><Description_Summary>Cross-site scripting</Description_Summary></Description>
+        </Weakness>
+        <Weakness ID="89" Name="SQL Injection">
+          <Description><Description_Summary>SQL injection weakness</Description_Summary></Description>
+        </Weakness>
+      </Weaknesses>
+      <Categories><Category ID="C1" Name="Input Validation"><Summary>Input group</Summary></Category></Categories>
+      <Views><View ID="1000" Name="Research Concepts"><Objective>View objective</Objective></View></Views>
+    </Weakness_Catalog>"""
+    plain = tmp_path / "cwec_fixture.xml"
+    plain.write_text(xml, encoding="utf-8")
+    archive_path = tmp_path / "cwec_fixture.xml.zip"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("cwec_fixture.xml", xml)
+
+    rows = list(iter_parse_cwe_xml(
+        archive_path,
+        dataset="cwe",
+        source="MITRE CWE fixture",
+        version="fixture-4",
+        source_uri="https://example.invalid/cwe",
+        license="fixture license",
+        validation_status="fixture-validated",
+    ))
+    assert len(rows) == 4
+    by_id = {row["record_id"]: row for row in rows}
+    assert {"CWE-79", "CWE-89", "cwe-category-C1", "cwe-view-1000"} == set(by_id)
+    assert by_id["CWE-79"]["title"].startswith("CWE-79:")
+    assert "Cross-site scripting" in by_id["CWE-79"]["content"]
+    assert by_id["CWE-79"]["source_uri"] == "https://example.invalid/cwe"
+    assert by_id["CWE-79"]["validation_status"] == "fixture-validated"
+    assert len(parse_cwe_xml(plain, dataset="cwe", validation_status="fixture-validated")) == 4
