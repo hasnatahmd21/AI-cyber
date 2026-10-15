@@ -526,3 +526,68 @@ def test_manifest_directory_derives_provenance_backed_cvss_with_checkpoints(tmp_
     assert second["overall"] == "PASS"
     assert second["derived_datasets"][0]["derivation"]["checkpoint_batches_skipped"] == 1
     assert len(search("CVSS", db_path=db_path, dataset="cvss")) == 1
+
+
+def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(tmp_path: Path, monkeypatch):
+    import hashlib
+    from types import SimpleNamespace
+
+    import scripts.kaggle_build_knowledge_db as builder
+    from ai_cyber_os.knowledge import ingest_file
+
+    source = tmp_path / "evidence.jsonl"
+    source.write_text(
+        '{"id":"CVE-2021-44228","content":"CVSS critical vulnerability evidence",'
+        '"source":"fixture","source_uri":"https://example.invalid/source",'
+        '"license":"fixture license","validation_status":"fixture-validated"}\n',
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "persistent" / "knowledge-v1.sqlite3"
+    ingest_file(source, db_path=db_path, dataset="nvd_cve", source="fixture",
+                source_uri="https://example.invalid/source", license="fixture license",
+                validation_status="fixture-validated")
+    report_path = tmp_path / "build-report.json"
+    report_data = {
+        "overall": "PASS",
+        "database_version": "ai-cyber-knowledge-v1",
+        "source_readiness_report": "",
+    }
+
+    monkeypatch.setattr(builder, "_kaggle_credentials", lambda: {
+        "KAGGLE_USERNAME": "fixture-user",
+        "KAGGLE_KEY": "never-include-this-in-output",
+    })
+    monkeypatch.setattr(builder.shutil, "which", lambda command: "/mock/kaggle")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append((list(command), kwargs))
+        return SimpleNamespace(returncode=0, stdout="verified fixture status", stderr="")
+
+    monkeypatch.setattr(builder.subprocess, "run", fake_run)
+    result = builder.persist_via_kaggle_dataset(
+        db_path, report_path, report_data,
+        "fixture-user/ai-cyber-knowledge-db", "create",
+    )
+
+    assert result["status"] == "published-and-status-checked"
+    assert result["access"] == "private; public flag was not used"
+    create_call = next(call[0] for call in calls if "create" in call[0])
+    assert create_call[:3] == ["/mock/kaggle", "datasets", "create"]
+    assert "--public" not in create_call
+    assert "--dir-mode" in create_call and "skip" in create_call
+    status_call = next(call[0] for call in calls if call[0][1:3] == ["datasets", "status"])
+    assert status_call[-1] == "fixture-user/ai-cyber-knowledge-db"
+
+    upload_dir = Path(result["upload_dir"])
+    try:
+        metadata = json.loads((upload_dir / "dataset-metadata.json").read_text(encoding="utf-8"))
+        artifact = json.loads((upload_dir / "database-artifact-manifest.json").read_text(encoding="utf-8"))
+        uploaded_report = (upload_dir / "knowledge-db-build-report.json").read_text(encoding="utf-8")
+        assert metadata["id"] == "fixture-user/ai-cyber-knowledge-db"
+        assert metadata["licenses"] == [{"name": "other"}]
+        assert artifact["sha256"] == hashlib.sha256((upload_dir / "knowledge-v1.sqlite3").read_bytes()).hexdigest()
+        assert "never-include-this-in-output" not in uploaded_report
+    finally:
+        import shutil
+        shutil.rmtree(upload_dir, ignore_errors=True)
