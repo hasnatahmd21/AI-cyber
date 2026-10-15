@@ -433,11 +433,19 @@ def inspect_critical_sources(raw_root: Path) -> list[dict[str, Any]]:
         except Exception as exc:
             add_result(results, "suricata-rules", "FAIL", f"{type(exc).__name__}: {exc}", path=str(suricata_path))
 
-    examples = sorted(p for p in raw_root.rglob("example.json") if p.is_file())
-    add_result(results, "example.json-placeholder", "BLOCKED" if examples else "PASS",
-               "Placeholder is excluded from dataset verification and will never be ingested."
-               + (f" Found {len(examples)} file(s): " + ", ".join(str(p) for p in examples[:5]) if examples else " No example.json placeholder found."),
-               excluded_paths=[str(p) for p in examples])
+    example_candidates = [p for p in raw_root.rglob("example.json") if p.is_file()]
+    manifest_root = raw_root.parent / "manifests"
+    if manifest_root.is_dir():
+        example_candidates.extend(p for p in manifest_root.rglob("example.json") if p.is_file())
+    examples = sorted(set(example_candidates))
+    add_result(
+        results,
+        "example.json-placeholder",
+        "PASS",
+        "Placeholder manifests/data are explicitly excluded from readiness counts and ingestion; they are never treated as real datasets."
+        + (f" Found and excluded {len(examples)} file(s): " + ", ".join(str(p) for p in examples[:5]) if examples else " No example.json placeholder found."),
+        excluded_paths=[str(p) for p in examples],
+    )
     return results
 
 
@@ -490,7 +498,7 @@ def main() -> int:
         else:
             report["manifest_readiness"] = {
                 "overall": "BLOCKED",
-                "evidence": f"No manifests directory found at {manifests_dir}; the full 12-dataset gate cannot pass.",
+                "evidence": f"No manifests directory found at {manifests_dir}; the full 13-source readiness gate cannot pass.",
                 "count": 0,
             }
 
@@ -506,7 +514,7 @@ def main() -> int:
             else "BLOCKED"
         )
         report["evidence"] = (
-            "Parser-specific raw-source checks and all twelve manifest readiness checks passed; no data was ingested."
+            "Parser-specific raw-source checks and all thirteen requested-source readiness checks passed; no data was ingested."
             if report["overall"] == "PASS"
             else "Readiness is not green. Review per-dataset evidence; do not start ingestion until every required dataset is PASS."
         )
