@@ -268,6 +268,22 @@ def locate_suricata_source(root: Path) -> Path | None:
     return sorted(files, key=lambda p: str(p))[0] if files else None
 
 
+def _mbc_document_objects(payload: Any) -> list[dict[str, Any]]:
+    """Return actual STIX objects represented by one MBC JSON source member."""
+    if isinstance(payload, dict) and isinstance(payload.get("objects"), list):
+        candidates = payload["objects"]
+    elif isinstance(payload, list):
+        candidates = payload
+    elif isinstance(payload, dict) and payload.get("type") and payload.get("id") and payload.get("type") != "bundle":
+        candidates = [payload]
+    else:
+        candidates = []
+    return [
+        item for item in candidates
+        if isinstance(item, dict) and item.get("type") and item.get("id")
+    ]
+
+
 def inspect_attack(path: Path) -> dict[str, Any]:
     if not path.is_file():
         return {"dataset": "mitre-attack-enterprise", "status": "BLOCKED", "evidence": f"File missing: {path}"}
@@ -363,6 +379,8 @@ def inspect_critical_sources(raw_root: Path) -> list[dict[str, Any]]:
         try:
             bundle_files = 0
             json_file_count = 0
+            raw_stix_object_occurrences = 0
+            source_stix_ids: set[str] = set()
             if mbc_dir.is_file():
                 with tarfile.open(mbc_dir, "r:*") as archive:
                     members = [
@@ -381,12 +399,11 @@ def inspect_critical_sources(raw_root: Path) -> list[dict[str, Any]]:
                             payload = json.loads(raw_bytes.decode("utf-8"))
                         except Exception:
                             continue
-                        if (
-                            (isinstance(payload, dict) and isinstance(payload.get("objects"), list))
-                            or isinstance(payload, list)
-                            or (isinstance(payload, dict) and payload.get("type") and payload.get("id") and payload.get("type") != "bundle")
-                        ):
+                        objects = _mbc_document_objects(payload)
+                        if objects:
                             bundle_files += 1
+                        raw_stix_object_occurrences += len(objects)
+                        source_stix_ids.update(str(obj["id"]) for obj in objects)
             else:
                 files = [p for p in mbc_dir.rglob("*.json") if p.is_file()]
                 json_file_count = len(files)
@@ -394,23 +411,32 @@ def inspect_critical_sources(raw_root: Path) -> list[dict[str, Any]]:
                     if lfs_pointer(file_path):
                         continue
                     payload = json.loads(file_path.read_text(encoding="utf-8"))
-                    if (
-                        (isinstance(payload, dict) and isinstance(payload.get("objects"), list))
-                        or isinstance(payload, list)
-                        or (isinstance(payload, dict) and payload.get("type") and payload.get("id") and payload.get("type") != "bundle")
-                    ):
+                    objects = _mbc_document_objects(payload)
+                    if objects:
                         bundle_files += 1
+                    raw_stix_object_occurrences += len(objects)
+                    source_stix_ids.update(str(obj["id"]) for obj in objects)
             records = parse_mbc_stix(mbc_dir, validation_status="readiness-only")
             object_count = len(records)
+            unique_id_count = len(source_stix_ids)
+            duplicate_occurrences = raw_stix_object_occurrences - unique_id_count
+            parser_ids_match = object_count == unique_id_count
             count_ok = (
                 bundle_files == EXPECTED_MBC_BUNDLES
                 and object_count == EXPECTED_MBC_STIX_OBJECTS
+                and parser_ids_match
+                and duplicate_occurrences >= 0
             )
             add_result(
                 results, "mitre-mbc", "PASS" if count_ok else "FAIL",
-                f"Found {bundle_files} STIX-object/bundle JSON files among {json_file_count} JSON files; parsed {object_count} unique STIX object IDs. Expected {EXPECTED_MBC_BUNDLES} source files and {EXPECTED_MBC_STIX_OBJECTS} distinct objects.",
+                f"Found {bundle_files} STIX-bearing source JSON files among {json_file_count} JSON files; saw {raw_stix_object_occurrences} object occurrences and {object_count} unique STIX object IDs ({duplicate_occurrences} repeated occurrences). Expected {EXPECTED_MBC_BUNDLES} source files and {EXPECTED_MBC_STIX_OBJECTS} distinct objects.",
                 path=str(mbc_dir), json_file_count=json_file_count,
-                bundle_file_count=bundle_files, stix_object_count=object_count,
+                bundle_file_count=bundle_files,
+                raw_stix_object_occurrences=raw_stix_object_occurrences,
+                duplicate_stix_object_occurrences=duplicate_occurrences,
+                unique_source_stix_id_count=unique_id_count,
+                stix_object_count=object_count,
+                parser_and_source_unique_ids_match=parser_ids_match,
                 expected_stix_object_count=EXPECTED_MBC_STIX_OBJECTS,
             )
         except Exception as exc:
