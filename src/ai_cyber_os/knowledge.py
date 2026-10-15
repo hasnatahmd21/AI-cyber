@@ -223,7 +223,11 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
                version: str = "", source_uri: str = "",
                validation_status: str = "unverified") -> dict[str, Any]:
     if isinstance(raw, dict):
-        title = _text(raw.get("title") or raw.get("name") or raw.get("rdfs:label") or raw.get("skos:prefLabel") or raw.get("id") or raw.get("@id"))
+        title = _text(
+            raw.get("title") or raw.get("name") or raw.get("rdfs:label")
+            or raw.get("skos:prefLabel") or raw.get("id") or raw.get("@id")
+            or raw.get("record_id") or raw.get("cve") or raw.get("CVE")
+        )
         explicit_content = raw.get("content") or raw.get("text") or raw.get("description")
         content = _text(explicit_content) if explicit_content is not None else _text(raw)
         record_source = _text(raw.get("source") or source)
@@ -245,7 +249,10 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
     content = content.strip()
     if not content:
         raise ValueError("record content is empty")
-    rid_value = (raw.get("id") or raw.get("@id")) if isinstance(raw, dict) else None
+    rid_value = (
+        raw.get("id") or raw.get("@id") or raw.get("record_id")
+        or raw.get("cve") or raw.get("CVE") or raw.get("cve_id")
+    ) if isinstance(raw, dict) else None
     rid = _text(rid_value) if rid_value else ""
     record_id = rid or _safe_id(dataset, record_source, content)
     return {
