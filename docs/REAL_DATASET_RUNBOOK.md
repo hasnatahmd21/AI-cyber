@@ -69,3 +69,25 @@ Example metadata shape:
 
 The factory computes local SHA-256 and observed record count itself; operators do
 not supply those values manually.
+
+
+## Parser/readiness-only gate (before Knowledge DB creation)
+
+Run the committed parser regressions first:
+
+    python -m compileall -q src/ai_cyber_os tests scripts
+    python -m pytest -q tests/test_dataset_specific_parsers.py tests/test_dataset_pipeline.py tests/test_threat_intel.py tests/test_knowledge.py tests/test_rag.py
+
+Then acquire and validate the missing NVD source from official NVD JSON 2.0 feeds. This command does not create a Knowledge DB or ingest records:
+
+    python scripts/kaggle_nvd_feed_readiness.py
+
+The runner reads each feed's official `.meta` file, verifies compressed size plus uncompressed SHA-256 and size, parses actual CVE IDs, creates `datasets/manifests/nvd_cve.json`, and executes the consolidated raw-source readiness gate. Yearly feeds are full snapshots; recent/modified feeds overlap them, so the report separates feed-record occurrences from distinct CVE IDs.
+
+To persist the verified NVD feed snapshot into the current Git branch with Git LFS, explicitly request:
+
+    python scripts/kaggle_nvd_feed_readiness.py --push --branch fix/dataset-parser-readiness
+
+The push requires Git LFS and the Kaggle Secret `cyber repo` (or `GITHUB_TOKEN`/ `GH_TOKEN` environment variable). The script refuses to push from a different active branch. Do not use `--push` unless the checkout is the intended repository/branch.
+
+Only proceed to Knowledge DB construction after `OVERALL_READINESS=PASS` and the persisted JSON report shows every required source as `PASS`. A parser-test pass by itself is not a real-source readiness pass.
