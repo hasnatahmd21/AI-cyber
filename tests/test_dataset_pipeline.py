@@ -916,3 +916,82 @@ def test_manifest_directory_blocks_unexpected_dataset_before_ingestion(tmp_path:
     assert not db_path.exists()
     assert any(row["dataset"] == "cvss" and row["status"] == "BLOCKED"
                for row in result["preflight"])
+
+
+def test_attack_manifest_ingestion_indexes_external_ids_for_full_stix_bundle(tmp_path: Path):
+    from ai_cyber_os.dataset_pipeline import ingest_manifest
+    from ai_cyber_os.knowledge import open_store, search, status
+
+    raw_dir = tmp_path / "datasets" / "raw" / "mitre_attack"
+    manifest_dir = tmp_path / "datasets" / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir(parents=True)
+    bundle = raw_dir / "enterprise-attack-fixture.json"
+    objects = [
+        {
+            "type": "attack-pattern",
+            "id": "attack-pattern--11111111-1111-4111-8111-111111111111",
+            "name": "PowerShell",
+            "description": "Command and scripting interpreter using PowerShell.",
+            "external_references": [{
+                "source_name": "mitre-attack",
+                "external_id": "T1059.001",
+                "url": "https://attack.mitre.org/techniques/T1059/001/",
+            }],
+            "kill_chain_phases": [{"phase_name": "execution", "kill_chain_name": "mitre-attack"}],
+        },
+        {
+            "type": "relationship",
+            "id": "relationship--22222222-2222-4222-8222-222222222222",
+            "relationship_type": "related-to",
+            "source_ref": "attack-pattern--11111111-1111-4111-8111-111111111111",
+            "target_ref": "attack-pattern--11111111-1111-4111-8111-111111111111",
+        },
+    ]
+    bundle.write_text(json.dumps({
+        "type": "bundle",
+        "id": "bundle--aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "objects": objects,
+    }), encoding="utf-8")
+    manifest = manifest_dir / "mitre_attack.json"
+    manifest.write_text(json.dumps({
+        "dataset": "mitre_attack",
+        "version": "v19.2-fixture",
+        "source": "MITRE ATT&CK fixture",
+        "source_uri": "https://github.com/mitre-attack/attack-stix-data",
+        "license": "MITRE ATT&CK fixture terms",
+        "validation_status": "fixture-validated",
+        "schema": {"format": "STIX 2.1 bundle JSON"},
+        "artifacts": [{
+            "path": "datasets/raw/mitre_attack/enterprise-attack-fixture.json",
+            "role": "data",
+            "sha256": hashlib.sha256(bundle.read_bytes()).hexdigest(),
+            "byte_size": bundle.stat().st_size,
+            "record_count": 2,
+            "count_kind": "stix_bundle",
+            "source_uri": "https://raw.githubusercontent.com/mitre-attack/attack-stix-data/v19.2/enterprise-attack/enterprise-attack.json",
+            "version": "v19.2-fixture",
+        }],
+    }), encoding="utf-8")
+
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+    result = ingest_manifest(manifest, db_path=db_path)
+    hits = search("T1059.001", db_path=db_path, dataset="mitre_attack")
+    assert result["inserted"] == 2
+    assert hits and hits[0]["record_id"] == "attack-pattern--11111111-1111-4111-8111-111111111111"
+    assert "T1059.001" in hits[0]["content"]
+    assert hits[0]["title"] == "PowerShell"
+    assert hits[0]["source_uri"].endswith("enterprise-attack/enterprise-attack.json")
+    assert hits[0]["version"] == "v19.2-fixture"
+    assert hits[0]["validation_status"] == "fixture-validated"
+    assert status(db_path=db_path)["checkpoints"]["complete"] == 1
+    db = open_store(db_path)
+    try:
+        metadata = json.loads(db.execute(
+            "SELECT metadata_json FROM knowledge_records WHERE record_id=?",
+            ("attack-pattern--11111111-1111-4111-8111-111111111111",),
+        ).fetchone()["metadata_json"])
+    finally:
+        db.close()
+    assert "external_references" in metadata
+    assert metadata["external_references"][0]["external_id"] == "T1059.001"
