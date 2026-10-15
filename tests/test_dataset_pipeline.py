@@ -995,3 +995,59 @@ def test_attack_manifest_ingestion_indexes_external_ids_for_full_stix_bundle(tmp
         db.close()
     assert "external_references" in metadata
     assert metadata["external_references"][0]["external_id"] == "T1059.001"
+
+
+def test_sigma_manifest_ingestion_indexes_rule_id_and_detection(tmp_path: Path):
+    import zipfile
+    from ai_cyber_os.knowledge import search, status
+
+    raw_dir = tmp_path / "datasets" / "raw" / "sigma"
+    manifest_dir = tmp_path / "datasets" / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir(parents=True)
+    archive_path = raw_dir / "sigma-fixture.zip"
+    rule = """title: Suspicious PowerShell
+id: 11111111-2222-4333-8444-555555555555
+status: stable
+description: Detects encoded PowerShell commands
+tags:
+  - attack.execution
+  - attack.t1059.001
+logsource:
+  product: windows
+  category: process_creation
+detection:
+  selection:
+    Image|endswith: '\\\\powershell.exe'
+  condition: selection
+"""
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as handle:
+        handle.writestr("rules/windows/process_creation/suspicious_powershell.yml", rule)
+    manifest = manifest_dir / "sigma.json"
+    manifest.write_text(json.dumps({
+        "dataset": "sigma",
+        "version": "fixture-v1",
+        "source": "Sigma fixture",
+        "source_uri": "https://example.invalid/sigma",
+        "license": "fixture license",
+        "schema": {"format": "YAML rules inside archive"},
+        "artifacts": [{
+            "path": "datasets/raw/sigma/sigma-fixture.zip",
+            "role": "data",
+            "sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+            "byte_size": archive_path.stat().st_size,
+            "record_count": 1,
+            "count_kind": "sigma",
+        }],
+    }), encoding="utf-8")
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+
+    result = ingest_manifest(manifest, db_path=db_path)
+    hits = search("11111111-2222-4333-8444-555555555555", db_path=db_path, dataset="sigma")
+
+    assert result["inserted"] == 1
+    assert len(hits) == 1
+    assert hits[0]["record_id"] == "11111111-2222-4333-8444-555555555555"
+    assert "attack.t1059.001" in hits[0]["content"]
+    assert hits[0]["source_uri"] == "https://example.invalid/sigma"
+    assert status(db_path=db_path)["checkpoints"]["complete"] == 1
