@@ -411,39 +411,48 @@ def main(argv: list[str] | None = None) -> int:
         "permanent_persistence": "NOT_CONFIRMED",
     }
 
-    # If permanent publishing was requested, validate its preconditions before
-    # a long ingestion run. Never build a supposedly permanent DB in an unknown
-    # directory or on a different branch.
-    if args.persist_lfs:
+    # Validate durable-persistence preconditions before a potentially long
+    # ingestion run. Missing credentials must not waste hours creating a local
+    # DB that cannot be published to the requested destination.
+    if args.persist_lfs or args.persist_kaggle_dataset_id:
         try:
-            db_path.relative_to(REPOSITORY_ROOT.resolve())
-            report_path.relative_to(REPOSITORY_ROOT.resolve())
-            if not (REPOSITORY_ROOT / ".git").is_dir():
-                raise RuntimeError("--persist-lfs requires the checked-out Git repository")
-            current_branch = subprocess.run(
-                ["git", "-C", str(REPOSITORY_ROOT), "branch", "--show-current"],
-                text=True, capture_output=True, check=True,
-            ).stdout.strip()
-            if current_branch != args.branch:
-                raise RuntimeError(
-                    f"current Git branch is {current_branch!r}, expected {args.branch!r}"
-                )
-            if not shutil.which("git-lfs"):
-                raise RuntimeError("git-lfs is required for --persist-lfs")
-            token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
-            if not token:
-                try:
-                    from kaggle_secrets import UserSecretsClient
-                    token = UserSecretsClient().get_secret("cyber repo")
-                except Exception as exc:
+            if args.persist_lfs:
+                db_path.relative_to(REPOSITORY_ROOT.resolve())
+                report_path.relative_to(REPOSITORY_ROOT.resolve())
+                if not (REPOSITORY_ROOT / ".git").is_dir():
+                    raise RuntimeError("--persist-lfs requires the checked-out Git repository")
+                current_branch = subprocess.run(
+                    ["git", "-C", str(REPOSITORY_ROOT), "branch", "--show-current"],
+                    text=True, capture_output=True, check=True,
+                ).stdout.strip()
+                if current_branch != args.branch:
                     raise RuntimeError(
-                        'GitHub token unavailable; configure Kaggle secret "cyber repo"'
-                    ) from exc
-            if not token or not token.strip():
-                raise RuntimeError('GitHub token "cyber repo" is empty')
-            # Keep the token only in this process environment for Git's askpass;
-            # it is never added to the report or command-line arguments.
-            os.environ["GITHUB_TOKEN"] = token.strip()
+                        f"current Git branch is {current_branch!r}, expected {args.branch!r}"
+                    )
+                if not shutil.which("git-lfs"):
+                    raise RuntimeError("git-lfs is required for --persist-lfs")
+                token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+                if not token:
+                    try:
+                        from kaggle_secrets import UserSecretsClient
+                        token = UserSecretsClient().get_secret("cyber repo")
+                    except Exception as exc:
+                        raise RuntimeError(
+                            'GitHub token unavailable; configure Kaggle secret "cyber repo"'
+                        ) from exc
+                if not token or not token.strip():
+                    raise RuntimeError('GitHub token "cyber repo" is empty')
+                os.environ["GITHUB_TOKEN"] = token.strip()
+
+            if args.persist_kaggle_dataset_id:
+                if not re.fullmatch(
+                    r"[a-z0-9][a-z0-9-]{1,48}/[a-z0-9][a-z0-9-]{2,49}",
+                    args.persist_kaggle_dataset_id,
+                ):
+                    raise ValueError(
+                        "Kaggle dataset ID must look like owner/slug using lowercase letters, digits and hyphens"
+                    )
+                _kaggle_credentials()
         except Exception as exc:
             report.update({
                 "overall": "BLOCKED",
