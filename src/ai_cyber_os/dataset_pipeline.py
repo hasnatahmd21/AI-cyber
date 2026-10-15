@@ -114,6 +114,9 @@ def _count_artifact_records(
         "license": item.get("license", manifest.get("license", "")),
         "validation_status": item.get("validation_status", manifest.get("validation_status", "unverified")),
     }
+    if count_kind in {"nvd", "nvd-feed", "nvd_cve"}:
+        from .threat_intel import parse_nvd
+        return len(parse_nvd(local, **common))
     if count_kind == "mbc":
         from .threat_intel import parse_mbc_stix
         return len(parse_mbc_stix(local, **common))
