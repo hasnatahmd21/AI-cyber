@@ -757,3 +757,59 @@ def test_manifest_directory_rejects_duplicate_dataset_manifests(tmp_path: Path):
     assert not db_path.exists()
     assert any("duplicate manifest" in row.get("evidence", "").casefold()
                for row in result.get("preflight_failures", []))
+
+
+def test_cwe_manifest_ingestion_indexes_canonical_ids_and_provenance(tmp_path: Path):
+    import zipfile
+    from ai_cyber_os.dataset_pipeline import ingest_manifest
+    from ai_cyber_os.knowledge import search, status
+
+    raw_dir = tmp_path / "datasets" / "raw" / "cwe"
+    manifest_dir = tmp_path / "datasets" / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir(parents=True)
+    xml = """<Weakness_Catalog>
+      <Weaknesses>
+        <Weakness ID="79" Name="Improper Neutralization of Input During Web Page Generation">
+          <Description><Description_Summary>Cross-site scripting weakness</Description_Summary></Description>
+        </Weakness>
+        <Weakness ID="89" Name="SQL Injection">
+          <Description><Description_Summary>SQL injection weakness</Description_Summary></Description>
+        </Weakness>
+      </Weaknesses>
+      <Categories><Category ID="C1" Name="Input Validation"><Summary>Input group</Summary></Category></Categories>
+      <Views><View ID="1000" Name="Research Concepts"><Objective>View objective</Objective></View></Views>
+    </Weakness_Catalog>"""
+    archive = raw_dir / "cwec_fixture.xml.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as handle:
+        handle.writestr("cwec_fixture.xml", xml)
+    manifest = manifest_dir / "cwe.json"
+    manifest.write_text(json.dumps({
+        "dataset": "cwe",
+        "version": "fixture-4",
+        "source": "MITRE CWE fixture",
+        "source_uri": "https://example.invalid/cwe",
+        "license": "fixture license",
+        "schema": {"format": "xml(zip)", "elements": ["Weakness", "Category", "View"]},
+        "artifacts": [{
+            "path": "datasets/raw/cwe/cwec_fixture.xml.zip",
+            "role": "data",
+            "sha256": hashlib.sha256(archive.read_bytes()).hexdigest(),
+            "byte_size": archive.stat().st_size,
+            "record_count": 4,
+            "count_kind": "xml_cwe",
+        }],
+    }), encoding="utf-8")
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+
+    first = ingest_manifest(manifest, db_path=db_path)
+    hits = search("CWE-79", db_path=db_path, dataset="cwe")
+    assert first["inserted"] == 4
+    assert hits and hits[0]["record_id"] == "CWE-79"
+    assert hits[0]["source_uri"] == "https://example.invalid/cwe"
+    assert hits[0]["validation_status"] == "unverified"
+    assert status(db_path=db_path)["checkpoints"]["complete"] == 1
+
+    resumed = ingest_manifest(manifest, db_path=db_path)
+    assert resumed["skipped_artifacts"] == 1
+    assert len(search("CWE-79", db_path=db_path, dataset="cwe")) == 1
