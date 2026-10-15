@@ -179,3 +179,68 @@ def test_readiness_gate_blocks_lfs_pointer_and_missing_required_source(tmp_path:
     assert "Git LFS pointer" in by_name["mitre-attack-enterprise"]["evidence"]
     assert by_name["missing-required-fixture"]["status"] == "BLOCKED"
     assert report["ingestion_performed"] is False
+
+
+def test_mbc_tarball_counts_bundle_files_separately_from_stix_objects(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.threat_intel import parse_mbc_stix
+
+    archive_path = tmp_path / "mbc.tar.gz"
+    payloads = {
+        "bundle-a.json": {"type": "bundle", "id": "bundle--a", "objects": [
+            {"type": "malware", "id": "malware--a"},
+            {"type": "attack-pattern", "id": "attack-pattern--a"},
+        ]},
+        "bundle-b.json": {"type": "bundle", "id": "bundle--b", "objects": [
+            {"type": "x-mbc-behavior", "id": "x-mbc-behavior--b"},
+        ]},
+    }
+    with tarfile.open(archive_path, "w:gz") as archive:
+        for name, payload in payloads.items():
+            raw = json.dumps(payload).encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(raw)
+            archive.addfile(info, io.BytesIO(raw))
+
+    records = parse_mbc_stix(archive_path, validation_status="fixture-validated")
+
+    assert len(payloads) == 2  # bundle files
+    assert len(records) == 3  # STIX objects inside those files
+    assert {json.loads(record["metadata_json"])["bundle_file"] for record in records} == set(payloads)
+
+
+def test_suricata_tarball_classifies_active_disabled_and_ignores_comments(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.threat_intel import parse_suricata_rules
+
+    archive_path = tmp_path / "suricata.tar.gz"
+    rule_text = (
+        "alert tcp any any -> any 80 (msg:\"active-in-archive\"; sid:101; rev:1;)\\n"
+        "# alert tcp any any -> any 81 (msg:\"disabled-in-archive\"; sid:102; rev:1;)\\n"
+        "# document comment, not a rule\\n"
+    )
+    raw = rule_text.encode("utf-8")
+    with tarfile.open(archive_path, "w:gz") as archive:
+        info = tarfile.TarInfo("rules/example.rules")
+        info.size = len(raw)
+        archive.addfile(info, io.BytesIO(raw))
+
+    records = parse_suricata_rules(archive_path, validation_status="fixture-validated")
+    states = [json.loads(record["metadata_json"])["status"] for record in records]
+
+    assert states.count("active") == 1
+    assert states.count("disabled") == 1
+    assert len(records) == 2
+
+
+def test_lfs_pointer_is_rejected_by_generic_json_and_text_ingestion(tmp_path: Path):
+    path = tmp_path / "attack.json"
+    path.write_text(
+        "version https://git-lfs.github.com/spec/v1\\n"
+        "oid sha256:" + "c" * 64 + "\\nsize 789\\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="Git LFS pointer"):
+        list(iter_records(path, dataset="attack-pointer-fixture"))
