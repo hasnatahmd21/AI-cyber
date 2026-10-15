@@ -285,6 +285,7 @@ def parse_mbc_stix(path: str | Path, *, dataset: str = "mitre-mbc",
         files = []
 
     out: list[dict[str, Any]] = []
+    seen_objects: dict[str, str] = {}
 
     def append_document(raw: Any, bundle_file: str) -> None:
         if isinstance(raw, dict) and isinstance(raw.get("objects"), list):
@@ -301,6 +302,19 @@ def parse_mbc_stix(path: str | Path, *, dataset: str = "mitre-mbc",
             if not isinstance(obj, dict) or not obj.get("type") or not obj.get("id"):
                 continue
             object_text = json.dumps(obj, ensure_ascii=False, sort_keys=True, default=str)
+            stix_id = str(obj["id"])
+            previous = seen_objects.get(stix_id)
+            if previous is not None:
+                if previous != object_text:
+                    raise ValueError(
+                        f"Conflicting STIX payloads share ID {stix_id!r}; "
+                        "refusing to silently discard a different object version."
+                    )
+                # MBC's source archive includes the catalog bundle and per-object
+                # JSON files. Count each distinct STIX ID once, while the readiness
+                # report records bundle-file count separately.
+                continue
+            seen_objects[stix_id] = object_text
             record = {
                 "id": str(obj["id"]),
                 "stix_id": str(obj["id"]),
