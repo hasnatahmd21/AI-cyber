@@ -322,15 +322,21 @@ def persist_via_kaggle_dataset(
         if manifests_root_value:
             manifests_root = Path(str(manifests_root_value)).expanduser().resolve()
             if manifests_root.is_dir():
-                copied_manifests = upload_dir / "source-manifests"
+                # Keep each manifest as a root-level file: Kaggle CLI
+                # defaults to --dir-mode skip, so nested directories would be
+                # silently omitted from the published artifact.
+                source_manifest_files: dict[str, str] = {}
                 for manifest_file in sorted(manifests_root.rglob("*.json")):
                     if not manifest_file.is_file() or manifest_file.name.casefold() == "example.json":
                         continue
                     relative = manifest_file.relative_to(manifests_root)
-                    target = copied_manifests / relative
-                    target.parent.mkdir(parents=True, exist_ok=True)
+                    relative_name = relative.as_posix()
+                    prefix = hashlib.sha256(relative_name.encode("utf-8")).hexdigest()[:10]
+                    target_name = f"source-manifest-{prefix}-{manifest_file.name}"
+                    target = upload_dir / target_name
                     shutil.copy2(manifest_file, target)
-                    source_manifest_hashes[relative.as_posix()] = sha256_file(target)
+                    source_manifest_hashes[relative_name] = sha256_file(target)
+                    source_manifest_files[relative_name] = target_name
 
         readiness_report_copy = None
         readiness_report_sha256 = None
@@ -356,6 +362,7 @@ def persist_via_kaggle_dataset(
             "source_readiness_report_sha256": readiness_report_sha256,
             "source_manifest_count": len(source_manifest_hashes),
             "source_manifest_sha256": source_manifest_hashes,
+            "source_manifest_files": source_manifest_files if manifests_root_value and Path(str(manifests_root_value)).is_dir() else {},
             "license_model": (
                 "Mixed-source database. The Kaggle dataset uses the 'other' metadata label; "
                 "this does not relicense upstream records. See per-record provenance/license fields."
