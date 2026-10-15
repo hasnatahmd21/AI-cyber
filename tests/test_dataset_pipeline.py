@@ -893,3 +893,26 @@ def test_core_query_smoke_test_checks_cve_cwe_attack_and_citations_in_new_proces
         assert query["evidence_only"] is True
         assert query["has_citations"] is True
         assert query["evidence"][0]["source_uri"].startswith("https://example.invalid/")
+
+
+def test_manifest_directory_blocks_unexpected_dataset_before_ingestion(tmp_path: Path):
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+
+    payload = '{"id":"LOCKED-1","content":"only locked dataset should ingest"}\n'
+    manifest = _manifest(tmp_path, payload, count=1)
+    unexpected = json.loads(manifest.read_text(encoding="utf-8"))
+    unexpected["dataset"] = "cvss"
+    unexpected_path = manifest.parent / "cvss.json"
+    unexpected_path.write_text(json.dumps(unexpected), encoding="utf-8")
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+
+    result = ingest_manifest_directory(
+        manifest.parent, db_path=db_path, required_datasets=["fixture-threat-intel"]
+    )
+
+    assert result["overall"] == "BLOCKED"
+    assert result["unexpected_dataset_names"] == ["cvss"]
+    assert result["ingestion_performed"] is False
+    assert not db_path.exists()
+    assert any(row["dataset"] == "cvss" and row["status"] == "BLOCKED"
+               for row in result["preflight"])
