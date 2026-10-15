@@ -244,10 +244,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"REPORT_FILE={report_path}")
             return 2
 
-        from ai_cyber_os.dataset_pipeline import (
-            derive_cvss_from_nvd_database,
-            ingest_manifest_directory,
-        )
+        from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
         from ai_cyber_os.knowledge import status as knowledge_status, search as knowledge_search
         from ai_cyber_os.rag import build_context
 
@@ -265,11 +262,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"REPORT_FILE={report_path}")
             return 2
 
-        nvd_manifest = manifests_dir / "nvd_cve.json"
-        cvss_derived = derive_cvss_from_nvd_database(
-            db_path,
-            manifest_path=nvd_manifest,
+        derived_rows = preflight_and_ingestion.get("derived_datasets", [])
+        cvss_report = next(
+            (row for row in derived_rows if row.get("dataset") == "cvss"),
+            None,
         )
+        if cvss_report is None or cvss_report.get("status") != "PASS":
+            raise RuntimeError("batch ingestion did not produce a passing derived CVSS report")
+        cvss_derived = cvss_report["derivation"]
         report["cvss_derivation"] = cvss_derived
         cvss_hits = knowledge_search(args.probe_cve, db_path=db_path, dataset="cvss", limit=10)
         report["cvss_query"] = {
