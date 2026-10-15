@@ -18,6 +18,7 @@ import datetime as dt
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -202,6 +203,8 @@ def main(argv: list[str] | None = None) -> int:
                         help="Optional replacement required-source list; may be repeated")
     parser.add_argument("--persist-lfs", action="store_true",
                         help="After all tests PASS, publish DB/report on this branch via Git LFS")
+    parser.add_argument("--accept-local-only", action="store_true",
+                        help="Allow exit 0 for a verified local build when durable persistence is not confirmed")
     parser.add_argument("--branch", default=os.environ.get("AI_CYBER_BRANCH", "fix/dataset-parser-readiness"))
     args = parser.parse_args(argv)
 
@@ -221,6 +224,51 @@ def main(argv: list[str] | None = None) -> int:
         "ingestion_performed": False,
         "permanent_persistence": "NOT_CONFIRMED",
     }
+
+    # If permanent publishing was requested, validate its preconditions before
+    # a long ingestion run. Never build a supposedly permanent DB in an unknown
+    # directory or on a different branch.
+    if args.persist_lfs:
+        try:
+            db_path.relative_to(REPOSITORY_ROOT.resolve())
+            report_path.relative_to(REPOSITORY_ROOT.resolve())
+            if not (REPOSITORY_ROOT / ".git").is_dir():
+                raise RuntimeError("--persist-lfs requires the checked-out Git repository")
+            current_branch = subprocess.run(
+                ["git", "-C", str(REPOSITORY_ROOT), "branch", "--show-current"],
+                text=True, capture_output=True, check=True,
+            ).stdout.strip()
+            if current_branch != args.branch:
+                raise RuntimeError(
+                    f"current Git branch is {current_branch!r}, expected {args.branch!r}"
+                )
+            if not shutil.which("git-lfs"):
+                raise RuntimeError("git-lfs is required for --persist-lfs")
+            token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+            if not token:
+                try:
+                    from kaggle_secrets import UserSecretsClient
+                    token = UserSecretsClient().get_secret("cyber repo")
+                except Exception as exc:
+                    raise RuntimeError(
+                        'GitHub token unavailable; configure Kaggle secret "cyber repo"'
+                    ) from exc
+            if not token or not token.strip():
+                raise RuntimeError('GitHub token "cyber repo" is empty')
+            # Keep the token only in this process environment for Git's askpass;
+            # it is never added to the report or command-line arguments.
+            os.environ["GITHUB_TOKEN"] = token.strip()
+        except Exception as exc:
+            report.update({
+                "overall": "BLOCKED",
+                "evidence": f"{type(exc).__name__}: {exc}",
+                "ingestion_performed": False,
+                "permanent_persistence": "NOT_CONFIRMED",
+            })
+            write_json(report_path, report)
+            print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+            print(f"REPORT_FILE={report_path}")
+            return 2
 
     try:
         # Set the shared path before importing the DB/RAG/backend modules.
@@ -314,16 +362,17 @@ def main(argv: list[str] | None = None) -> int:
         report["restart_smoke_test"] = restart_smoke_test(db_path, args.probe_cve)
         report["database_sha256"] = sha256_file(db_path)
         report["database_byte_size"] = db_path.stat().st_size
-        report["overall"] = "PASS"
+        report["build_verification"] = "PASS"
         report["evidence"] = (
             "All required source manifests passed real-artifact readiness and full preflight; "
-            "checkpointed ingestion, real CVE retrieval, citation fields, and a fresh-process "
+            "checkpointed ingestion, derived CVSS retrieval, citations, and a fresh-process "
             "persistence test passed."
         )
-        report["permanent_persistence"] = "PENDING_EXTERNAL_SAVE"
-        write_json(report_path, report)
 
         if args.persist_lfs:
+            report["overall"] = "PASS"
+            report["permanent_persistence"] = "PUBLISH_PENDING"
+            write_json(report_path, report)
             persistence = persist_via_lfs(db_path, report_path, args.branch)
             report["persistence"] = persistence
             report["permanent_persistence"] = (
@@ -332,10 +381,22 @@ def main(argv: list[str] | None = None) -> int:
             )
             report["published_commit"] = persistence.get("commit")
             write_json(report_path, report)
+            print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+            print(f"REPORT_FILE={report_path}")
+            print("PERMANENT_PERSISTENCE=CONFIRMED_GITHUB_LFS")
+            return 0
 
+        report["overall"] = "LOCAL_BUILD_PASS_PERSISTENCE_PENDING"
+        report["permanent_persistence"] = "NOT_CONFIRMED"
+        report["evidence"] += (
+            " The DB is only local; use --persist-lfs or save this output in an explicitly "
+            "durable destination before treating the full task as complete."
+        )
+        write_json(report_path, report)
         print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
         print(f"REPORT_FILE={report_path}")
-        return 0
+        print("PERMANENT_PERSISTENCE=NOT_CONFIRMED")
+        return 0 if args.accept_local_only else 2
     except Exception as exc:
         report.update({
             "overall": "FAIL",
