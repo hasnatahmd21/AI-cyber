@@ -362,3 +362,39 @@ def test_multi_artifact_stats_are_part_of_readiness(tmp_path: Path):
     result = inspect_dataset(manifest)
     assert result["ready"] is False
     assert result["artifacts"][0]["stat_checks"]["active_rules"]["matches"] is False
+
+
+def test_git_lfs_pointer_is_blocked_without_trying_to_parse_as_json(tmp_path: Path):
+    data_dir = tmp_path / "datasets"
+    manifest_dir = data_dir / "manifests"
+    raw_dir = data_dir / "raw"
+    manifest_dir.mkdir(parents=True)
+    raw_dir.mkdir()
+    pointer = (
+        "version https://git-lfs.github.com/spec/v1\\n"
+        "oid sha256:" + "a" * 64 + "\\n"
+        "size 1234\\n"
+    )
+    artifact = raw_dir / "large.json"
+    artifact.write_text(pointer, encoding="utf-8")
+    manifest = manifest_dir / "large.json"
+    manifest.write_text(json.dumps({
+        "dataset": "large-fixture",
+        "version": "1",
+        "source": "fixture",
+        "source_uri": "https://example.invalid/large.json",
+        "license": "test",
+        "artifact_type": "stix_2_1_bundle",
+        "schema": {"format": "STIX 2.1 bundle JSON"},
+        "artifacts": [{
+            "path": "datasets/raw/large.json",
+            "sha256": "a" * 64,
+            "record_count": 1,
+            "role": "data",
+            "artifact_type": "stix_2_1_bundle",
+        }],
+    }), encoding="utf-8")
+    result = inspect_dataset(manifest)
+    assert result["ready"] is False
+    assert result["artifacts"][0]["git_lfs_pointer"] is True
+    assert "Git LFS pointer" in result["artifacts"][0]["blocked_reason"]
