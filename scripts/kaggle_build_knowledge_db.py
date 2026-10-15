@@ -191,6 +191,185 @@ def persist_via_lfs(db_path: Path, report_path: Path, branch: str) -> dict[str, 
         askpass.unlink(missing_ok=True)
 
 
+
+def _kaggle_credentials() -> dict[str, str]:
+    """Resolve Kaggle CLI auth without exposing credentials in logs/reports."""
+    env = os.environ.copy()
+    if env.get("KAGGLE_USERNAME") and env.get("KAGGLE_KEY"):
+        return env
+
+    candidates = []
+    if env.get("KAGGLE_CONFIG_DIR"):
+        candidates.append(Path(env["KAGGLE_CONFIG_DIR"]).expanduser() / "kaggle.json")
+    candidates.extend([
+        Path.home() / ".kaggle" / "kaggle.json",
+        Path.home() / ".config" / "kaggle" / "kaggle.json",
+    ])
+    for candidate in candidates:
+        if not candidate.is_file():
+            continue
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        username = payload.get("username")
+        key = payload.get("key")
+        if isinstance(username, str) and username.strip() and isinstance(key, str) and key.strip():
+            env["KAGGLE_USERNAME"] = username.strip()
+            env["KAGGLE_KEY"] = key.strip()
+            env["KAGGLE_CONFIG_DIR"] = str(candidate.parent)
+            return env
+
+    raise RuntimeError(
+        "Kaggle Dataset persistence was requested, but Kaggle API credentials are unavailable. "
+        "Set KAGGLE_USERNAME and KAGGLE_KEY or configure ~/.kaggle/kaggle.json. "
+        "No database artifact was published."
+    )
+
+
+def persist_via_kaggle_dataset(
+    db_path: Path,
+    report_path: Path,
+    report_data: dict[str, Any],
+    dataset_id: str,
+    action: str,
+) -> dict[str, Any]:
+    """Publish the verified SQLite DB to a private, versioned Kaggle Dataset.
+
+    Kaggle datasets are private by default. This code never passes the public
+    flag and uses the 'other' metadata label because the operational DB contains
+    several separately licensed upstream sources.
+    """
+    if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,48}/[a-z0-9][a-z0-9-]{1,48}", dataset_id):
+        raise ValueError("Kaggle dataset ID must look like owner/slug using lowercase letters, digits and hyphens")
+    if action not in {"create", "version"}:
+        raise ValueError("Kaggle dataset action must be create or version")
+    if not db_path.is_file():
+        raise FileNotFoundError(f"Knowledge DB does not exist: {db_path}")
+
+    db = sqlite3.connect(str(db_path))
+    try:
+        check = db.execute("PRAGMA integrity_check").fetchone()
+        if not check or check[0] != "ok":
+            raise RuntimeError(f"SQLite integrity_check failed: {check[0] if check else 'no result'}")
+        record_count = int(db.execute("SELECT COUNT(*) FROM knowledge_records").fetchone()[0])
+        if record_count <= 0:
+            raise RuntimeError("refusing to publish an empty Knowledge DB")
+        meta = {str(row[0]): str(row[1]) for row in db.execute("SELECT key,value FROM knowledge_meta")}
+    finally:
+        db.close()
+
+    kaggle_env = _kaggle_credentials()
+    kaggle_cli = shutil.which("kaggle")
+    if not kaggle_cli:
+        install = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "--quiet", "--disable-pip-version-check", "kaggle"],
+            text=True, capture_output=True, check=False, timeout=600,
+        )
+        if install.returncode != 0:
+            raise RuntimeError(f"Kaggle CLI installation failed: {install.stderr[-2000:]}")
+        kaggle_cli = shutil.which("kaggle")
+    if not kaggle_cli:
+        raise RuntimeError("Kaggle CLI is still unavailable after installation")
+
+    upload_dir = Path(tempfile.mkdtemp(prefix="ai-cyber-kaggle-publish-", dir=str(db_path.parent)))
+    db_upload = upload_dir / "knowledge-v1.sqlite3"
+    try:
+        try:
+            os.link(db_path, db_upload)
+        except OSError:
+            shutil.copy2(db_path, db_upload)
+
+        safe_report = dict(report_data)
+        safe_report["permanent_persistence"] = "PUBLISH_REQUESTED"
+        safe_report["database_path_in_artifact"] = db_upload.name
+        write_json(upload_dir / "knowledge-db-build-report.json", safe_report)
+        write_json(upload_dir / "database-artifact-manifest.json", {
+            "artifact_version": "ai-cyber-knowledge-v1",
+            "database_file": db_upload.name,
+            "sha256": sha256_file(db_upload),
+            "byte_size": db_upload.stat().st_size,
+            "records": record_count,
+            "schema_version": meta.get("schema_version", ""),
+            "database_version": meta.get("database_version", ""),
+            "source_readiness_report_sha256": (
+                sha256_file(Path(report_data["source_readiness_report"]))
+                if report_data.get("source_readiness_report")
+                and Path(report_data["source_readiness_report"]).is_file()
+                else None
+            ),
+            "license_model": (
+                "Mixed-source database. The Kaggle dataset uses the 'other' metadata label; "
+                "this does not relicense upstream records. See per-record provenance/license fields."
+            ),
+        })
+        write_json(upload_dir / "dataset-metadata.json", {
+            "title": "AI-CYBER Knowledge DB v1",
+            "subtitle": "Private versioned evidence-backed cyber knowledge store",
+            "id": dataset_id,
+            "licenses": [{"name": "other"}],
+            "description": (
+                "Private AI-CYBER operational Knowledge DB with deterministic record IDs, "
+                "SQLite FTS retrieval, provenance, source version, source URI, validation status "
+                "and SHA-256 per record. It aggregates independent upstream security datasets "
+                "under their own terms. The 'other' label is not a blanket relicense; do not "
+                "make this dataset public without a separate source-license review."
+            ),
+            "userSpecifiedSources": (
+                "Per-source information is preserved in database records and the build report. "
+                "This artifact is intended to remain private unless redistribution is separately reviewed."
+            ),
+        })
+
+        if action == "create":
+            command = [
+                kaggle_cli, "datasets", "create", "-p", str(upload_dir),
+                "--dir-mode", "skip", "--keep-tabular", "--quiet",
+            ]
+        else:
+            stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%MZ")
+            command = [
+                kaggle_cli, "datasets", "version", "-p", str(upload_dir),
+                "--message", f"AI-CYBER Knowledge DB v1 verified {stamp}",
+                "--dir-mode", "skip", "--keep-tabular", "--quiet",
+            ]
+        result = subprocess.run(
+            command, text=True, capture_output=True, check=False,
+            timeout=7200, env=kaggle_env,
+        )
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"Kaggle Dataset {action} failed (exit {result.returncode}): "
+                f"{result.stderr[-3000:] or result.stdout[-3000:]}"
+            )
+
+        verification = subprocess.run(
+            [kaggle_cli, "datasets", "status", dataset_id],
+            text=True, capture_output=True, check=False,
+            timeout=600, env=kaggle_env,
+        )
+        if verification.returncode != 0:
+            raise RuntimeError(
+                "Kaggle upload command returned success, but dataset status verification failed: "
+                f"{verification.stderr[-2000:] or verification.stdout[-2000:]}"
+            )
+        return {
+            "status": "published-and-status-checked",
+            "provider": "Kaggle Dataset",
+            "dataset_id": dataset_id,
+            "access": "private; public flag was not used",
+            "action": action,
+            "database_sha256": sha256_file(db_path),
+            "database_byte_size": db_path.stat().st_size,
+            "record_count": record_count,
+            "upload_dir": str(upload_dir),
+            "cli_output": result.stdout[-2000:],
+            "status_output": verification.stdout[-2000:],
+        }
+    except Exception:
+        # Keep the upload package for diagnosis/retry if a publish attempt fails.
+        raise
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw-root", type=Path, default=REPOSITORY_ROOT / "datasets" / "raw")
