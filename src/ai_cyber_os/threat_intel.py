@@ -748,6 +748,94 @@ _SURICATA_ACTIONS = {
 }
 
 
+
+def iter_parse_sigma_rules(
+    path: str | Path,
+    *,
+    dataset: str = "sigma",
+    source: str = "SigmaHQ Sigma rules",
+    version: str = "",
+    source_uri: str = "",
+    license: str = "",
+    validation_status: str = "unverified",
+) -> Iterable[dict[str, Any]]:
+    """Parse Sigma YAML rules from a ZIP archive into searchable structured records."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(p)
+    if p.suffix.casefold() != ".zip":
+        raise ValueError(f"Sigma rule archive must be ZIP: {p}")
+    with zipfile.ZipFile(p) as archive:
+        names = sorted(
+            name for name in archive.namelist()
+            if not name.endswith("/")
+            and Path(name).suffix.casefold() in {".yml", ".yaml"}
+        )
+        if not names:
+            raise ValueError(f"Sigma ZIP contains no YAML rules: {p}")
+        try:
+            import yaml
+        except ImportError as exc:
+            raise RuntimeError(
+                "Sigma YAML ingestion requires PyYAML; install the project dependencies first"
+            ) from exc
+
+        for name in names:
+            raw_bytes = archive.read(name)
+            try:
+                rule = yaml.safe_load(raw_bytes.decode("utf-8-sig"))
+            except Exception as exc:
+                raise ValueError(f"invalid Sigma YAML rule {name}: {exc}") from exc
+            if not isinstance(rule, dict):
+                raise ValueError(f"Sigma YAML rule must be a mapping: {name}")
+            rule_id = str(rule.get("id") or "").strip()
+            title = str(rule.get("title") or "").strip()
+            if not rule_id or not title:
+                raise ValueError(f"Sigma rule must declare both id and title: {name}")
+            content = json.dumps(rule, ensure_ascii=False, sort_keys=True, default=str)
+            normalized = {
+                "id": rule_id,
+                "title": title,
+                "content": content,
+                "description": rule.get("description", ""),
+                "status": rule.get("status", ""),
+                "author": rule.get("author", ""),
+                "date": rule.get("date", ""),
+                "modified": rule.get("modified", ""),
+                "tags": rule.get("tags", []),
+                "references": rule.get("references", []),
+                "logsource": rule.get("logsource", {}),
+                "detection": rule.get("detection", {}),
+                "sigma_file": name,
+            }
+            yield _normalize(
+                normalized,
+                dataset=dataset,
+                source=f"{source}!{name}",
+                version=version,
+                source_uri=source_uri,
+                license=license,
+                validation_status=validation_status,
+            )
+
+
+def parse_sigma_rules(
+    path: str | Path,
+    *,
+    dataset: str = "sigma",
+    source: str = "SigmaHQ Sigma rules",
+    version: str = "",
+    source_uri: str = "",
+    license: str = "",
+    validation_status: str = "unverified",
+) -> list[dict[str, Any]]:
+    """Compatibility wrapper returning Sigma rule records as a list."""
+    return list(iter_parse_sigma_rules(
+        path, dataset=dataset, source=source, version=version,
+        source_uri=source_uri, license=license,
+        validation_status=validation_status,
+    ))
+
 def parse_suricata_rules(path: str | Path, *, dataset: str = "suricata-rules",
                          source: str = "Suricata rules", version: str = "",
                          source_uri: str = "", license: str = "",
