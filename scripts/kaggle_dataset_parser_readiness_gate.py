@@ -14,10 +14,15 @@ import json
 import os
 import re
 import subprocess
+import sys
+import tarfile
 import tempfile
 import urllib.request
 from pathlib import Path
 from typing import Any
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
 
 from ai_cyber_os.dataset_readiness import readiness_report
 from ai_cyber_os.threat_intel import parse_d3fend_jsonld, parse_mbc_stix, parse_suricata_rules
@@ -28,6 +33,10 @@ EXPECTED_D3FEND_NODES = 7688
 EXPECTED_MBC_BUNDLES = 1906
 EXPECTED_SURICATA_ACTIVE = 52588
 EXPECTED_SURICATA_DISABLED = 19500
+REQUIRED_DATASET_NAMES = (
+    "cisa_kev", "epss", "cwe", "capec", "mitre_d3fend", "mitre_attack",
+    "sigma", "suricata", "zeek_intel", "mitre_mbc", "cpe", "nvd_cve", "cvss",
+)
 
 ATTACK_RESTORE_URLS = (
     "https://raw.githubusercontent.com/mitre/cti/6cda5ad8462c/enterprise-attack/enterprise-attack.json",
@@ -173,7 +182,16 @@ def locate_d3fend(root: Path) -> Path | None:
     return sorted(matches, key=lambda p: (p.name.casefold() != "d3fend.json", len(str(p))))[0]
 
 
-def locate_mbc_directory(root: Path) -> Path | None:
+def locate_mbc_source(root: Path) -> Path | None:
+    """Find the MBC repository archive first, or a previously extracted bundle directory."""
+    archives = [
+        p for p in root.rglob("*")
+        if p.is_file() and "mbc" in str(p).casefold()
+        and (p.name.casefold().endswith(".tar.gz") or p.suffix.casefold() in {".tgz", ".tar"})
+    ]
+    if archives:
+        return sorted(archives, key=lambda p: (p.name.casefold().startswith("mbc-stix2.1"), str(p)), reverse=True)[0]
+
     candidates = [
         p for p in root.rglob("*")
         if p.is_dir() and "mbc" in p.name.casefold()
@@ -192,35 +210,37 @@ def locate_mbc_directory(root: Path) -> Path | None:
             if (isinstance(payload, dict) and isinstance(payload.get("objects"), list)) or (
                 isinstance(payload, list)
             ) or (
-                isinstance(payload, dict) and payload.get("type") and payload.get("id")
+                isinstance(payload, dict) and payload.get("type") and payload.get("id") and payload.get("type") != "bundle"
             ):
                 bundle_count += 1
         ranked.append((directory, bundle_count, len(json_files)))
     if not ranked:
         return None
-    exact = [item for item in ranked if item[1] == EXPECTED_MBC_BUNDLES]
-    return max(exact or ranked, key=lambda item: (item[1], item[2]))[0]
+    return max(ranked, key=lambda item: (item[1], item[2]))[0]
 
 
-def locate_suricata_rules(root: Path) -> Path | None:
-    matches = [
+def locate_suricata_source(root: Path) -> Path | None:
+    """Find the raw Suricata archive or its extracted .rules tree."""
+    archives = [
+        p for p in root.rglob("*")
+        if p.is_file() and "suricata" in str(p).casefold()
+        and (p.name.casefold().endswith(".tar.gz") or p.suffix.casefold() in {".tgz", ".tar"})
+    ]
+    if archives:
+        return sorted(archives, key=lambda p: (p.name.casefold().startswith("emerging.rules_"), str(p)), reverse=True)[0]
+    candidates = [
+        p for p in root.rglob("*")
+        if p.is_dir() and "suricata" in p.name.casefold()
+        and any(child.is_file() for child in p.rglob("*.rules"))
+    ]
+    if candidates:
+        return max(candidates, key=lambda p: sum(1 for _ in p.rglob("*.rules")))
+    files = [
         p for p in root.rglob("*.rules")
         if p.is_file() and "suricata" in str(p).casefold()
         and "example" not in str(p).casefold()
     ]
-    if not matches:
-        return None
-    parents: dict[Path, list[Path]] = {}
-    for file_path in matches:
-        for parent in (file_path.parent, *file_path.parents):
-            if parent == root.parent:
-                break
-            if "suricata" in parent.name.casefold():
-                parents.setdefault(parent, []).append(file_path)
-                break
-    if parents:
-        return max(parents, key=lambda p: len(parents[p]))
-    return sorted(matches, key=lambda p: str(p))[0]
+    return sorted(files, key=lambda p: str(p))[0] if files else None
 
 
 def inspect_attack(path: Path) -> dict[str, Any]:
@@ -311,23 +331,50 @@ def inspect_critical_sources(raw_root: Path) -> list[dict[str, Any]]:
             add_result(results, "mitre-d3fend", "BLOCKED" if "lfs pointer" in str(exc).casefold() else "FAIL",
                        f"{type(exc).__name__}: {exc}", path=str(d3fend_path))
 
-    mbc_dir = locate_mbc_directory(raw_root)
+    mbc_dir = locate_mbc_source(raw_root)
     if mbc_dir is None:
         add_result(results, "mitre-mbc", "BLOCKED", "No MBC bundle directory found under raw root.")
     else:
         try:
-            json_files = [p for p in mbc_dir.rglob("*.json") if p.is_file()]
             bundle_files = 0
-            for file_path in json_files:
-                if lfs_pointer(file_path):
-                    continue
-                payload = json.loads(file_path.read_text(encoding="utf-8"))
-                if (
-                    (isinstance(payload, dict) and isinstance(payload.get("objects"), list))
-                    or isinstance(payload, list)
-                    or (isinstance(payload, dict) and payload.get("type") and payload.get("id"))
-                ):
-                    bundle_files += 1
+            json_file_count = 0
+            if mbc_dir.is_file():
+                with tarfile.open(mbc_dir, "r:*") as archive:
+                    members = [
+                        item for item in archive.getmembers()
+                        if item.isfile() and Path(item.name).suffix.casefold() == ".json"
+                    ]
+                    json_file_count = len(members)
+                    for member in members:
+                        handle = archive.extractfile(member)
+                        if handle is None:
+                            continue
+                        raw_bytes = handle.read()
+                        if raw_bytes.lstrip().startswith(b"version https://git-lfs.github.com/spec/v1"):
+                            continue
+                        try:
+                            payload = json.loads(raw_bytes.decode("utf-8"))
+                        except Exception:
+                            continue
+                        if (
+                            (isinstance(payload, dict) and isinstance(payload.get("objects"), list))
+                            or isinstance(payload, list)
+                            or (isinstance(payload, dict) and payload.get("type") and payload.get("id") and payload.get("type") != "bundle")
+                        ):
+                            bundle_files += 1
+            else:
+                files = [p for p in mbc_dir.rglob("*.json") if p.is_file()]
+                json_file_count = len(files)
+                for file_path in files:
+                    if lfs_pointer(file_path):
+                        continue
+                    payload = json.loads(file_path.read_text(encoding="utf-8"))
+                    if (
+                        (isinstance(payload, dict) and isinstance(payload.get("objects"), list))
+                        or isinstance(payload, list)
+                        or (isinstance(payload, dict) and payload.get("type") and payload.get("id") and payload.get("type") != "bundle")
+                    ):
+                        bundle_files += 1
             records = parse_mbc_stix(mbc_dir, validation_status="readiness-only")
             object_count = len(records)
             count_ok = bundle_files == EXPECTED_MBC_BUNDLES and object_count > 0
@@ -341,7 +388,7 @@ def inspect_critical_sources(raw_root: Path) -> list[dict[str, Any]]:
             add_result(results, "mitre-mbc", "BLOCKED" if "lfs pointer" in str(exc).casefold() else "FAIL",
                        f"{type(exc).__name__}: {exc}", path=str(mbc_dir))
 
-    suricata_path = locate_suricata_rules(raw_root)
+    suricata_path = locate_suricata_source(raw_root)
     if suricata_path is None:
         add_result(results, "suricata-rules", "BLOCKED", "No Suricata .rules file/directory found under raw root.")
     else:
@@ -396,16 +443,26 @@ def main() -> int:
         report["datasets"] = inspect_critical_sources(raw_root)
         manifests_dir = raw_root.parent / "manifests"
         if manifests_dir.is_dir():
-            manifest_summary = readiness_report(manifests_dir)
-            rows = manifest_summary.get("datasets", [])
-            unique_names = {str(row.get("dataset") or "") for row in rows}
-            manifest_summary["unique_dataset_count"] = len(unique_names)
-            manifest_summary["expected_dataset_count"] = 12
-            manifest_summary["dataset_count_matches_expected"] = len(unique_names) == 12
-            if len(unique_names) != 12 and manifest_summary.get("overall") == "PASS":
+            manifest_summary = readiness_report(
+                manifests_dir, required_datasets=REQUIRED_DATASET_NAMES
+            )
+            available_files = [
+                p for p in manifests_dir.rglob("*.json")
+                if p.name.casefold() != "example.json"
+            ]
+            available_names = {
+                str(json.loads(p.read_text(encoding="utf-8")).get("dataset") or p.stem)
+                for p in available_files
+            }
+            manifest_summary["available_manifest_count"] = len(available_files)
+            manifest_summary["available_dataset_count"] = len(available_names)
+            manifest_summary["expected_dataset_count"] = len(REQUIRED_DATASET_NAMES)
+            manifest_summary["missing_manifest_count"] = len(set(REQUIRED_DATASET_NAMES) - available_names)
+            manifest_summary["expected_dataset_names"] = list(REQUIRED_DATASET_NAMES)
+            if manifest_summary["missing_manifest_count"] and manifest_summary.get("overall") == "PASS":
                 manifest_summary["overall"] = "BLOCKED"
                 manifest_summary["evidence"] = (
-                    f"Found {len(unique_names)} unique dataset manifests; expected 12 intended datasets."
+                    f"Missing manifests for: {', '.join(sorted(set(REQUIRED_DATASET_NAMES) - available_names))}."
                 )
             report["manifest_readiness"] = manifest_summary
         else:
