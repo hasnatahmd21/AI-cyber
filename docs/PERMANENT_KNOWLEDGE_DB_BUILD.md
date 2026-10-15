@@ -1,7 +1,8 @@
 # Permanent Knowledge DB build runner
 
 This branch adds a guarded, single-command orchestration layer for the existing
-AI-CYBER dataset-manifest, ingestion, and evidence-only RAG code.
+AI-CYBER dataset-manifest, ingestion, and evidence-only RAG code. It is based on
+the dataset/parser readiness branch, and does not change main or merge any PR.
 
 ## What the runner does
 
@@ -18,18 +19,19 @@ AI-CYBER dataset-manifest, ingestion, and evidence-only RAG code.
 - Writes a JSON build report containing the result, record counts, DB hash, and
   per-dataset evidence.
 
-It does not upload raw feeds or push commits. It never deletes or silently
+It does not upload raw feeds or push data commits. It never deletes or silently
 replaces an existing DB. It only resumes an existing build if its source-manifest
 digest ledger matches the exact current manifest snapshot.
 
-## Run on the intended Kaggle working branch
+## Run from the dedicated branch
 
-Use Python 3.11+ and ensure the working tree is the
-fix/dataset-parser-readiness branch containing the 12-source manifests, raw
-artifacts, NVD scripts, Knowledge DB, and RAG code. The runner must not be placed
-in main or run against an unrelated checkout.
+Use Python 3.11+ and clone/select the dedicated branch
+work/permanent-knowledge-db-build. This branch is based on
+fix/dataset-parser-readiness and includes the source manifests, raw-artifact
+pointers, NVD scripts, Knowledge DB, RAG code, and this build runner. Do not
+switch the canonical main branch or merge any unrelated PR.
 
-Install the project dependencies, then execute:
+Install project dependencies, then execute:
 
     python -m pip install -e .
     python scripts/build_permanent_knowledge_db.py
