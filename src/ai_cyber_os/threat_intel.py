@@ -615,12 +615,8 @@ PARSERS = {
 
 def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> dict[str, int]:
     """Persist parser output using the same evidence contract as normal ingestion."""
-    from .knowledge import _extract_relations
-    db = __import__("sqlite3").connect(str(db_path))
-    db.row_factory = __import__("sqlite3").Row
-    # Initialize the store schema without introducing a second schema.
-    from .knowledge import open_store
-    db.close()
+    from .knowledge import _extract_relations, open_store
+    # open_store creates the parent directory, schema, FTS indexes and metadata.
     db = open_store(db_path)
     inserted = updated = duplicates = processed_records = 0
     try:
