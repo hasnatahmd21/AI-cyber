@@ -381,11 +381,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--require", action="append", default=[],
                         help="Optional replacement required-source list; may be repeated")
     parser.add_argument("--persist-lfs", action="store_true",
-                        help="After all tests PASS, publish DB/report on this branch via Git LFS")
+                        help="Publish the DB to this Git branch via Git LFS (may be unsuitable for large DBs)")
+    parser.add_argument("--persist-kaggle-dataset-id", default=None, metavar="OWNER/SLUG",
+                        help="Publish the verified DB as a private Kaggle Dataset or new version")
+    parser.add_argument("--kaggle-dataset-action", choices=("create", "version"), default="create",
+                        help="Create a new private Kaggle Dataset or add a version to an existing one")
     parser.add_argument("--accept-local-only", action="store_true",
                         help="Allow exit 0 for a verified local build when durable persistence is not confirmed")
     parser.add_argument("--branch", default=os.environ.get("AI_CYBER_BRANCH", "fix/dataset-parser-readiness"))
     args = parser.parse_args(argv)
+    if args.persist_lfs and args.persist_kaggle_dataset_id:
+        parser.error("choose only one durable persistence target: --persist-lfs or --persist-kaggle-dataset-id")
 
     raw_root = args.raw_root.expanduser().resolve()
     manifests_dir = args.manifests_dir.expanduser().resolve()
@@ -565,10 +571,27 @@ def main(argv: list[str] | None = None) -> int:
             print("PERMANENT_PERSISTENCE=CONFIRMED_GITHUB_LFS")
             return 0
 
+        if args.persist_kaggle_dataset_id:
+            report["overall"] = "PASS"
+            report["permanent_persistence"] = "PUBLISH_PENDING"
+            write_json(report_path, report)
+            persistence = persist_via_kaggle_dataset(
+                db_path, report_path, report,
+                args.persist_kaggle_dataset_id, args.kaggle_dataset_action,
+            )
+            report["persistence"] = persistence
+            report["permanent_persistence"] = "CONFIRMED_KAGGLE_DATASET_PRIVATE"
+            write_json(report_path, report)
+            print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+            print(f"REPORT_FILE={report_path}")
+            print(f"PERMANENT_PERSISTENCE=CONFIRMED_KAGGLE_DATASET_PRIVATE:{args.persist_kaggle_dataset_id}")
+            return 0
+
         report["overall"] = "LOCAL_BUILD_PASS_PERSISTENCE_PENDING"
         report["permanent_persistence"] = "NOT_CONFIRMED"
         report["evidence"] += (
-            " The DB is only local; use --persist-lfs or save this output in an explicitly "
+            " The DB is only local; use --persist-kaggle-dataset-id OWNER/SLUG "
+            "(private by default) or --persist-lfs, or save this output in an explicitly "
             "durable destination before treating the full task as complete."
         )
         write_json(report_path, report)
