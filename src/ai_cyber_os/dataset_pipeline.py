@@ -131,6 +131,9 @@ def _count_artifact_records(
     if count_kind in {"xml_cwe", "cwe"}:
         from .threat_intel import iter_parse_cwe_xml
         return sum(1 for _ in iter_parse_cwe_xml(local, **common))
+    if count_kind == "sigma":
+        from .threat_intel import iter_parse_sigma_rules
+        return sum(1 for _ in iter_parse_sigma_rules(local, **common))
 
     schema = manifest.get("schema", {})
     record_elements = schema.get("elements") if isinstance(schema, dict) else None
@@ -383,6 +386,9 @@ def _specialized_records(
     if kind in {"xml_cwe", "cwe"}:
         from .threat_intel import iter_parse_cwe_xml
         return iter_parse_cwe_xml(local, **common)
+    if kind == "sigma":
+        from .threat_intel import iter_parse_sigma_rules
+        return iter_parse_sigma_rules(local, **common)
     return None
 
 
