@@ -646,3 +646,38 @@ def test_kaggle_persistence_checks_metadata_and_sqlite_before_credentials(tmp_pa
             db_path, tmp_path / "report.json", {},
             "test-owner/ai-cyber-db", "create",
         )
+
+
+def test_restart_smoke_test_uses_configured_db_and_returns_cited_evidence(tmp_path: Path):
+    from scripts.kaggle_build_knowledge_db import restart_smoke_test
+    from ai_cyber_os.knowledge import ingest_file
+
+    source = tmp_path / "known-cve.jsonl"
+    source.write_text(
+        '{"id":"CVE-2021-44228","title":"Fixture CVE","content":"critical remote code execution vulnerability",'
+        '"source":"NVD fixture","source_uri":"https://example.invalid/nvd",'
+        '"license":"fixture","version":"nvd-fixture-1",'
+        '"validation_status":"fixture-validated"}\n',
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+    ingest_file(
+        source,
+        db_path=db_path,
+        dataset="nvd_cve",
+        source="NVD fixture",
+        source_uri="https://example.invalid/nvd",
+        license="fixture",
+        version="nvd-fixture-1",
+        validation_status="fixture-validated",
+    )
+
+    result = restart_smoke_test(db_path, "CVE-2021-44228")
+
+    assert Path(result["default_db"]).resolve() == db_path.resolve()
+    assert result["status"]["database_version"] == "ai-cyber-knowledge-v1"
+    assert result["status"]["records"] == 1
+    assert result["hits"][0]["record_id"] == "CVE-2021-44228"
+    assert result["analysis"]["success"] is True
+    assert result["analysis"]["evidence_only"] is True
+    assert result["analysis"]["has_citations"] is True
