@@ -360,6 +360,17 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
     }
 
     def normalized(value: Any, item_source: str):
+        # Give each Suricata physical rule line a deterministic identity. SID alone
+        # is insufficient because disabled rules may intentionally reuse an SID.
+        if (isinstance(value, dict) and value.get("enabled") in (True, False)
+                and isinstance(value.get("line_number"), int)):
+            value = dict(value)
+            identity = "\\0".join((
+                ds, item_source, str(value["line_number"]), str(value.get("content", ""))
+            ))
+            value["id"] = "suricata-rule:" + hashlib.sha256(
+                identity.encode("utf-8")
+            ).hexdigest()
         return _normalize(value, dataset=ds, source=item_source, license=license,
                           version=version, source_uri=source_uri,
                           validation_status=validation_status)
