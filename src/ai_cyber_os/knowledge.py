@@ -182,7 +182,7 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
                version: str = "", source_uri: str = "",
                validation_status: str = "unverified") -> dict[str, Any]:
     if isinstance(raw, dict):
-        title = _text(raw.get("title") or raw.get("name") or raw.get("id"))
+        title = _text(raw.get("title") or raw.get("name") or raw.get("msg") or raw.get("id") or raw.get("@id"))
         explicit_content = raw.get("content") or raw.get("text") or raw.get("description")
         content = _text(explicit_content) if explicit_content is not None else _text(raw)
         record_source = _text(raw.get("source") or source)
@@ -204,7 +204,8 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
     content = content.strip()
     if not content:
         raise ValueError("record content is empty")
-    rid = _text(raw.get("id")) if isinstance(raw, dict) and raw.get("id") else ""
+    rid_value = (raw.get("id") or raw.get("@id")) if isinstance(raw, dict) else None
+    rid = _text(rid_value) if rid_value else ""
     record_id = rid or _safe_id(dataset, record_source, content)
     return {
         "record_id": record_id,
@@ -223,8 +224,9 @@ def _normalize(raw: Any, *, dataset: str, source: str, license: str = "",
     }
 
 def _iter_json_value(raw: Any) -> Iterable[Any]:
+    """Yield logical records from common catalog, STIX, and JSON-LD envelopes."""
     if isinstance(raw, dict):
-        for key in ("vulnerabilities", "products", "objects", "rules", "data", "items"):
+        for key in ("vulnerabilities", "products", "objects", "rules", "data", "items", "@graph"):
             value = raw.get(key)
             if isinstance(value, list):
                 yield from value
@@ -248,6 +250,42 @@ def _iter_text_stream(handle: Iterable[str], *, dataset: str, source: str,
         yield _normalize(raw, dataset=dataset, source=source, license=license,
                          version=version, source_uri=source_uri,
                          validation_status=validation_status)
+
+
+_SURICATA_RULE_ACTION = r"(?:alert|pass|drop|reject|rejectsrc|rejectdst|rejectboth|sdrop|log)"
+
+
+def _iter_suricata_rule_values(text: str) -> Iterable[dict[str, Any]]:
+    """Yield active and explicitly disabled Suricata rule lines, not file text."""
+    active_re = re.compile(rf"^\s*(?P<action>{_SURICATA_RULE_ACTION})\s+", re.IGNORECASE)
+    disabled_re = re.compile(rf"^\s*#\s*(?P<action>{_SURICATA_RULE_ACTION})\s+", re.IGNORECASE)
+    for line_number, raw_line in enumerate(text.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        disabled_match = disabled_re.match(line)
+        active_match = active_re.match(line)
+        if disabled_match:
+            enabled = False
+            action = disabled_match.group("action").lower()
+        elif active_match:
+            enabled = True
+            action = active_match.group("action").lower()
+        else:
+            continue
+
+        sid_match = re.search(r"\bsid\s*:\s*(\d+)\s*;", line, re.IGNORECASE)
+        rev_match = re.search(r"\brev\s*:\s*(\d+)\s*;", line, re.IGNORECASE)
+        msg_match = re.search(r'\bmsg\s*:\s*"((?:\\.|[^"])*)"', line, re.IGNORECASE)
+        yield {
+            "content": line,
+            "enabled": enabled,
+            "action": action,
+            "sid": sid_match.group(1) if sid_match else None,
+            "rev": rev_match.group(1) if rev_match else None,
+            "msg": msg_match.group(1) if msg_match else "",
+            "line_number": line_number,
+        }
 
 
 def _local_xml_name(tag: str) -> str:
@@ -303,7 +341,8 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
                  version: str = "", source_uri: str = "",
                  validation_status: str = "unverified",
                  record_elements: Iterable[str] | None = None,
-                 record_extensions: Iterable[str] | None = None) -> Iterable[dict[str, Any]]:
+                 record_extensions: Iterable[str] | None = None,
+                 record_format: str | None = None) -> Iterable[dict[str, Any]]:
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(p)
@@ -314,6 +353,7 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
         str(x).lower() if str(x).startswith(".") else "." + str(x).lower()
         for x in (record_extensions or ())
     }
+    format_key = str(record_format or "").strip().lower()
     default_archive_extensions = {
         ".json", ".jsonl", ".ndjson", ".csv", ".txt", ".md",
         ".xml", ".yaml", ".yml", ".rules", ".zeek",
@@ -333,6 +373,10 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
                 suffix = name.suffix.lower()
                 allowed = selected_extensions or default_archive_extensions
                 if suffix not in allowed:
+                    continue
+                if "mbc" in format_key and name.name.lower() == "manifest.json":
+                    # The repository's acquisition manifest describes the repo; it
+                    # is not one of the STIX evidence objects in the data count.
                     continue
                 handle = archive.extractfile(member)
                 if handle is None:
@@ -357,6 +401,10 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
                         yield normalized(row, item_source)
                 elif suffix == ".xml":
                     for value in _iter_xml_values(io.BytesIO(handle.read()), selected_elements):
+                        yield normalized(value, item_source)
+                elif suffix == ".rules" or "suricata" in format_key:
+                    text = handle.read().decode("utf-8", errors="replace")
+                    for value in _iter_suricata_rule_values(text):
                         yield normalized(value, item_source)
                 else:
                     text = handle.read().decode("utf-8", errors="replace")
@@ -396,31 +444,34 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
         return
 
     if p.suffix.lower() == ".gz":
-        with gzip.open(p, "rb") as fh:
-            raw_bytes = fh.read()
-        text = raw_bytes.decode("utf-8", errors="replace")
         inner_suffix = Path(p.name[:-3]).suffix.lower()
-        if inner_suffix == ".json":
-            raw = json.loads(text)
-            for item in _iter_json_value(raw):
-                yield normalized(item, src)
-        elif inner_suffix in {".jsonl", ".ndjson"}:
-            yield from _iter_text_stream(io.StringIO(text), dataset=ds, source=src,
-                                         license=license, version=version,
-                                         source_uri=source_uri,
-                                         validation_status=validation_status)
+        if inner_suffix in {".jsonl", ".ndjson"}:
+            # Stream large compressed line-oriented feeds (notably CPE shards)
+            # instead of decompressing the complete dataset into RAM.
+            with gzip.open(p, "rt", encoding="utf-8", errors="replace", newline="") as handle:
+                yield from _iter_text_stream(handle, dataset=ds, source=src,
+                                             license=license, version=version,
+                                             source_uri=source_uri,
+                                             validation_status=validation_status)
         elif inner_suffix == ".csv":
-            lines = text.splitlines()
-            while lines and lines[0].lstrip().startswith("#"):
-                lines.pop(0)
-            reader = csv.DictReader(io.StringIO("\n".join(lines), newline=""))
-            for row in reader:
-                yield normalized(row, src)
-        elif inner_suffix == ".xml":
-            for value in _iter_xml_values(io.BytesIO(raw_bytes), selected_elements):
-                yield normalized(value, src)
+            with gzip.open(p, "rt", encoding="utf-8-sig", errors="replace", newline="") as handle:
+                for row in csv.DictReader(
+                    line for line in handle if not line.lstrip().startswith("#")
+                ):
+                    yield normalized(row, src)
         else:
-            yield normalized(text, src)
+            with gzip.open(p, "rb") as fh:
+                raw_bytes = fh.read()
+            text = raw_bytes.decode("utf-8", errors="replace")
+            if inner_suffix == ".json":
+                raw = json.loads(text)
+                for item in _iter_json_value(raw):
+                    yield normalized(item, src)
+            elif inner_suffix == ".xml":
+                for value in _iter_xml_values(io.BytesIO(raw_bytes), selected_elements):
+                    yield normalized(value, src)
+            else:
+                yield normalized(text, src)
         return
 
     suffix = p.suffix.lower()
@@ -443,6 +494,11 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
     elif suffix == ".xml":
         for value in _iter_xml_values(p, selected_elements):
             yield normalized(value, src)
+    elif suffix == ".rules" or "suricata" in format_key:
+        for value in _iter_suricata_rule_values(
+            p.read_text(encoding="utf-8", errors="replace")
+        ):
+            yield normalized(value, src)
     else:
         yield normalized(p.read_text(encoding="utf-8", errors="replace"), src)
 
@@ -452,7 +508,8 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                 license: str = "", version: str = "", source_uri: str = "",
                 validation_status: str = "unverified",
                 record_elements: Iterable[str] | None = None,
-                record_extensions: Iterable[str] | None = None) -> dict[str, Any]:
+                record_extensions: Iterable[str] | None = None,
+                record_format: str | None = None) -> dict[str, Any]:
     records_seen = 0
     inserted = 0
     updated = 0
@@ -469,6 +526,7 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
             validation_status=validation_status,
             record_elements=record_elements,
             record_extensions=record_extensions,
+            record_format=record_format,
         ):
             records_seen += 1
             old = db.execute(
