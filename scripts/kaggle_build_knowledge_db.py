@@ -73,7 +73,7 @@ def restart_smoke_test(db_path: Path, cve_id: str) -> dict[str, Any]:
     env = os.environ.copy()
     env["AI_CYBER_KNOWLEDGE_DB"] = str(db_path)
     env["PYTHONPATH"] = str(REPOSITORY_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
-    program = Stringless = (
+    program = (
         "import json\n"
         "from ai_cyber_os.knowledge import DEFAULT_DB, status, search\n"
         "from ai_cyber_os.runtime_intelligence import analyze\n"
@@ -244,8 +244,11 @@ def main(argv: list[str] | None = None) -> int:
             print(f"REPORT_FILE={report_path}")
             return 2
 
-        from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
-        from ai_cyber_os.knowledge import status as knowledge_status
+        from ai_cyber_os.dataset_pipeline import (
+            derive_cvss_from_nvd_database,
+            ingest_manifest_directory,
+        )
+        from ai_cyber_os.knowledge import status as knowledge_status, search as knowledge_search
         from ai_cyber_os.rag import build_context
 
         batch_options: dict[str, Any] = {"required_datasets": tuple(report["required_datasets"])}
@@ -261,6 +264,29 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
             print(f"REPORT_FILE={report_path}")
             return 2
+
+        nvd_manifest = manifests_dir / "nvd_cve.json"
+        cvss_derived = derive_cvss_from_nvd_database(
+            db_path,
+            manifest_path=nvd_manifest,
+        )
+        report["cvss_derivation"] = cvss_derived
+        cvss_hits = knowledge_search(args.probe_cve, db_path=db_path, dataset="cvss", limit=10)
+        report["cvss_query"] = {
+            "query": args.probe_cve,
+            "count": len(cvss_hits),
+            "evidence": [{
+                "record_id": row.get("record_id"),
+                "source_uri": row.get("source_uri"),
+                "version": row.get("version"),
+                "validation_status": row.get("validation_status"),
+                "content_sha256": row.get("content_sha256"),
+            } for row in cvss_hits],
+        }
+        if int(cvss_derived.get("derived_records_in_database", 0)) <= 0:
+            raise RuntimeError("CVSS derivation produced no indexed metric records from NVD data")
+        if not cvss_hits:
+            raise RuntimeError(f"derived CVSS query returned no evidence for {args.probe_cve}")
 
         report["database_status"] = knowledge_status(db_path=db_path)
         context = build_context(args.probe_cve, db_path=db_path, limit=10)
