@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -921,6 +922,8 @@ def ingest_manifest_directory(
         try:
             manifest = load_manifest(manifest_path)
             dataset = str(manifest.get("dataset") or manifest_path.stem)
+            if dataset in names:
+                raise ValueError(f"duplicate manifest for dataset {dataset!r}; keep one authoritative manifest per dataset")
             names.add(dataset)
             inspection = inspect_dataset(manifest_path)
             row = {
@@ -974,6 +977,106 @@ def ingest_manifest_directory(
         report["preflight_failures"] = preflight_failures
         return report
 
+    manifest_digests = {
+        str(manifest.get("dataset") or manifest_path.stem): sha256_file(manifest_path)
+        for manifest_path, manifest in sorted(loaded, key=lambda row: str(row[0]))
+    }
+    manifest_digest_json = json.dumps(manifest_digests, sort_keys=True, separators=(",", ":"))
+
+    # Pin the exact source snapshot into the DB. Reuse is permitted only for
+    # resumptions with identical manifests; silently mixing a newer manifest
+    # into an older DB could retain removed records and make the snapshot
+    # irreproducible.
+    if db_file.is_file() and db_file.stat().st_size > 0:
+        try:
+            existing_db = sqlite3.connect(f"file:{db_file.as_posix()}?mode=ro", uri=True)
+            try:
+                tables = {
+                    str(row[0]) for row in existing_db.execute(
+                        "SELECT name FROM sqlite_master WHERE type='table'"
+                    )
+                }
+                if not {"knowledge_meta", "knowledge_records"}.issubset(tables):
+                    raise ValueError("existing target is not an AI-CYBER Knowledge DB")
+                meta_values = {
+                    str(row[0]): str(row[1])
+                    for row in existing_db.execute("SELECT key,value FROM knowledge_meta")
+                }
+                existing_records = int(
+                    existing_db.execute("SELECT COUNT(*) FROM knowledge_records").fetchone()[0]
+                )
+            finally:
+                existing_db.close()
+        except (sqlite3.DatabaseError, OSError) as exc:
+            report.update({
+                "overall": "BLOCKED",
+                "evidence": f"Existing DB cannot be safely resumed: {type(exc).__name__}: {exc}",
+                "database_resume_status": "BLOCKED",
+                "ingestion_performed": False,
+            })
+            return report
+
+        if meta_values.get("database_version") not in {None, "ai-cyber-knowledge-v1"}:
+            report.update({
+                "overall": "BLOCKED",
+                "evidence": (
+                    "Existing DB has an unknown database_version. Use a new --db-path "
+                    "instead of overwriting a different Knowledge DB."
+                ),
+                "database_resume_status": "BLOCKED",
+                "ingestion_performed": False,
+            })
+            return report
+        pinned = meta_values.get("source_manifest_digests")
+        if existing_records > 0 and not pinned:
+            report.update({
+                "overall": "BLOCKED",
+                "evidence": (
+                    "Existing DB has records but no pinned source-manifest digest ledger. "
+                    "Use a new DB path to prevent mixing untracked source snapshots."
+                ),
+                "database_resume_status": "BLOCKED",
+                "ingestion_performed": False,
+            })
+            return report
+        if pinned and pinned != manifest_digest_json:
+            report.update({
+                "overall": "BLOCKED",
+                "evidence": (
+                    "Source-manifest digests differ from the existing DB snapshot. "
+                    "Use a new versioned --db-path; resuming into this file could retain stale records."
+                ),
+                "database_resume_status": "BLOCKED",
+                "existing_source_manifest_digests": json.loads(pinned),
+                "current_source_manifest_digests": manifest_digests,
+                "ingestion_performed": False,
+            })
+            return report
+
+    db = open_store(db_file)
+    try:
+        db.execute(
+            "INSERT INTO knowledge_meta(key,value) VALUES('source_manifest_digests',?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (manifest_digest_json,),
+        )
+        db.execute(
+            "INSERT INTO knowledge_meta(key,value) VALUES('source_manifest_set_sha256',?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (hashlib.sha256(manifest_digest_json.encode("utf-8")).hexdigest(),),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    report["source_manifest_digests"] = manifest_digests
+    report["source_manifest_set_sha256"] = hashlib.sha256(
+        manifest_digest_json.encode("utf-8")
+    ).hexdigest()
+    report["database_resume_status"] = (
+        "RESUME_SAME_SOURCE_SNAPSHOT" if report["database_created_before_run"]
+        else "NEW_SOURCE_SNAPSHOT"
+    )
     report["ready"] = True
     report["preflight_passed"] = len(loaded)
     total_inserted = total_updated = total_duplicates = 0
