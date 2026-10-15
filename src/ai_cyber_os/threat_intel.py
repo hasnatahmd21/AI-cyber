@@ -29,47 +29,191 @@ def _walk(value: Any) -> Iterable[Any]:
             yield from _walk(child)
 
 
-def parse_nvd(path: str | Path, *, dataset: str = "cve", source: str = "NVD",
-              version: str = "", source_uri: str = "", license: str = "",
-              validation_status: str = "unverified") -> list[dict[str, Any]]:
-    """Parse NVD CVE JSON 1.x/2.x records into the common evidence contract."""
-    raw = _read_json(path)
-    items = raw.get("vulnerabilities", raw.get("CVE_Items", [])) if isinstance(raw, dict) else raw
-    if not isinstance(items, list):
-        raise ValueError("NVD file does not contain a vulnerability list")
-    declared_total = raw.get("totalResults") if isinstance(raw, dict) else None
-    if declared_total is not None and declared_total != len(items):
-        raise ValueError(
-            f"NVD feed totalResults={declared_total} but contains {len(items)} vulnerability records"
+def _read_nvd_array_header(handle: Any) -> tuple[str, int | None, str]:
+    """Read only the JSON header before the top-level NVD vulnerability array."""
+    buffer = ""
+    array_pattern = re.compile(r'"(vulnerabilities|CVE_Items)"\s*:\s*\[')
+    while True:
+        match = array_pattern.search(buffer)
+        if match:
+            header = buffer[:match.start()]
+            declared_match = re.search(r'"totalResults"\s*:\s*(\d+)', header)
+            declared_total = int(declared_match.group(1)) if declared_match else None
+            if match.group(1) == "vulnerabilities" and declared_total is None:
+                raise ValueError("NVD JSON 2.0 feed is missing totalResults before vulnerabilities")
+            return match.group(1), declared_total, buffer[match.end():]
+        chunk = handle.read(64 * 1024)
+        if not chunk:
+            raise ValueError("NVD JSON does not contain a vulnerabilities or CVE_Items array")
+        buffer += chunk
+        if len(buffer) > 8 * 1024 * 1024:
+            raise ValueError("NVD JSON header exceeds 8 MiB without a top-level CVE array")
+
+
+def _iter_json_array_items(handle: Any, initial_buffer: str) -> Iterable[Any]:
+    """Stream one JSON array item at a time with bounded input buffering."""
+    decoder = json.JSONDecoder()
+    buffer = initial_buffer
+    while True:
+        buffer = buffer.lstrip()
+        if not buffer:
+            chunk = handle.read(64 * 1024)
+            if not chunk:
+                raise ValueError("unexpected EOF inside NVD vulnerability array")
+            buffer = chunk
+            continue
+
+        if buffer.startswith(","):
+            buffer = buffer[1:]
+            continue
+
+        if buffer.startswith("]"):
+            tail = buffer[1:] + handle.read()
+            # NVD's CVE array is the final top-level value in both known feed
+            # formats; only the object closing brace and whitespace may follow.
+            if not re.fullmatch(r"\s*}\s*", tail):
+                raise ValueError("unexpected trailing bytes after NVD CVE array")
+            return
+
+        try:
+            item, consumed = decoder.raw_decode(buffer)
+        except json.JSONDecodeError as exc:
+            chunk = handle.read(64 * 1024)
+            if not chunk:
+                raise ValueError(f"invalid or truncated JSON item in NVD feed: {exc}") from exc
+            buffer += chunk
+            continue
+
+        yield item
+        buffer = buffer[consumed:]
+
+
+def _nvd_record(
+    item: Any,
+    *,
+    dataset: str,
+    source: str,
+    version: str,
+    source_uri: str,
+    license: str,
+    validation_status: str,
+) -> dict[str, Any]:
+    if not isinstance(item, dict):
+        raise ValueError("NVD vulnerability array contains a non-object item")
+    cve = item.get("cve", item)
+    if not isinstance(cve, dict):
+        raise ValueError("NVD vulnerability item does not contain a CVE object")
+    cve_id = cve.get("id")
+    if not cve_id:
+        cve_id = cve.get("CVE_data_meta", {}).get("ID")
+    if not cve_id:
+        raise ValueError("NVD vulnerability item is missing its CVE identifier")
+    descriptions = cve.get("descriptions", [])
+    desc = next(
+        (x.get("value") for x in descriptions if isinstance(x, dict) and x.get("lang") == "en"),
+        None,
+    )
+    if desc is None:
+        desc = next(
+            (x.get("value") for x in descriptions if isinstance(x, dict)),
+            cve.get("description", {}).get("description_data", [{}])[0].get("value", "")
+            if isinstance(cve.get("description"), dict) else "",
         )
-    out = []
-    for item in items:
-        cve = item.get("cve", item) if isinstance(item, dict) else {}
-        if not isinstance(cve, dict):
-            continue
-        cve_id = cve.get("id") or cve.get("CVE_data_meta", {}).get("ID")
-        if not cve_id:
-            continue
-        descriptions = cve.get("descriptions", [])
-        desc = next((x.get("value") for x in descriptions if x.get("lang") == "en"), None)
-        if desc is None:
-            desc = next((x.get("value") for x in descriptions if isinstance(x, dict)), "")
-        content = {
-            "id": cve_id,
-            "description": desc or "",
-            "source_identifier": cve.get("sourceIdentifier"),
-            "published": cve.get("published"),
-            "last_modified": cve.get("lastModified"),
-            "references": cve.get("references", []),
-            "metrics": cve.get("metrics", {}),
-            "weaknesses": cve.get("weaknesses", []),
-            "configurations": cve.get("configurations", []),
-        }
-        content["content"] = json.dumps(content, ensure_ascii=False, sort_keys=True, default=str)
-        out.append(_normalize(content, dataset=dataset, source=source, version=version,
-                              source_uri=source_uri, license=license,
-                              validation_status=validation_status))
-    return out
+    content = {
+        "id": cve_id,
+        "description": desc or "",
+        "source_identifier": cve.get("sourceIdentifier"),
+        "published": cve.get("published") or cve.get("publishedDate"),
+        "last_modified": cve.get("lastModified") or cve.get("lastModifiedDate"),
+        "references": cve.get("references", []),
+        "metrics": cve.get("metrics", {}),
+        "weaknesses": cve.get("weaknesses", []),
+        "configurations": cve.get("configurations", []),
+    }
+    content["content"] = json.dumps(content, ensure_ascii=False, sort_keys=True, default=str)
+    return _normalize(
+        content,
+        dataset=dataset,
+        source=source,
+        version=version,
+        source_uri=source_uri,
+        license=license,
+        validation_status=validation_status,
+    )
+
+
+def iter_parse_nvd(
+    path: str | Path,
+    *,
+    dataset: str = "cve",
+    source: str = "NVD",
+    version: str = "",
+    source_uri: str = "",
+    license: str = "",
+    validation_status: str = "unverified",
+) -> Iterable[dict[str, Any]]:
+    """Stream NVD 1.x/2.x CVE records; do not materialize an entire feed in RAM."""
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(p)
+    with p.open("rb") as prefix_handle:
+        prefix = prefix_handle.read(256).lstrip()
+    if prefix.startswith(b"version https://git-lfs.github.com/spec/v1"):
+        raise ValueError(
+            f"Git LFS pointer detected instead of dataset content: {p}. "
+            "Restore the LFS object and verify its original SHA-256 and size before parsing."
+        )
+
+    opener = gzip.open if p.name.lower().endswith(".gz") else open
+    with opener(p, "rt", encoding="utf-8") as handle:
+        array_key, declared_total, buffer = _read_nvd_array_header(handle)
+        array_count = 0
+        record_count = 0
+        for item in _iter_json_array_items(handle, buffer):
+            array_count += 1
+            record = _nvd_record(
+                item,
+                dataset=dataset,
+                source=source,
+                version=version,
+                source_uri=source_uri,
+                license=license,
+                validation_status=validation_status,
+            )
+            record_count += 1
+            yield record
+
+        if declared_total is not None and declared_total != array_count:
+            raise ValueError(
+                f"NVD feed totalResults={declared_total} but contains {array_count} "
+                f"items in the {array_key} array"
+            )
+        if record_count != array_count:
+            raise ValueError(
+                f"NVD feed parser produced {record_count} records from {array_count} array items"
+            )
+
+
+def parse_nvd(
+    path: str | Path,
+    *,
+    dataset: str = "cve",
+    source: str = "NVD",
+    version: str = "",
+    source_uri: str = "",
+    license: str = "",
+    validation_status: str = "unverified",
+) -> list[dict[str, Any]]:
+    """Compatibility wrapper returning a list; batch ingestion should use iter_parse_nvd."""
+    return list(iter_parse_nvd(
+        path,
+        dataset=dataset,
+        source=source,
+        version=version,
+        source_uri=source_uri,
+        license=license,
+        validation_status=validation_status,
+    ))
 
 
 def parse_cisa_kev(path: str | Path, *, dataset: str = "cisa-kev",
