@@ -185,6 +185,8 @@ def _artifact_inspection(
 
             count = 0
             object_types: dict[str, int] = {}
+            xml_element_counts: dict[str, int] = {}
+            yaml_rule_files = 0
             active_rules = 0
             disabled_rules = 0
             active_sid_counts: dict[str, int] = {}
@@ -213,6 +215,11 @@ def _artifact_inspection(
                 object_type = metadata.get("type")
                 if isinstance(object_type, str) and object_type:
                     object_types[object_type] = object_types.get(object_type, 0) + 1
+                xml_tag = metadata.get("tag")
+                if isinstance(xml_tag, str) and xml_tag:
+                    xml_element_counts[xml_tag] = xml_element_counts.get(xml_tag, 0) + 1
+                if "sigma" in format_key.lower():
+                    yaml_rule_files += 1
 
                 if "suricata" in format_key.lower():
                     if metadata.get("enabled") is True:
@@ -243,6 +250,28 @@ def _artifact_inspection(
                     "matches": normalized_observed == dict(sorted(normalized_expected.items())),
                 }
                 observed_stats["object_types"] = normalized_observed
+
+            expected_xml_counts = declared_stats.get("counts")
+            if isinstance(expected_xml_counts, dict):
+                normalized_expected = {str(k): int(v) for k, v in expected_xml_counts.items()}
+                normalized_observed = dict(sorted(xml_element_counts.items()))
+                stat_checks["counts"] = {
+                    "declared": normalized_expected,
+                    "observed": normalized_observed,
+                    "matches": normalized_observed == dict(sorted(normalized_expected.items())),
+                }
+                observed_stats["counts"] = normalized_observed
+
+            if "sigma" in format_key.lower():
+                observed_sigma = {"yaml_files": yaml_rule_files, "parse_errors": 0}
+                observed_stats.update(observed_sigma)
+                for key, value in observed_sigma.items():
+                    if key in declared_stats:
+                        stat_checks[key] = {
+                            "declared": declared_stats[key],
+                            "observed": value,
+                            "matches": value == declared_stats[key],
+                        }
 
             if "suricata" in format_key.lower():
                 duplicate_sid_lines = sum(max(0, n - 1) for n in active_sid_counts.values())
