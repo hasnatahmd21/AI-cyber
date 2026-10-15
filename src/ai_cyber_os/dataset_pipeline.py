@@ -275,7 +275,7 @@ def _artifact_inspection(
                 "sha256": actual_sha,
                 "sha256_matches": actual_sha == expected_sha,
                 "git_lfs_pointer": is_lfs_pointer,
-                "blocked_reason": "Git LFS payload has not been downloaded" if is_lfs_pointer else None,
+                "blocked_reason": "Git LFS pointer detected; payload has not been downloaded" if is_lfs_pointer else None,
                 "records": count,
                 "record_count_matches": count_matches,
                 "declared_stats": declared_stats,
