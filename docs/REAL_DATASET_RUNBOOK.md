@@ -117,10 +117,12 @@ For the first DB build, use a dedicated path under Kaggle working storage, and r
 
 Configure a Kaggle API token as an attached notebook secret named KAGGLE_API_TOKEN (or provide KAGGLE_API_TOKEN, ~/.kaggle/access_token, or legacy ~/.kaggle/kaggle.json). The separate GitHub secret cyber repo is not a Kaggle API token. Replace YOUR_KAGGLE_USERNAME with the actual owner. The publish flow validates credentials before beginning the lengthy ingestion. It never passes Kaggle's public flag; the dataset remains private by default.
 
-For future rebuilds, change the action to version while keeping the same OWNER/SLUG:
+For a retry interrupted during ingestion, keep the same manifests and the same DB path; its artifact/page checkpoints allow safe resume. The builder pins all source-manifest digests, so a changed source snapshot is blocked from being mixed into an existing DB.
+
+For an intentional rebuild after any source manifest/version changes, use a new versioned DB path (for example v2) and then publish it as a new Kaggle Dataset version under the same OWNER/SLUG:
 
     python scripts/kaggle_build_knowledge_db.py \
-      --db-path /kaggle/working/ai_cyber_knowledge_v1.sqlite3 \
+      --db-path /kaggle/working/ai_cyber_knowledge_v2.sqlite3 \
       --persist-kaggle-dataset-id YOUR_KAGGLE_USERNAME/ai-cyber-knowledge-db \
       --kaggle-dataset-action version
 
