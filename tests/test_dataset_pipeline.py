@@ -236,3 +236,176 @@ def test_license_artifact_is_hash_checked_but_not_ingested(tmp_path: Path):
     assert result["inserted"] == 1
     from ai_cyber_os.knowledge import status
     assert status(db_path=db)["records"] == 1
+
+
+def test_nvd_manifest_ingestion_uses_nvd_parser_and_checkpoint(tmp_path: Path):
+    import gzip
+    from ai_cyber_os.dataset_pipeline import ingest_manifest
+    from ai_cyber_os.knowledge import search, status
+
+    project = tmp_path
+    raw_dir = project / "datasets" / "raw" / "nvd_cve"
+    manifest_dir = project / "datasets" / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir(parents=True)
+    feed = raw_dir / "nvdcve-2.0-2024.json.gz"
+    payload = {
+        "totalResults": 1,
+        "vulnerabilities": [{
+            "cve": {
+                "id": "CVE-2024-76543",
+                "descriptions": [{"lang": "en", "value": "A remotely exploitable test vulnerability"}],
+                "metrics": {"cvssMetricV31": [{
+                    "type": "Primary",
+                    "cvssData": {"baseScore": 9.8, "baseSeverity": "CRITICAL"},
+                }]},
+            },
+        }],
+    }
+    with gzip.open(feed, "wt", encoding="utf-8") as handle:
+        json.dump(payload, handle)
+    raw_hash = hashlib.sha256(feed.read_bytes()).hexdigest()
+    manifest = manifest_dir / "nvd_cve.json"
+    manifest.write_text(json.dumps({
+        "dataset": "nvd_cve",
+        "version": "NVD-2.0-2024",
+        "source": "NIST NVD",
+        "source_uri": "https://nvd.nist.gov/vuln/data-feeds",
+        "license": "NVD data-feed terms",
+        "schema": {"parser_kind": "nvd"},
+        "artifacts": [{
+            "path": "datasets/raw/nvd_cve/nvdcve-2.0-2024.json.gz",
+            "role": "data",
+            "sha256": raw_hash,
+            "byte_size": feed.stat().st_size,
+            "record_count": 1,
+            "count_kind": "nvd-feed",
+            "version": "NVD-2.0-2024",
+        }],
+    }), encoding="utf-8")
+
+    db = project / "knowledge-v1.sqlite3"
+    first = ingest_manifest(manifest, db_path=db)
+    second = ingest_manifest(manifest, db_path=db)
+
+    hits = search("CVE-2024-76543", db_path=db)
+    assert first["inserted"] == 1
+    assert first["artifact_results"][0]["checkpoint_status"] == "complete"
+    assert second["inserted"] == 0
+    assert second["skipped_artifacts"] == 1
+    assert hits and hits[0]["record_id"] == "CVE-2024-76543"
+    assert hits[0]["source"] == "NIST NVD"
+    assert status(db_path=db)["database_version"] == "ai-cyber-knowledge-v1"
+    assert status(db_path=db)["checkpoints"]["complete"] == 1
+
+
+def test_mbc_manifest_ingestion_deduplicates_stix_ids_and_resumes(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.dataset_pipeline import ingest_manifest
+    from ai_cyber_os.knowledge import open_store, status
+
+    project = tmp_path
+    raw_dir = project / "datasets" / "raw" / "mitre_mbc"
+    manifest_dir = project / "datasets" / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir(parents=True)
+    archive_path = raw_dir / "mbc.tar.gz"
+    malware = {"type": "malware", "id": "malware--same", "name": "Same malware object"}
+    behavior = {"type": "x-mbc-behavior", "id": "x-mbc-behavior--one", "name": "Test behavior"}
+    documents = {
+        "catalog/bundle.json": {"type": "bundle", "id": "bundle--catalog", "objects": [malware, behavior]},
+        "objects/malware.json": malware,
+    }
+    with tarfile.open(archive_path, "w:gz") as archive:
+        for name, document in documents.items():
+            raw = json.dumps(document).encode("utf-8")
+            info = tarfile.TarInfo(name)
+            info.size = len(raw)
+            archive.addfile(info, io.BytesIO(raw))
+    manifest = manifest_dir / "mitre_mbc.json"
+    manifest.write_text(json.dumps({
+        "dataset": "mitre_mbc",
+        "version": "fixture-1",
+        "source": "MITRE MBC fixture",
+        "source_uri": "https://example.invalid/mbc",
+        "license": "fixture",
+        "schema": {"format": "STIX archive"},
+        "artifacts": [{
+            "path": "datasets/raw/mitre_mbc/mbc.tar.gz",
+            "role": "data",
+            "sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+            "byte_size": archive_path.stat().st_size,
+            "record_count": 2,
+            "count_kind": "mbc",
+        }],
+    }), encoding="utf-8")
+
+    db_path = project / "knowledge-v1.sqlite3"
+    result = ingest_manifest(manifest, db_path=db_path)
+    db = open_store(db_path)
+    try:
+        ids = {row["record_id"] for row in db.execute(
+            "SELECT record_id FROM knowledge_records WHERE dataset='mitre_mbc'"
+        )}
+    finally:
+        db.close()
+
+    resumed = ingest_manifest(manifest, db_path=db_path)
+    assert result["inserted"] == 2
+    assert ids == {"malware--same", "x-mbc-behavior--one"}
+    assert resumed["skipped_artifacts"] == 1
+    assert status(db_path=db_path)["records"] == 2
+    assert status(db_path=db_path)["checkpoints"]["complete"] == 1
+
+
+def test_suricata_manifest_ingestion_persists_active_and_disabled_state(tmp_path: Path):
+    import io
+    import tarfile
+    from ai_cyber_os.dataset_pipeline import ingest_manifest
+    from ai_cyber_os.knowledge import open_store
+
+    project = tmp_path
+    raw_dir = project / "datasets" / "raw" / "suricata"
+    manifest_dir = project / "datasets" / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir(parents=True)
+    archive_path = raw_dir / "rules.tar.gz"
+    rules = (
+        "alert tcp any any -> any 80 (msg:\\"active-rule\\"; sid:7001; rev:1;)\\n"
+        "# drop http any any -> any any (msg:\\"disabled-rule\\"; sid:7002; rev:1;)\\n"
+    ).encode("utf-8")
+    with tarfile.open(archive_path, "w:gz") as archive:
+        info = tarfile.TarInfo("rules/example.rules")
+        info.size = len(rules)
+        archive.addfile(info, io.BytesIO(rules))
+    manifest = manifest_dir / "suricata.json"
+    manifest.write_text(json.dumps({
+        "dataset": "suricata",
+        "version": "fixture-1",
+        "source": "Suricata test rules",
+        "source_uri": "https://example.invalid/suricata",
+        "license": "fixture",
+        "schema": {"format": "Suricata archive"},
+        "artifacts": [{
+            "path": "datasets/raw/suricata/rules.tar.gz",
+            "role": "data",
+            "sha256": hashlib.sha256(archive_path.read_bytes()).hexdigest(),
+            "byte_size": archive_path.stat().st_size,
+            "record_count": 2,
+            "count_kind": "suricata",
+        }],
+    }), encoding="utf-8")
+
+    db_path = project / "knowledge-v1.sqlite3"
+    result = ingest_manifest(manifest, db_path=db_path)
+    db = open_store(db_path)
+    try:
+        metadata = [
+            json.loads(row["metadata_json"])
+            for row in db.execute("SELECT metadata_json FROM knowledge_records WHERE dataset='suricata'")
+        ]
+    finally:
+        db.close()
+    assert result["inserted"] == 2
+    assert {row["status"] for row in metadata} == {"active", "disabled"}
