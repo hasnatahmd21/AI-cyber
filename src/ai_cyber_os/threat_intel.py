@@ -375,7 +375,7 @@ def parse_suricata_rules(path: str | Path, *, dataset: str = "suricata-rules",
 
     action_text = "|".join(sorted(_SURICATA_ACTIONS, key=len, reverse=True))
     active_re = re.compile(r"^\s*(" + action_text + r")\s+\S+\s+(?=.*\()")
-    disabled_re = re.compile(r"^\s*#\s*(" + action_text + r")\\s+\\S+\\s+(?=.*\\()")
+    disabled_re = re.compile(r"^\s*#\s*(" + action_text + r")\s+\S+\s+(?=.*\()")
     out: list[dict[str, Any]] = []
 
     def consume_lines(lines: Iterable[str], file_label: str) -> None:
