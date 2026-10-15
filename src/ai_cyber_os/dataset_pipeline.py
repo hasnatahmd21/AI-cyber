@@ -967,13 +967,28 @@ def ingest_manifest_directory(
 
     required = set(str(x) for x in required_datasets)
     missing = sorted(required - names)
+    unexpected = sorted(names - required)
     report["missing_required_datasets"] = missing
+    report["unexpected_dataset_names"] = unexpected
     for dataset in missing:
         row = {
             "dataset": dataset,
             "manifest": "",
             "status": "BLOCKED",
             "evidence": "Required dataset has no real manifest; example.json does not satisfy this requirement.",
+        }
+        preflight_failures.append(row)
+        report["preflight"].append(row)
+
+    for dataset in unexpected:
+        row = {
+            "dataset": dataset,
+            "manifest": "",
+            "status": "BLOCKED",
+            "evidence": (
+                "Dataset is outside the locked first-wave raw-source set. CVSS must be derived "
+                "from NVD in the database build, not ingested from an independent raw manifest."
+            ),
         }
         preflight_failures.append(row)
         report["preflight"].append(row)
