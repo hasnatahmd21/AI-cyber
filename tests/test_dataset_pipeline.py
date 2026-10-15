@@ -624,8 +624,10 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
         assert artifact["sha256"] == hashlib.sha256((upload_dir / "knowledge-v1.sqlite3").read_bytes()).hexdigest()
         assert artifact["source_manifest_count"] == 1
         assert artifact["source_manifest_sha256"]["nvd_cve.json"] == hashlib.sha256(real_manifest.read_bytes()).hexdigest()
-        assert json.loads((upload_dir / "source-manifests" / "nvd_cve.json").read_text())["dataset"] == "nvd_cve"
-        assert not (upload_dir / "source-manifests" / "example.json").exists()
+        copied_manifest_name = artifact["source_manifest_files"]["nvd_cve.json"]
+        assert copied_manifest_name.startswith("source-manifest-")
+        assert json.loads((upload_dir / copied_manifest_name).read_text())["dataset"] == "nvd_cve"
+        assert not (upload_dir / "source-manifest-example.json").exists()
         assert (upload_dir / "source-readiness-report.json").read_text() == source_readiness_report.read_text()
         assert artifact["source_readiness_report_sha256"] == hashlib.sha256(source_readiness_report.read_bytes()).hexdigest()
         assert "never-include-this-in-output" not in uploaded_report
