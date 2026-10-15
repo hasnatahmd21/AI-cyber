@@ -154,3 +154,85 @@ def test_multi_artifact_manifest_rejects_path_escape(tmp_path: Path):
     }), encoding="utf-8")
     with pytest.raises(ValueError, match="remain inside the project"):
         inspect_dataset(manifest)
+
+
+
+def test_xml_catalog_counts_only_manifest_entity_elements(tmp_path: Path):
+    from ai_cyber_os.knowledge import iter_records
+
+    xml = """<Catalog><Attack_Patterns>
+      <Attack_Pattern ID="1"><Name>one</Name><Description><Text>details</Text></Description></Attack_Pattern>
+      <Attack_Pattern ID="2"><Name>two</Name></Attack_Pattern>
+    </Attack_Patterns><Categories><Category ID="C1"><Name>cat</Name></Category></Categories>
+    </Catalog>"""
+    path = tmp_path / "catalog.xml"
+    path.write_text(xml, encoding="utf-8")
+    rows = list(iter_records(path, record_elements=["Attack_Pattern", "Category"]))
+    assert len(rows) == 3
+    assert all("Attack_Pattern" in row["content"] or "Category" in row["content"]
+               for row in rows)
+    assert "details" in rows[0]["content"]
+
+
+def test_gzip_csv_skips_leading_metadata_and_counts_data_rows(tmp_path: Path):
+    import gzip
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "scores.csv.gz"
+    with gzip.open(path, "wt", encoding="utf-8") as handle:
+        handle.write("#model_version:v1,score_date:2026-10-01\n")
+        handle.write("cve,epss,percentile\n")
+        handle.write("CVE-2026-1,0.1,0.9\n")
+        handle.write("CVE-2026-2,0.2,0.8\n")
+    rows = list(iter_records(path))
+    assert len(rows) == 2
+    assert "CVE-2026-1" in rows[0]["content"]
+
+
+def test_sigma_archive_schema_excludes_version_text(tmp_path: Path):
+    import zipfile
+    from ai_cyber_os.knowledge import iter_records
+
+    path = tmp_path / "rules.zip"
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("rules/one.yml", "title: one\n")
+        archive.writestr("rules/two.yml", "title: two\n")
+        archive.writestr("version.txt", "r1\n")
+    rows = list(iter_records(path, record_extensions={".yml", ".yaml"}))
+    assert len(rows) == 2
+
+
+def test_license_artifact_is_hash_checked_but_not_ingested(tmp_path: Path):
+    data_dir = tmp_path / "datasets"
+    raw_dir = data_dir / "raw"
+    manifest_dir = data_dir / "manifests"
+    raw_dir.mkdir(parents=True)
+    manifest_dir.mkdir()
+    data = '{"items":[{"id":"K-1","title":"fixture"}]}'
+    license_text = "license text"
+    (raw_dir / "data.json").write_text(data, encoding="utf-8")
+    (raw_dir / "LICENSE.txt").write_text(license_text, encoding="utf-8")
+    manifest = manifest_dir / "fixture.json"
+    manifest.write_text(json.dumps({
+        "dataset": "fixture", "version": "1", "source": "test",
+        "source_uri": "fixture://source", "license": "test",
+        "schema": {"format": "json"},
+        "artifacts": [
+            {"path": "datasets/raw/data.json",
+             "sha256": hashlib.sha256(data.encode()).hexdigest(),
+             "record_count": 1, "role": "data"},
+            {"path": "datasets/raw/LICENSE.txt",
+             "sha256": hashlib.sha256(license_text.encode()).hexdigest(),
+             "record_count": None, "role": "license"}
+        ]
+    }), encoding="utf-8")
+    inspected = inspect_dataset(manifest)
+    assert inspected["ready"] is True
+    assert inspected["records"] == 1
+    assert inspected["artifacts"][1]["sha256_matches"] is True
+    assert inspected["artifacts"][1]["records"] == 0
+    db = tmp_path / "knowledge.db"
+    result = ingest_manifest(manifest, db_path=db)
+    assert result["inserted"] == 1
+    from ai_cyber_os.knowledge import status
+    assert status(db_path=db)["records"] == 1
