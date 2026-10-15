@@ -595,5 +595,152 @@ def ingest_manifest(
     }
 
 
+DEFAULT_REQUIRED_DATASETS = (
+    "capec", "cisa_kev", "cpe", "cwe", "epss", "mitre_attack",
+    "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel", "nvd_cve",
+)
+
+
+def ingest_manifest_directory(
+    manifests_dir: str | Path,
+    *,
+    db_path: str | Path,
+    required_datasets: tuple[str, ...] | list[str] = DEFAULT_REQUIRED_DATASETS,
+    require_checksum: bool = True,
+) -> dict[str, Any]:
+    """Preflight every requested dataset before creating/modifying the DB.
+
+    The example.json placeholder is always ignored. If even one required
+    manifest or artifact is missing or fails integrity/count checks, ingestion
+    does not start. Once preflight passes, artifacts are ingested with
+    checkpoints and can be resumed idempotently after a restart.
+    """
+    root = Path(manifests_dir).expanduser().resolve()
+    db_file = Path(db_path).expanduser().resolve()
+    report: dict[str, Any] = {
+        "success": False,
+        "ready": False,
+        "ingestion_performed": False,
+        "database_created_before_run": db_file.exists(),
+        "manifests_dir": str(root),
+        "db_path": str(db_file),
+        "required_datasets": sorted(set(str(x) for x in required_datasets)),
+        "preflight": [],
+        "results": [],
+        "missing_required_datasets": [],
+    }
+    if not root.is_dir():
+        report["overall"] = "BLOCKED"
+        report["evidence"] = f"Manifest directory does not exist: {root}"
+        return report
+
+    files = sorted(
+        path for path in root.rglob("*.json")
+        if path.is_file() and path.name.casefold() != "example.json"
+    )
+    loaded: list[tuple[Path, dict[str, Any]]] = []
+    preflight_failures: list[dict[str, Any]] = []
+    names: set[str] = set()
+    for manifest_path in files:
+        try:
+            manifest = load_manifest(manifest_path)
+            dataset = str(manifest.get("dataset") or manifest_path.stem)
+            names.add(dataset)
+            inspection = inspect_dataset(manifest_path)
+            row = {
+                "dataset": dataset,
+                "manifest": str(manifest_path),
+                "status": "PASS" if inspection.get("ready") is True else "FAIL",
+                "inspection": inspection,
+            }
+            if row["status"] != "PASS":
+                row["evidence"] = "SHA-256, byte-size and/or record-count validation failed."
+                preflight_failures.append(row)
+            loaded.append((manifest_path, manifest))
+            report["preflight"].append(row)
+        except FileNotFoundError as exc:
+            row = {
+                "dataset": manifest_path.stem,
+                "manifest": str(manifest_path),
+                "status": "BLOCKED",
+                "evidence": f"Required artifact missing: {exc}",
+            }
+            preflight_failures.append(row)
+            report["preflight"].append(row)
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            message = f"{type(exc).__name__}: {exc}"
+            blocked = "missing" in str(exc).casefold() or "git lfs pointer" in str(exc).casefold()
+            row = {
+                "dataset": manifest_path.stem,
+                "manifest": str(manifest_path),
+                "status": "BLOCKED" if blocked else "FAIL",
+                "evidence": message,
+            }
+            preflight_failures.append(row)
+            report["preflight"].append(row)
+
+    required = set(str(x) for x in required_datasets)
+    missing = sorted(required - names)
+    report["missing_required_datasets"] = missing
+    for dataset in missing:
+        row = {
+            "dataset": dataset,
+            "manifest": "",
+            "status": "BLOCKED",
+            "evidence": "Required dataset has no real manifest; example.json does not satisfy this requirement.",
+        }
+        preflight_failures.append(row)
+        report["preflight"].append(row)
+
+    if preflight_failures:
+        report["overall"] = "FAIL" if any(row["status"] == "FAIL" for row in preflight_failures) else "BLOCKED"
+        report["evidence"] = "Preflight failed; no manifest was ingested and the target database was not opened."
+        report["preflight_failures"] = preflight_failures
+        return report
+
+    report["ready"] = True
+    report["preflight_passed"] = len(loaded)
+    total_inserted = total_updated = total_duplicates = 0
+    for manifest_path, manifest in loaded:
+        dataset = str(manifest.get("dataset") or manifest_path.stem)
+        try:
+            result = ingest_manifest(
+                manifest_path, db_path=db_file, require_checksum=require_checksum
+            )
+            report["results"].append({"dataset": dataset, **result})
+            total_inserted += int(result.get("inserted", 0))
+            total_updated += int(result.get("updated", 0))
+            total_duplicates += int(result.get("duplicates", 0))
+        except Exception as exc:
+            report["results"].append({
+                "dataset": dataset,
+                "success": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            })
+            report["overall"] = "FAIL"
+            report["evidence"] = (
+                "Ingestion failed after preflight. Completed artifacts are checkpointed; "
+                "rerun the same command to resume safely."
+            )
+            report["ingestion_performed"] = True
+            report["inserted"] = total_inserted
+            report["updated"] = total_updated
+            report["duplicates"] = total_duplicates
+            report["store_status"] = status(db_path=db_file) if db_file.exists() else None
+            return report
+
+    report.update({
+        "success": True,
+        "overall": "PASS",
+        "ingestion_performed": True,
+        "inserted": total_inserted,
+        "updated": total_updated,
+        "duplicates": total_duplicates,
+        "evidence": "All required sources passed preflight and ingestion completed through the configured DB path.",
+        "store_status": status(db_path=db_file),
+    })
+    return report
+
+
 def verify_store(db_path: str | Path) -> dict[str, Any]:
     return status(db_path=db_path)
