@@ -621,15 +621,18 @@ def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> 
     from .knowledge import open_store
     db.close()
     db = open_store(db_path)
-    inserted = updated = duplicates = 0
+    inserted = updated = duplicates = processed_records = 0
     try:
         for record in records:
+            processed_records += 1
             old = db.execute(
                 "SELECT record_id, dataset, content_sha256 FROM knowledge_records WHERE record_id=?",
                 (record["record_id"],),
             ).fetchone()
             if old and old["content_sha256"] == record["content_sha256"] and old["dataset"] == record["dataset"]:
                 duplicates += 1
+                if processed_records % 1000 == 0:
+                    db.commit()
                 continue
             if old and old["dataset"] != record["dataset"]:
                 base_id = record["record_id"]
@@ -645,6 +648,8 @@ def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> 
                 ).fetchone()
                 if old and old["content_sha256"] == record["content_sha256"]:
                     duplicates += 1
+                    if processed_records % 1000 == 0:
+                        db.commit()
                     continue
             if old:
                 updated += 1
@@ -673,11 +678,13 @@ def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> 
             )
             from .knowledge import _index_chunks
             _index_chunks(db, record)
+            if processed_records % 1000 == 0:
+                db.commit()
         db.commit()
     finally:
         db.close()
-    return {"records": inserted + updated + duplicates, "inserted": inserted,
-            "updated": updated, "duplicates": duplicates}
+    return {"records": inserted + updated + duplicates, "processed_records": processed_records,
+            "inserted": inserted, "updated": updated, "duplicates": duplicates}
 
 
 def ingest_source(kind: str, path: str | Path, *, db_path: str | Path,
