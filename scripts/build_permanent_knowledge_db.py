@@ -70,7 +70,7 @@ def resumable_download_to(url: str, target: Path, *, retries: int = 5, timeout: 
                 received = 0
                 with part.open(mode) as output:
                     while True:
-                        block = response.read(CHUNK)
+                        block = response.read1(CHUNK) if hasattr(response, "read1") else response.read(CHUNK)
                         if not block:
                             break
                         output.write(block)
