@@ -138,9 +138,14 @@ def inspect(root: Path, *, deep: bool = True) -> dict[str, Any]:
 
     eligible = [row for row in manifest_results if row["status"] != "TEMPLATE_EXCLUDED"]
     readiness = bool(eligible) and all(row["ready"] for row in eligible) and not lfs_paths
+    inventory = {"files": len(files), "bytes": total_bytes, "files_detail": files}
+    # Compatibility keys retained for callers of the original inventory-only API.
     return {
         "root": str(root),
-        "inventory": {"files": len(files), "bytes": total_bytes, "files_detail": files},
+        "files": len(files),
+        "bytes": total_bytes,
+        "files_detail": files,
+        "inventory": inventory,
         "git_lfs_pointer_paths": lfs_paths,
         "manifests": {
             "found": len(manifest_results),
