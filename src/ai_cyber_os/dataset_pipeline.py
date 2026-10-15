@@ -595,6 +595,249 @@ def ingest_manifest(
     }
 
 
+def derive_cvss_from_nvd_database(
+    db_path: str | Path,
+    *,
+    manifest_path: str | Path,
+    batch_size: int = 2000,
+) -> dict[str, Any]:
+    """Create deterministic CVSS metric records from ingested NVD CVE records.
+
+    Records are derived only from the NVD evidence already indexed in this DB.
+    Keyset pagination bounds memory use; each page is checkpointed by the source
+    manifest digest and the exact page's content hashes, so restarts skip pages
+    already derived from the same source evidence.
+    """
+    if isinstance(batch_size, bool) or batch_size < 1:
+        raise ValueError("batch_size must be a positive integer")
+    from .knowledge import _normalize
+    from .threat_intel import ingest_parsed
+
+    manifest_file = Path(manifest_path).resolve()
+    if not manifest_file.is_file():
+        raise FileNotFoundError(manifest_file)
+    manifest_sha = sha256_file(manifest_file)
+    db_file = Path(db_path).expanduser().resolve()
+    counts = {
+        "source_records_scanned": 0,
+        "cvss_metrics_found": 0,
+        "inserted": 0,
+        "updated": 0,
+        "duplicates": 0,
+        "checkpoint_batches_skipped": 0,
+        "checkpoint_batches_completed": 0,
+    }
+    last_record_id = ""
+    while True:
+        db = open_store(db_file)
+        try:
+            rows = db.execute(
+                """SELECT record_id, dataset, source, source_uri, license, version,
+                          validation_status, content_sha256, metadata_json
+                   FROM knowledge_records
+                   WHERE dataset='nvd_cve' AND record_id>?
+                   ORDER BY record_id LIMIT ?""",
+                (last_record_id, batch_size),
+            ).fetchall()
+            page = [dict(row) for row in rows]
+        finally:
+            db.close()
+        if not page:
+            break
+
+        source_hash_material = "\n".join(
+            f"{row['record_id']}\0{row['content_sha256']}" for row in page
+        )
+        page_sha = hashlib.sha256(source_hash_material.encode("utf-8")).hexdigest()
+        first_id = str(page[0]["record_id"])
+        final_id = str(page[-1]["record_id"])
+        checkpoint_path = f"derived:cvss:{first_id}:{final_id}"
+
+        derived: list[dict[str, Any]] = []
+        for row in page:
+            counts["source_records_scanned"] += 1
+            try:
+                metadata = json.loads(row["metadata_json"])
+            except (TypeError, json.JSONDecodeError) as exc:
+                raise ValueError(f"invalid NVD metadata_json for {row['record_id']}: {exc}") from exc
+            cve_id = str(
+                metadata.get("id")
+                or metadata.get("external_id")
+                or row["record_id"].rsplit(":", 1)[-1]
+            )
+            metrics = metadata.get("metrics") or {}
+            if not isinstance(metrics, dict):
+                continue
+            for metric_key in sorted(metrics):
+                if not str(metric_key).casefold().startswith("cvssmetric"):
+                    continue
+                metric_rows = metrics[metric_key]
+                if isinstance(metric_rows, dict):
+                    metric_rows = [metric_rows]
+                if not isinstance(metric_rows, list):
+                    continue
+                for metric in metric_rows:
+                    if not isinstance(metric, dict):
+                        continue
+                    cvss_data = metric.get("cvssData")
+                    if not isinstance(cvss_data, dict) or not cvss_data:
+                        continue
+                    suffix = str(metric_key).casefold().replace("cvssmetricv", "")
+                    fallback_version = {
+                        "2": "2.0", "20": "2.0", "30": "3.0",
+                        "31": "3.1", "40": "4.0",
+                    }.get(suffix, suffix)
+                    cvss_version = str(cvss_data.get("version") or fallback_version)
+                    metric_type = str(metric.get("type") or "unspecified").casefold()
+                    metric_source = str(metric.get("source") or metric.get("sourceIdentifier") or "unspecified")
+                    vector = str(cvss_data.get("vectorString") or "")
+                    stable_payload = json.dumps(
+                        {
+                            "metric_key": metric_key,
+                            "version": cvss_version,
+                            "type": metric_type,
+                            "source": metric_source,
+                            "cvss_data": cvss_data,
+                        },
+                        ensure_ascii=False, sort_keys=True, separators=(",", ":"), default=str,
+                    )
+                    fingerprint = hashlib.sha256(stable_payload.encode("utf-8")).hexdigest()[:16]
+                    record_id = f"cvss:{cve_id}:{cvss_version}:{fingerprint}"
+                    evidence = {
+                        "cve_id": cve_id,
+                        "cvss_version": cvss_version,
+                        "metric_type": metric_type,
+                        "metric_source": metric_source,
+                        "base_score": cvss_data.get("baseScore"),
+                        "base_severity": cvss_data.get("baseSeverity"),
+                        "vector_string": vector,
+                        "cvss_data": cvss_data,
+                        "metric_summary": {
+                            key: metric.get(key)
+                            for key in ("exploitabilityScore", "impactScore", "source", "type", "version")
+                            if key in metric
+                        },
+                        "derived_from_dataset": "nvd_cve",
+                        "derived_from_record_id": row["record_id"],
+                        "derived_from_content_sha256": row["content_sha256"],
+                    }
+                    raw = {
+                        "id": record_id,
+                        "title": f"{cve_id} CVSS {cvss_version} {metric_type}",
+                        "content": json.dumps(
+                            evidence, ensure_ascii=False, sort_keys=True, default=str
+                        ),
+                        "cve_id": cve_id,
+                        "cvss_version": cvss_version,
+                        "metric_type": metric_type,
+                        "metric_source": metric_source,
+                        "base_score": cvss_data.get("baseScore"),
+                        "base_severity": cvss_data.get("baseSeverity"),
+                        "vector_string": vector,
+                        "derived_from_record_id": row["record_id"],
+                        "derived_from_content_sha256": row["content_sha256"],
+                    }
+                    derived.append(_normalize(
+                        raw,
+                        dataset="cvss",
+                        source="NVD CVSS metrics derived from NVD CVE 2.0",
+                        source_uri=str(row.get("source_uri") or ""),
+                        license=str(row.get("license") or ""),
+                        version=str(row.get("version") or ""),
+                        validation_status=str(row.get("validation_status") or "unverified"),
+                    ))
+        counts["cvss_metrics_found"] += len(derived)
+
+        existing = _checkpoint_read(
+            db_file,
+            manifest_path=str(manifest_file),
+            manifest_sha256=manifest_sha,
+            artifact_path=checkpoint_path,
+            artifact_sha256=page_sha,
+        )
+        if (
+            existing
+            and existing["status"] == "complete"
+            and int(existing["expected_records"]) == len(derived)
+            and int(existing["processed_records"]) == len(derived)
+        ):
+            counts["checkpoint_batches_skipped"] += 1
+            last_record_id = final_id
+            continue
+
+        _checkpoint_write(
+            db_file,
+            manifest_path=str(manifest_file),
+            manifest_sha256=manifest_sha,
+            artifact_path=checkpoint_path,
+            artifact_sha256=page_sha,
+            dataset="cvss",
+            status_value="running",
+            expected_records=len(derived),
+        )
+        try:
+            outcome = ingest_parsed(derived, db_path=db_file) if derived else {
+                "records": 0, "processed_records": 0, "inserted": 0, "updated": 0, "duplicates": 0,
+            }
+            if int(outcome.get("processed_records", outcome.get("records", 0))) != len(derived):
+                raise ValueError(
+                    f"CVSS derivation ingested {outcome.get('processed_records')} records, "
+                    f"expected {len(derived)}"
+                )
+            _checkpoint_write(
+                db_file,
+                manifest_path=str(manifest_file),
+                manifest_sha256=manifest_sha,
+                artifact_path=checkpoint_path,
+                artifact_sha256=page_sha,
+                dataset="cvss",
+                status_value="complete",
+                expected_records=len(derived),
+                processed_records=len(derived),
+                inserted_records=int(outcome.get("inserted", 0)),
+                updated_records=int(outcome.get("updated", 0)),
+                duplicate_records=int(outcome.get("duplicates", 0)),
+            )
+            counts["inserted"] += int(outcome.get("inserted", 0))
+            counts["updated"] += int(outcome.get("updated", 0))
+            counts["duplicates"] += int(outcome.get("duplicates", 0))
+            counts["checkpoint_batches_completed"] += 1
+        except Exception as exc:
+            _checkpoint_write(
+                db_file,
+                manifest_path=str(manifest_file),
+                manifest_sha256=manifest_sha,
+                artifact_path=checkpoint_path,
+                artifact_sha256=page_sha,
+                dataset="cvss",
+                status_value="failed",
+                expected_records=len(derived),
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            raise
+        last_record_id = final_id
+
+    db = open_store(db_file)
+    try:
+        derived_count = int(db.execute(
+            "SELECT COUNT(*) FROM knowledge_records WHERE dataset='cvss'"
+        ).fetchone()[0])
+        db.execute(
+            "INSERT INTO knowledge_meta(key,value) VALUES('cvss_derivation_status','complete') "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+        )
+        db.execute(
+            "INSERT INTO knowledge_meta(key,value) VALUES('cvss_derived_records',?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+            (str(derived_count),),
+        )
+        db.commit()
+    finally:
+        db.close()
+    counts["derived_records_in_database"] = derived_count
+    return counts
+
+
 DEFAULT_REQUIRED_DATASETS = (
     "capec", "cisa_kev", "cpe", "cwe", "epss", "mitre_attack",
     "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel", "nvd_cve",
