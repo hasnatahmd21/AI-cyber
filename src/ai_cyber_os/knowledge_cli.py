@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from .knowledge import DEFAULT_DB, ingest_file, search, status
-from .dataset_pipeline import ingest_manifest, inspect_dataset
+from .dataset_pipeline import ingest_manifest, ingest_manifest_directory, inspect_dataset
 from .intelligence import correlate
 from .threat_intel import ingest_source, PARSERS
 from .rag import build_context
@@ -37,6 +37,14 @@ def main(argv: list[str] | None = None) -> int:
     manifest.add_argument("path")
     manifest.add_argument("--no-checksum", action="store_true", default=False)
 
+    manifest_dir = sub.add_parser("ingest-manifest-dir")
+    manifest_dir.add_argument("path", help="Directory containing real dataset manifests")
+    manifest_dir.add_argument(
+        "--require", action="append", default=[], metavar="DATASET",
+        help="Required dataset name (repeatable); omit to use the locked 12-source set",
+    )
+    manifest_dir.add_argument("--no-checksum", action="store_true", default=False)
+
     inspect = sub.add_parser("inspect-manifest")
     inspect.add_argument("path")
 
@@ -66,6 +74,11 @@ def main(argv: list[str] | None = None) -> int:
                                license=args.license, validation_status=args.validation_status)
     elif args.command == "ingest-manifest":
         result = ingest_manifest(args.path, db_path=args.db, require_checksum=not args.no_checksum)
+    elif args.command == "ingest-manifest-dir":
+        options = {"require_checksum": not args.no_checksum}
+        if args.require:
+            options["required_datasets"] = tuple(args.require)
+        result = ingest_manifest_directory(args.path, db_path=args.db, **options)
     elif args.command == "inspect-manifest":
         result = inspect_dataset(args.path)
     elif args.command == "correlate":
