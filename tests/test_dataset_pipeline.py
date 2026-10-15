@@ -825,3 +825,71 @@ def test_cwe_manifest_ingestion_indexes_canonical_ids_and_provenance(tmp_path: P
     resumed = ingest_manifest(manifest, db_path=db_path)
     assert resumed["skipped_artifacts"] == 1
     assert len(search("CWE-79", db_path=db_path, dataset="cwe")) == 1
+
+
+def test_core_query_smoke_test_checks_cve_cwe_attack_and_citations_in_new_process(tmp_path: Path):
+    from scripts.kaggle_build_knowledge_db import core_query_smoke_test
+    from ai_cyber_os.knowledge import ingest_file
+
+    source = tmp_path / "core-evidence.jsonl"
+    records = [
+        {
+            "id": "CVE-2021-44228",
+            "title": "Log4Shell CVE fixture",
+            "content": "Critical remote code execution vulnerability evidence",
+            "source": "NVD fixture",
+            "source_uri": "https://example.invalid/nvd",
+            "license": "fixture",
+            "version": "nvd-fixture",
+            "validation_status": "fixture-validated",
+        },
+        {
+            "id": "CWE-79",
+            "title": "CWE-79 cross-site scripting",
+            "content": "Improper neutralization of input during web page generation",
+            "source": "CWE fixture",
+            "source_uri": "https://example.invalid/cwe",
+            "license": "fixture",
+            "version": "cwe-fixture",
+            "validation_status": "fixture-validated",
+        },
+        {
+            "id": "T1059.001",
+            "title": "PowerShell",
+            "content": "ATT&CK technique T1059.001 PowerShell command and scripting interpreter",
+            "source": "ATT&CK fixture",
+            "source_uri": "https://example.invalid/attack",
+            "license": "fixture",
+            "version": "attack-fixture",
+            "validation_status": "fixture-validated",
+        },
+    ]
+    source.write_text("".join(json.dumps(row) + "\n" for row in records), encoding="utf-8")
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+    for dataset, record in zip(("nvd_cve", "cwe", "mitre_attack"), records):
+        one = tmp_path / f"{dataset}.jsonl"
+        one.write_text(json.dumps(record) + "\n", encoding="utf-8")
+        ingest_file(
+            one,
+            db_path=db_path,
+            dataset=dataset,
+            source=record["source"],
+            source_uri=record["source_uri"],
+            license=record["license"],
+            version=record["version"],
+            validation_status=record["validation_status"],
+        )
+
+    result = core_query_smoke_test(
+        db_path, "CVE-2021-44228", "CWE-79", "T1059.001"
+    )
+    assert Path(result["default_db"]).resolve() == db_path.resolve()
+    assert result["status"]["records"] == 3
+    assert set(result["queries"]) == {"cve", "cwe", "attack"}
+    for family in ("cve", "cwe", "attack"):
+        query = result["queries"][family]
+        assert query["count"] == 1
+        assert query["success"] is True
+        assert query["evidence_only"] is True
+        assert query["has_citations"] is True
+        assert query["evidence"][0]["source_uri"].startswith("https://example.invalid/")
