@@ -899,6 +899,7 @@ def ingest_manifest_directory(
         "ready": False,
         "ingestion_performed": False,
         "database_created_before_run": db_file.exists(),
+        "database_resume_status": None,
         "manifests_dir": str(root),
         "db_path": str(db_file),
         "required_datasets": sorted(set(str(x) for x in required_datasets)),
