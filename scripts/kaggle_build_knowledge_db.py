@@ -313,6 +313,35 @@ def persist_via_kaggle_dataset(
         safe_report["permanent_persistence"] = "PUBLISH_REQUESTED"
         safe_report["database_path_in_artifact"] = db_upload.name
         write_json(upload_dir / "knowledge-db-build-report.json", safe_report)
+
+        # Preserve the exact manifests and source-readiness report beside the
+        # DB. This keeps the data-source checksum/count evidence portable after
+        # the notebook checkout or Kaggle working directory is gone.
+        source_manifest_hashes: dict[str, str] = {}
+        manifests_root_value = report_data.get("manifests_dir")
+        if manifests_root_value:
+            manifests_root = Path(str(manifests_root_value)).expanduser().resolve()
+            if manifests_root.is_dir():
+                copied_manifests = upload_dir / "source-manifests"
+                for manifest_file in sorted(manifests_root.rglob("*.json")):
+                    if not manifest_file.is_file() or manifest_file.name.casefold() == "example.json":
+                        continue
+                    relative = manifest_file.relative_to(manifests_root)
+                    target = copied_manifests / relative
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(manifest_file, target)
+                    source_manifest_hashes[relative.as_posix()] = sha256_file(target)
+
+        readiness_report_copy = None
+        readiness_report_sha256 = None
+        readiness_report_value = report_data.get("source_readiness_report")
+        if readiness_report_value:
+            readiness_report_source = Path(str(readiness_report_value)).expanduser().resolve()
+            if readiness_report_source.is_file():
+                readiness_report_copy = upload_dir / "source-readiness-report.json"
+                shutil.copy2(readiness_report_source, readiness_report_copy)
+                readiness_report_sha256 = sha256_file(readiness_report_copy)
+
         write_json(upload_dir / "database-artifact-manifest.json", {
             "artifact_version": "ai-cyber-knowledge-v1",
             "database_file": db_upload.name,
@@ -321,12 +350,12 @@ def persist_via_kaggle_dataset(
             "records": record_count,
             "schema_version": meta.get("schema_version", ""),
             "database_version": meta.get("database_version", ""),
-            "source_readiness_report_sha256": (
-                sha256_file(Path(report_data["source_readiness_report"]))
-                if report_data.get("source_readiness_report")
-                and Path(report_data["source_readiness_report"]).is_file()
-                else None
+            "source_readiness_report": (
+                readiness_report_copy.name if readiness_report_copy else None
             ),
+            "source_readiness_report_sha256": readiness_report_sha256,
+            "source_manifest_count": len(source_manifest_hashes),
+            "source_manifest_sha256": source_manifest_hashes,
             "license_model": (
                 "Mixed-source database. The Kaggle dataset uses the 'other' metadata label; "
                 "this does not relicense upstream records. See per-record provenance/license fields."
@@ -477,6 +506,8 @@ def main(argv: list[str] | None = None) -> int:
         "repository": "hasnatahmd21/AI-cyber",
         "branch": args.branch,
         "database_path": str(db_path),
+        "raw_root": str(raw_root),
+        "manifests_dir": str(manifests_dir),
         "database_version": "ai-cyber-knowledge-v1",
         "required_datasets": sorted(set(args.require or DEFAULT_REQUIRED)),
         "ingestion_performed": False,
