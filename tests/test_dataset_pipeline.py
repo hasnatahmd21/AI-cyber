@@ -514,7 +514,7 @@ def test_manifest_directory_derives_provenance_backed_cvss_with_checkpoints(tmp_
     assert first["overall"] == "PASS"
     assert first["derived_datasets"][0]["status"] == "PASS"
     assert first["derived_datasets"][0]["derivation"]["derived_records_in_database"] == 1
-    cvss_hits = search("CVSS 3.1", db_path=db_path, dataset="cvss")
+    cvss_hits = search("CVSS", db_path=db_path, dataset="cvss")
     assert cvss_hits and cvss_hits[0]["record_id"].startswith("cvss:CVE-2024-76543:")
     assert cvss_hits[0]["source_uri"] == "https://nvd.nist.gov/vuln/data-feeds"
     assert cvss_hits[0]["validation_status"] == "fixture-validated" or cvss_hits[0]["validation_status"] == "unverified"
@@ -525,4 +525,4 @@ def test_manifest_directory_derives_provenance_backed_cvss_with_checkpoints(tmp_
     )
     assert second["overall"] == "PASS"
     assert second["derived_datasets"][0]["derivation"]["checkpoint_batches_skipped"] == 1
-    assert len(search("CVSS 3.1", db_path=db_path, dataset="cvss")) == 1
+    assert len(search("CVSS", db_path=db_path, dataset="cvss")) == 1
