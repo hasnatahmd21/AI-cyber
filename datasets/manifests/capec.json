@@ -31,10 +31,10 @@
   "execution_status": "acquired",
   "ingestion_status": "pending",
   "license": "MITRE CAPEC Terms of Use (free use with copyright notice)",
-  "license_basis": "declared by script; verify at URL",
+  "license_basis": "Official CAPEC Terms of Use reviewed 2026-10-17; copies must preserve MITRE's copyright designation and terms notice.",
   "license_files": [],
   "license_url": "https://capec.mitre.org/about/termsofuse.html",
-  "license_verified": false,
+  "license_verified": true,
   "local_path": "datasets/raw/capec/capec_v3.9.xml",
   "manifest_format": 1,
   "provenance": {
