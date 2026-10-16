@@ -385,16 +385,6 @@ def _split_if_needed(path: Path, max_bytes: int) -> list[Path]:
     return parts
 
 
-def _bundle_manifests(manifest_dir: Path, archive_path: Path) -> None:
-    with tarfile.open(archive_path, "w:gz") as archive:
-        readme = manifest_dir / "README.md"
-        if readme.is_file():
-            archive.add(readme, arcname="manifests/README.md", recursive=False)
-        for path in sorted(manifest_dir.glob("*.json")):
-            if path.name.casefold() != "example.json":
-                archive.add(path, arcname=f"manifests/{path.name}", recursive=False)
-
-
 def package_release(
     *,
     db_path: str | Path,
