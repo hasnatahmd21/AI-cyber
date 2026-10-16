@@ -4,6 +4,7 @@ import gzip
 import hashlib
 import importlib.util
 import json
+import sqlite3
 import tarfile
 from pathlib import Path
 
