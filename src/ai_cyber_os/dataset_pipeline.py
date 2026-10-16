@@ -803,10 +803,13 @@ def derive_cvss_from_nvd_database(
                         or source_row["record_id"].rsplit(":", 1)[-1]
                     )
                     expected = expected_ids_by_cve.get(canonical_cve, set())
+                    # Use the record_id primary-key index to avoid a full scan of every
+                    # CVSS record for each of the hundreds of thousands of source CVEs.
+                    prefix = f"cvss:{canonical_cve}:"
                     stale_rows = db.execute(
                         "SELECT record_id FROM knowledge_records "
-                        "WHERE dataset='cvss' AND record_id LIKE ?",
-                        (f"cvss:{canonical_cve}:%",),
+                        "WHERE record_id >= ? AND record_id < ? AND dataset='cvss'",
+                        (prefix, prefix + "\U0010ffff"),
                     ).fetchall()
                     for stale in stale_rows:
                         stale_id = str(stale["record_id"])
