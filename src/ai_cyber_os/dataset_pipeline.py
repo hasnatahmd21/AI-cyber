@@ -806,12 +806,18 @@ def derive_cvss_from_nvd_database(
                     # Use the record_id primary-key index to avoid a full scan of every
                     # CVSS record for each of the hundreds of thousands of source CVEs.
                     prefix = f"cvss:{canonical_cve}:"
+                    # Keep the range predicate on record_id alone so SQLite uses
+                    # its primary-key index instead of scanning the whole CVSS dataset index.
                     stale_rows = db.execute(
-                        "SELECT record_id FROM knowledge_records "
-                        "WHERE record_id >= ? AND record_id < ? AND dataset='cvss'",
+                        "SELECT record_id, dataset FROM knowledge_records "
+                        "WHERE record_id >= ? AND record_id < ?",
                         (prefix, prefix + "\U0010ffff"),
                     ).fetchall()
                     for stale in stale_rows:
+                        # IDs are globally unique, but another dataset may supply a
+                        # colliding literal ID; only delete derived CVSS evidence.
+                        if str(stale["dataset"]) != "cvss":
+                            continue
                         stale_id = str(stale["record_id"])
                         if stale_id in expected:
                             continue
