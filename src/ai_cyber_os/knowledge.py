@@ -480,8 +480,10 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
                 for item in _iter_json_value(raw):
                     yield normalized(item, src)
             elif inner_suffix == ".xml":
-                for value in _iter_xml_values(handle, selected_elements):
-                    yield normalized(value, src)
+                # ElementTree should receive the original byte stream for XML encoding declarations.
+                with gzip.open(p, "rb") as xml_handle:
+                    for value in _iter_xml_values(xml_handle, selected_elements):
+                        yield normalized(value, src)
             else:
                 yield normalized(handle.read(), src)
         return
