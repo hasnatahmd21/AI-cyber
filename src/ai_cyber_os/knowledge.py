@@ -676,15 +676,31 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
 
         if not best_scores and not exact_ids:
             return []
-        if dataset is not None:
-            allowed = {
-                row["record_id"]
-                for row in db.execute(
-                    "SELECT record_id FROM knowledge_records WHERE dataset=?",
-                    (dataset,),
+        if dataset is not None and ranked_ids:
+            # Do not materialize every record ID in a dataset just to filter a
+            # small search result. CPE alone can contain ~1.85M records, making
+            # the previous dataset-wide SELECT expensive for every filtered query.
+            # Walk the already-ranked candidates in bounded batches and stop as
+            # soon as enough matching records are found. This preserves ranking
+            # and keeps the SQL variable count below SQLite's common limit.
+            filtered_ids: list[str] = []
+            candidate_batch_size = 400
+            for offset in range(0, len(ranked_ids), candidate_batch_size):
+                candidates = ranked_ids[offset:offset + candidate_batch_size]
+                placeholders = ",".join("?" for _ in candidates)
+                rows = db.execute(
+                    f"SELECT record_id FROM knowledge_records WHERE dataset=? "
+                    f"AND record_id IN ({placeholders})",
+                    (dataset, *candidates),
                 ).fetchall()
-            }
-            ranked_ids = [record_id for record_id in ranked_ids if record_id in allowed]
+                allowed = {str(row["record_id"]) for row in rows}
+                filtered_ids.extend(
+                    record_id for record_id in candidates if record_id in allowed
+                )
+                if len(filtered_ids) >= limit:
+                    filtered_ids = filtered_ids[:limit]
+                    break
+            ranked_ids = filtered_ids
 
         ranked_ids = ranked_ids[:limit]
         if not ranked_ids:
