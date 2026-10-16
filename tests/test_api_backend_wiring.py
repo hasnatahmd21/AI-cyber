@@ -25,6 +25,24 @@ def api_server():
         thread.join(timeout=5)
 
 
+@pytest.fixture(autouse=True)
+def isolate_guarded_api_unit_tests(monkeypatch):
+    """Keep HTTP wiring tests isolated from the defence runtime's process-wide effects.
+
+    The defence itself has dedicated entrypoint tests, and the live RAG/API workflow
+    exercises the real guard. These unit tests focus on request validation and backend
+    dispatch while still asserting that POST operations are routed through the guard.
+    """
+    calls = []
+
+    def guarded(operation, payload, action):
+        calls.append((operation, payload))
+        return action()
+
+    monkeypatch.setattr(ui, "_guarded_operation", guarded)
+    return calls
+
+
 def _post_json(url: str, payload: object):
     request = Request(
         url,
@@ -39,7 +57,7 @@ def _post_json(url: str, payload: object):
         return exc.code, json.loads(exc.read().decode("utf-8"))
 
 
-def test_command_status_api_is_wired_to_live_status_handler(api_server, monkeypatch):
+def test_command_status_api_is_wired_to_live_status_handler(api_server, monkeypatch, isolate_guarded_api_unit_tests):
     snapshot = {"runtime": "online", "knowledge": {"records": 3}}
     monkeypatch.setattr(ui, "_command_status", lambda: snapshot)
 
@@ -49,6 +67,7 @@ def test_command_status_api_is_wired_to_live_status_handler(api_server, monkeypa
     assert body["success"] is True
     assert body["action"] == "status"
     assert body["result"] == snapshot
+    assert isolate_guarded_api_unit_tests == [("command", {"command": "status"})]
 
 
 def test_command_phase_api_dispatches_to_canonical_runtime(api_server, monkeypatch):
