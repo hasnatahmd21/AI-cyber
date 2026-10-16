@@ -49,7 +49,8 @@ def _check_threat_parsers(root: Path) -> None:
         "cpe23Uri": "cpe:2.3:a:fixture:app:1.0:*:*:*:*:*:*:*"}]}]})
     assert parse_cpe(cpe)[0]["record_id"].startswith("cpe:2.3:")
     cwe = root / "cwe.xml"
-    cwe.write_text('<Weaknesses><Weakness ID="79" Name="Improper Neutralization"><Description>fixture CWE</Description></Weakness></Weaknesses>', encoding="utf-8")
+    # Mirror the real CWE catalog schema: root -> Weaknesses -> Weakness.
+    cwe.write_text('<Weakness_Catalog><Weaknesses><Weakness ID="79" Name="Improper Neutralization"><Description>fixture CWE</Description></Weakness></Weaknesses></Weakness_Catalog>', encoding="utf-8")
     assert parse_cwe_xml(cwe)[0]["record_id"] == "CWE-79"
 
 def _check_network_and_malware(root: Path) -> None:
