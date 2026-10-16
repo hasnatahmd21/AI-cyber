@@ -12,6 +12,7 @@ defence = importlib.import_module("ai_cyber_os._defence")
 
 def test_cli_enforces_once_before_hydra_and_strips_control_flags(monkeypatch):
     events = []
+    monkeypatch.setattr(cli, "_load_defence_module", lambda: defence)
 
     monkeypatch.setattr(
         defence,
@@ -51,6 +52,7 @@ def test_json_cli_keeps_defence_diagnostics_off_stdout(monkeypatch, capsys):
     assert "integrity: OK" in captured.err
 
 def test_malicious_cli_arguments_block_before_runtime(monkeypatch, tmp_path):
+    monkeypatch.setattr(cli, "_load_defence_module", lambda: defence)
     import subprocess
 
     from ai_cyber import secured
