@@ -458,31 +458,32 @@ def iter_records(path: str | Path, *, dataset: str | None = None,
         return
 
     if p.suffix.lower() == ".gz":
-        with gzip.open(p, "rb") as fh:
-            raw_bytes = fh.read()
-        text = raw_bytes.decode("utf-8", errors="replace")
         inner_suffix = Path(p.name[:-3]).suffix.lower()
-        if inner_suffix == ".json":
-            raw = json.loads(text)
-            for item in _iter_json_value(raw):
-                yield normalized(item, src)
-        elif inner_suffix in {".jsonl", ".ndjson"}:
-            yield from _iter_text_stream(io.StringIO(text), dataset=ds, source=src,
-                                         license=license, version=version,
-                                         source_uri=source_uri,
-                                         validation_status=validation_status)
-        elif inner_suffix == ".csv":
-            lines = text.splitlines()
-            while lines and lines[0].lstrip().startswith("#"):
-                lines.pop(0)
-            reader = csv.DictReader(io.StringIO("\n".join(lines), newline=""))
-            for row in reader:
-                yield normalized(row, src)
-        elif inner_suffix == ".xml":
-            for value in _iter_xml_values(io.BytesIO(raw_bytes), selected_elements):
-                yield normalized(value, src)
-        else:
-            yield normalized(text, src)
+        # Keep line-oriented formats streaming: CPE has ~1.85M JSONL rows and
+        # EPSS is a large CSV. Do not inflate these entire files into one RAM string.
+        with gzip.open(p, "rt", encoding="utf-8", errors="replace", newline="") as handle:
+            if inner_suffix in {".jsonl", ".ndjson"}:
+                yield from _iter_text_stream(handle, dataset=ds, source=src,
+                                             license=license, version=version,
+                                             source_uri=source_uri,
+                                             validation_status=validation_status)
+            elif inner_suffix == ".csv":
+                def non_comment_lines():
+                    for line in handle:
+                        if not line.lstrip().startswith("#"):
+                            yield line
+                for row in csv.DictReader(non_comment_lines()):
+                    yield normalized(row, src)
+            elif inner_suffix == ".json":
+                # NVD feeds use the dedicated streaming iter_parse_nvd parser in dataset_pipeline.
+                raw = json.load(handle)
+                for item in _iter_json_value(raw):
+                    yield normalized(item, src)
+            elif inner_suffix == ".xml":
+                for value in _iter_xml_values(handle, selected_elements):
+                    yield normalized(value, src)
+            else:
+                yield normalized(handle.read(), src)
         return
 
     suffix = p.suffix.lower()
