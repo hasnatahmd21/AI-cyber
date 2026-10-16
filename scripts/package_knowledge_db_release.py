@@ -141,7 +141,7 @@ def _license_guidance(dataset: str) -> str:
         "mitre_d3fend": "Preserve the bundled MIT licence and MITRE D3FEND attribution. Follow separate upstream terms for third-party material included in the ontology.",
         "mitre_mbc": "Preserve the bundled Apache-2.0 licence and all upstream notices.",
         "sigma": "Preserve each rule's author field, author attribution, the rule/source URI and the DRL 1.1 notice. Attribution also applies when a rule match is shown in output.",
-        "suricata": "The upstream notice identifies SID-scoped GPLv2 and BSD-style terms plus a separate ETPRO-only range. This release gate blocks SIDs 2800000–2900000; do not describe all rules as BSD-only.",
+        "suricata": "The upstream notice identifies SID-scoped GPLv2 and BSD-style terms plus a separate ETPRO-only SID range. This release gate blocks SIDs 2800000–2900000; do not describe all rules as BSD-only.",
         "zeek_intel": "Preserve the bundled Zeek BSD-style copyright, redistribution conditions and disclaimer; some upstream files may carry additional notices.",
     }
     return guidance.get(
