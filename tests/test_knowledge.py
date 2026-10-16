@@ -272,3 +272,54 @@ def test_open_store_repairs_legacy_chunks_and_persists_completion_marker(tmp_pat
     assert chunk_count == 1
     assert fts_count == 1
     assert marker is not None and marker[0] == "true"
+
+
+
+def test_dataset_filtered_search_avoids_dataset_wide_id_scan(tmp_path: Path, monkeypatch):
+    from ai_cyber_os import knowledge
+
+    wanted = tmp_path / "wanted.jsonl"
+    other = tmp_path / "other.jsonl"
+    wanted.write_text(
+        '{"id":"FILTER-1","content":"shared searchable candidate evidence"}\\n',
+        encoding="utf-8",
+    )
+    other.write_text(
+        '{"id":"OTHER-1","content":"shared searchable candidate evidence"}\\n',
+        encoding="utf-8",
+    )
+    db = tmp_path / "knowledge.db"
+    ingest_file(wanted, db_path=db, dataset="wanted")
+    ingest_file(other, db_path=db, dataset="other")
+
+    statements = []
+    original_open_store = knowledge.open_store
+
+    def traced_open_store(path=knowledge.DEFAULT_DB):
+        connection = original_open_store(path)
+        connection.set_trace_callback(statements.append)
+        return connection
+
+    monkeypatch.setattr(knowledge, "open_store", traced_open_store)
+    hits = knowledge.search(
+        "shared searchable candidate evidence",
+        db_path=db,
+        dataset="wanted",
+        limit=5,
+    )
+
+    assert [row["record_id"] for row in hits] == ["FILTER-1"]
+    normalized = [" ".join(statement.upper().split()) for statement in statements]
+    assert any(
+        "SELECT RECORD_ID FROM KNOWLEDGE_RECORDS WHERE DATASET = 'WANTED' "
+        in statement
+        and "RECORD_ID IN (" in statement
+        for statement in normalized
+    )
+    assert not any(
+        statement.startswith(
+            "SELECT RECORD_ID FROM KNOWLEDGE_RECORDS WHERE DATASET = 'WANTED'"
+        )
+        and "RECORD_ID IN (" not in statement
+        for statement in normalized
+    )
