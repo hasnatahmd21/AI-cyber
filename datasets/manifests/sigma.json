@@ -22,11 +22,13 @@
   "dataset": "sigma",
   "execution_status": "acquired",
   "ingestion_status": "pending",
-  "license": "Detection Rule License (DRL) 1.1 (rules); tooling under repo LICENSE",
-  "license_basis": "declared by script from SigmaHQ README; verify at URL",
-  "license_files": [],
+  "license": "Detection Rule License (DRL) 1.1 (rules; author attribution required for shared rules and outputs that show matches)",
+  "license_basis": "Official SigmaHQ DRL 1.1 source and pinned r2026-07-01 rule release reviewed 2026-10-17; author attribution must be retained.",
+  "license_files": [
+    "datasets/licenses/Detection-Rule-License-1.1.md"
+  ],
   "license_url": "https://github.com/SigmaHQ/Detection-Rule-License",
-  "license_verified": false,
+  "license_verified": true,
   "local_path": "datasets/raw/sigma/sigma_all_rules_r2026-07-01.zip",
   "manifest_format": 1,
   "provenance": {

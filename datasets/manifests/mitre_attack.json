@@ -124,12 +124,12 @@
   "execution_status": "acquired",
   "ingestion_status": "pending",
   "license": "MITRE ATT&CK Terms of Use (royalty-free, copyright notice required)",
-  "license_basis": "declared by script; verify at URL",
+  "license_basis": "Official ATT&CK terms and pinned upstream LICENSE.txt reviewed 2026-10-17; preserve MITRE's required copyright designation and licence.",
   "license_files": [
     "datasets/raw/mitre_attack/LICENSE.attack-stix-data.txt"
   ],
   "license_url": "https://attack.mitre.org/resources/terms-of-use/",
-  "license_verified": false,
+  "license_verified": true,
   "local_path": "datasets/raw/mitre_attack",
   "manifest_format": 1,
   "provenance": {
