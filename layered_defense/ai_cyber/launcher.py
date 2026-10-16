@@ -28,12 +28,45 @@ def _repo_src() -> str:
 
 
 def default_hydra_main() -> Callable[[Sequence[str]], int]:
-    """Locate the existing HYDRA CLI (src/ai_cyber_os/__main__.py: main)."""
-    src = _repo_src()
-    if os.path.isdir(src) and src not in sys.path:
-        sys.path.insert(0, src)
+    """Load the canonical HYDRA CLI entrypoint from the selected source tree."""
     import importlib
-    main = importlib.import_module("ai_cyber_os.__main__").main
+    import importlib.util
+
+    src = os.path.realpath(_repo_src())
+    entrypoint = os.path.realpath(os.path.join(src, "ai_cyber_os", "__main__.py"))
+    if not os.path.isfile(entrypoint):
+        raise ImportError(f"canonical HYDRA CLI entrypoint not found: {entrypoint}")
+
+    # Load the package from its source root when it has not been imported yet,
+    # then remove our temporary sys.path addition. Leaving a temporary/custom
+    # source root on sys.path leaks test/deployment state into later imports.
+    if "ai_cyber_os" not in sys.modules:
+        inserted = src not in sys.path
+        if inserted:
+            sys.path.insert(0, src)
+        try:
+            importlib.import_module("ai_cyber_os")
+        finally:
+            if inserted:
+                try:
+                    sys.path.remove(src)
+                except ValueError:
+                    pass
+
+    cached = sys.modules.get("ai_cyber_os.__main__")
+    cached_path = os.path.realpath(getattr(cached, "__file__", "")) if cached is not None else ""
+    if cached is not None and cached_path == entrypoint:
+        main = cached.main
+    else:
+        # A module with the same dotted name may already be cached from a different
+        # source tree. Execute this selected file explicitly rather than dispatching
+        # into the stale module. Its package context still resolves canonical siblings.
+        spec = importlib.util.spec_from_file_location("ai_cyber_os.__main__", entrypoint)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"cannot load canonical HYDRA CLI entrypoint: {entrypoint}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        main = module.main
 
     def call(argv: Sequence[str]) -> int:
         try:
