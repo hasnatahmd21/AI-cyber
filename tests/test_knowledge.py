@@ -228,7 +228,7 @@ def test_open_store_repairs_legacy_chunks_and_persists_completion_marker(tmp_pat
 
     data = tmp_path / "legacy.jsonl"
     data.write_text(
-        '{"id":"LEGACY-CHUNK-1","content":"legacy evidence requiring a chunk"}\\n',
+        '{"id":"LEGACY-CHUNK-1","content":"legacy evidence requiring a chunk"}\n',
         encoding="utf-8",
     )
     db_path = tmp_path / "knowledge.db"
