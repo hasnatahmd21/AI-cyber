@@ -110,7 +110,8 @@ jobs:
               if snap != initial:
                   print("IMPORT_TRACE_TEARDOWN", item.nodeid, snap)
           PY
-          python -m pytest -q -p trace_imports --ignore=tests/test_ui.py \
+          PYTHONPATH="${GITHUB_WORKSPACE}/build-output:${PYTHONPATH}" \
+            python -m pytest -q -p trace_imports --ignore=tests/test_ui.py \
             --junitxml=build-output/pytest-report.xml \
             2>&1 | tee build-output/pytest.log
 
