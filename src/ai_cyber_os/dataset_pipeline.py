@@ -557,8 +557,10 @@ def ingest_manifest(
     manifest = load_manifest(path)
     if inspection is None:
         inspection = inspect_dataset(path, count_records=not prevalidated_counts)
-    if inspection.get("ready") is not True:
-        raise ValueError(f"manifest inspection is not PASS for {path}")
+
+    # Apply policy-aware integrity checks below. A single generic ready gate here
+    # would incorrectly reject the documented require_checksum=False override,
+    # and would hide the specific checksum/count error expected by callers.
 
     if "artifacts" not in manifest:
         if require_checksum and not inspection["sha256_matches"]:
