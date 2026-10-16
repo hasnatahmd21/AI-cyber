@@ -22,7 +22,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: permanent-knowledge-db-${{ github.ref }}
+  group: permanent-knowledge-db-v2-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
