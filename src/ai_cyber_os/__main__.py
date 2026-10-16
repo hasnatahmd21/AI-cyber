@@ -147,10 +147,15 @@ def _main_impl(argv: list[str] | None = None) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     """Run always-on layered defence once, then the unchanged canonical HYDRA CLI."""
-    from ._defence import enforce, release
+    from importlib import import_module
+
+    # Resolve the canonical guard module at call time. This preserves lazy startup,
+    # while ensuring the guard's module identity and its test/deployment overrides
+    # remain consistent even when other guarded entrypoints were imported first.
+    defence = import_module(f"{__package__}._defence")
 
     arguments = list(sys.argv[1:] if argv is None else argv)
-    enforce(arguments)
+    defence.enforce(arguments)
     runtime_arguments = [
         arg for arg in arguments
         if arg not in ("--defence-restore", "--defence-rebaseline")
@@ -158,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return _main_impl(runtime_arguments)
     finally:
-        release()
+        defence.release()
 
 
 if __name__ == "__main__":
