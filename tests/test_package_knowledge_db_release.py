@@ -35,7 +35,16 @@ def make_fixture(tmp_path: Path):
     manifests.mkdir()
     for dataset in DATASETS:
         (manifests / f"{dataset}.json").write_text(
-            json.dumps({"dataset": dataset, "version": "fixture-v1"}) + "\n",
+            json.dumps({
+                "dataset": dataset,
+                "version": "fixture-v1",
+                "source": f"{dataset} fixture source",
+                "source_uri": f"https://example.invalid/{dataset}",
+                "license": "Fixture dataset terms",
+                "license_url": f"https://example.invalid/{dataset}/license",
+                "license_verified": True,
+                "license_files": [],
+            }) + "\n",
             encoding="utf-8",
         )
     (manifests / "example.json").write_text(
@@ -199,6 +208,67 @@ def test_release_packager_detects_knowledge_record_mutation(tmp_path: Path):
         assert "record_table_sha256 differs" in str(exc)
     else:
         raise AssertionError("modified knowledge records were incorrectly packaged")
+
+
+def test_public_release_notices_cover_all_sources_and_preserve_author_rules(tmp_path: Path):
+    db, manifests, build, live, _ = make_fixture(tmp_path)
+    output = tmp_path / "out"
+    result = MODULE.package_release(
+        db_path=db, build_report_path=build, live_rag_report_path=live,
+        manifest_dir=manifests, output_dir=output,
+        repository="example/AI-cyber", commit_sha="deadbeef",
+        run_number=1, run_attempt=1,
+    )
+    notice = (output / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
+    assert result["overall"] == "PASS"
+    for dataset in DATASETS:
+        assert f"## {dataset}" in notice
+    assert "author attribution" in notice.lower()
+    assert "ETPRO-only SID" in notice
+    with tarfile.open(output / "source-manifests.tar.gz", "r:gz") as archive:
+        names = archive.getnames()
+    assert "THIRD_PARTY_NOTICES.md" in names
+    assert any(name.endswith("manifests/nvd_cve.json") for name in names)
+
+
+def test_public_release_blocks_unverified_licence_metadata(tmp_path: Path):
+    db, manifests, build, live, _ = make_fixture(tmp_path)
+    path = manifests / "sigma.json"
+    value = json.loads(path.read_text(encoding="utf-8"))
+    value["license_verified"] = False
+    path.write_text(json.dumps(value), encoding="utf-8")
+    try:
+        MODULE.package_release(
+            db_path=db, build_report_path=build, live_rag_report_path=live,
+            manifest_dir=manifests, output_dir=tmp_path / "out",
+            repository="example/AI-cyber", commit_sha="deadbeef",
+            run_number=1, run_attempt=1,
+        )
+    except RuntimeError as exc:
+        assert "licence/terms not verified" in str(exc)
+    else:
+        raise AssertionError("unverified source terms were incorrectly released")
+
+
+def test_public_release_blocks_etpro_only_suricata_rules(tmp_path: Path):
+    db, manifests, build, live, _ = make_fixture(tmp_path)
+    connection = sqlite3.connect(db)
+    try:
+        connection.execute(
+            "UPDATE knowledge_records SET content=? WHERE dataset='suricata'",
+            ('alert tcp any any -> any any (msg:"ETPro rule"; sid:2800001; rev:1;)',),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    try:
+        source_hashes = MODULE._manifest_snapshot(manifests)
+        MODULE._inspect_database(db, source_hashes)
+    except RuntimeError as exc:
+        assert "ETPRO-only SID 2800001" in str(exc)
+    else:
+        raise AssertionError("ETPRO-only Suricata rule was incorrectly released")
+
 
 def test_release_packager_refuses_failed_live_rag_probes(tmp_path: Path):
     db, manifests, build, live, _ = make_fixture(tmp_path)

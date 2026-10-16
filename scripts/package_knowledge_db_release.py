@@ -6,6 +6,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import re
 import shutil
 import sqlite3
 import tarfile
@@ -49,6 +50,14 @@ def _manifest_snapshot(manifest_dir: Path) -> dict[str, str]:
         dataset = manifest.get("dataset")
         if not isinstance(dataset, str) or not dataset.strip():
             raise ValueError(f"manifest has no valid dataset name: {path}")
+        if manifest.get("license_verified") is not True:
+            raise RuntimeError(f"refusing public release: licence/terms not verified for dataset {dataset!r}")
+        license_text = manifest.get("license")
+        license_url = manifest.get("license_url")
+        if not isinstance(license_text, str) or not license_text.strip():
+            raise RuntimeError(f"refusing public release: dataset {dataset!r} has no license description")
+        if not isinstance(license_url, str) or not license_url.startswith("https://"):
+            raise RuntimeError(f"refusing public release: dataset {dataset!r} has no HTTPS source-terms URL")
         if dataset in snapshot:
             raise ValueError(f"duplicate source manifest for dataset {dataset!r}")
         snapshot[dataset] = sha256_file(path)
@@ -97,6 +106,165 @@ def _stable_table_fingerprints(conn: sqlite3.Connection) -> dict[str, str]:
     return fingerprints
 
 
+def _assert_no_etpro_suricata_records(conn: sqlite3.Connection) -> None:
+    """Block public redistribution of the upstream ETPRO-only Suricata SID range."""
+    pattern = re.compile(r"\bsid\s*:\s*(\d+)\b", re.IGNORECASE)
+    for record_id, content in conn.execute(
+        "SELECT record_id, content FROM knowledge_records WHERE lower(dataset)='suricata'"
+    ):
+        for match in pattern.finditer(str(content or "")):
+            sid = int(match.group(1))
+            if 2_800_000 <= sid <= 2_900_000:
+                raise RuntimeError(
+                    "public Knowledge DB release blocked: Suricata record "
+                    f"{record_id!r} contains ETPRO-only SID {sid}; remove/re-license "
+                    "the rule before publishing. The upstream ET Open notice is SID-specific."
+                )
+
+
+def _project_root_for_manifests(manifest_dir: Path) -> Path:
+    # Production path is <repo>/datasets/manifests. Keep fixture tests self-contained.
+    if manifest_dir.parent.name == "datasets":
+        return manifest_dir.parent.parent.resolve()
+    return manifest_dir.parent.resolve()
+
+
+def _license_guidance(dataset: str) -> str:
+    guidance = {
+        "capec": "MITRE CAPEC terms require preserving MITRE's copyright designation and terms notice when distributing copies.",
+        "cwe": "MITRE CWE terms require preserving MITRE's copyright designation and terms notice; CWE is a MITRE trademark.",
+        "mitre_attack": "Preserve the upstream ATT&CK copyright designation and license. Required designation: © 2026 The MITRE Corporation. This work is reproduced and distributed with the permission of The MITRE Corporation.",
+        "cpe": "Credit NIST/NVD for the public CPE Dictionary. Public availability is not a blanket licence for unrelated third-party material embedded in metadata.",
+        "nvd_cve": "Credit NIST/NVD and retain record references. Individual CVE descriptions, references or third-party contributions may have separate rights; this notice does not relicense them.",
+        "epss": "Credit FIRST/EPSS when scores are used in products, reports or publications, as requested by the upstream EPSS project.",
+        "cisa_kev": "Retain the pinned upstream licence text and identify the CISA KEV catalog as the source. Linked third-party material may have separate terms.",
+        "mitre_d3fend": "Preserve the bundled MIT licence and MITRE D3FEND attribution. Follow separate upstream terms for third-party material included in the ontology.",
+        "mitre_mbc": "Preserve the bundled Apache-2.0 licence and all upstream notices.",
+        "sigma": "Preserve each rule's author field, author attribution, the rule/source URI and the DRL 1.1 notice. Attribution also applies when a rule match is shown in output.",
+        "suricata": "The upstream notice identifies SID-scoped GPLv2 and BSD-style terms plus a separate ETPRO-only range. This release gate blocks SIDs 2800000–2900000; do not describe all rules as BSD-only.",
+        "zeek_intel": "Preserve the bundled Zeek BSD-style copyright, redistribution conditions and disclaimer; some upstream files may carry additional notices.",
+    }
+    return guidance.get(
+        dataset,
+        "Preserve source identity, links and upstream copyright/licence notices; examine item-specific terms where present.",
+    )
+
+
+def _write_third_party_notices(manifest_dir: Path, output_path: Path) -> list[dict[str, Any]]:
+    manifests = [
+        _read_json(path) for path in sorted(manifest_dir.glob("*.json"))
+        if path.name.casefold() != "example.json"
+    ]
+    missing = sorted(REQUIRED_DATASETS - {m.get("dataset") for m in manifests})
+    if missing:
+        raise RuntimeError(f"cannot write third-party notices; missing manifests: {missing}")
+    lines = [
+        "# AI-CYBER Knowledge DB — Third-Party Data Notices",
+        "",
+        f"Generated at {datetime.now(timezone.utc).isoformat()} from the pinned source-manifest snapshot.",
+        "",
+        "This notice ledger is provenance and attribution guidance, not legal advice and not a new licence. "
+        "Each upstream licence or terms page controls its own content. A dataset-level review does not "
+        "relicense third-party text, references, rule authorship, or other embedded material. Preserve "
+        "original record identifiers, source URIs, author fields and notices when displaying or exporting evidence.",
+        "",
+    ]
+    for manifest in sorted(manifests, key=lambda m: str(m.get("dataset", ""))):
+        dataset = str(manifest.get("dataset", "unknown"))
+        lines.extend([
+            f"## {dataset}",
+            "",
+            f"- Source: {manifest.get('source', 'not declared')}",
+            f"- Version: {manifest.get('version', 'not declared')}",
+            f"- Source data: {manifest.get('source_uri', 'not declared')}",
+            f"- Licence / terms recorded in manifest: {manifest.get('license', 'not declared')}",
+            f"- Official terms URL: {manifest.get('license_url', 'not declared')}",
+            f"- Source terms reviewed: {'yes' if manifest.get('license_verified') is True else 'NO — release blocked'}",
+            f"- Attribution / redistribution notes: {_license_guidance(dataset)}",
+        ])
+        declared = list(manifest.get("license_files", []) or [])
+        for item in manifest.get("artifacts", []) or []:
+            if isinstance(item, dict) and str(item.get("role", "")).lower() == "license":
+                declared.append(item.get("path"))
+        declared = sorted({str(value) for value in declared if isinstance(value, str) and value.strip()})
+        if declared:
+            lines.append(f"- Bundled upstream notice/licence files: {', '.join(declared)}")
+        lines.append("")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return [
+        {"dataset": str(m.get("dataset")), "license_url": m.get("license_url"),
+         "license_verified": m.get("license_verified") is True}
+        for m in sorted(manifests, key=lambda m: str(m.get("dataset", "")))
+    ]
+
+
+def _bundle_manifests(
+    manifest_dir: Path, archive_path: Path, notices_path: Path
+) -> list[dict[str, Any]]:
+    root = _project_root_for_manifests(manifest_dir)
+    manifests = [
+        _read_json(path) for path in sorted(manifest_dir.glob("*.json"))
+        if path.name.casefold() != "example.json"
+    ]
+    by_path: dict[str, dict[str, Any]] = {}
+    for manifest in manifests:
+        declared = list(manifest.get("license_files", []) or [])
+        for item in manifest.get("artifacts", []) or []:
+            if isinstance(item, dict) and str(item.get("role", "")).lower() == "license":
+                declared.append(item.get("path"))
+        artifact_hashes = {
+            str(item.get("path")): str(item.get("sha256", "")).lower()
+            for item in manifest.get("artifacts", []) or []
+            if isinstance(item, dict) and str(item.get("role", "")).lower() == "license"
+        }
+        for value in declared:
+            if not isinstance(value, str) or not value.strip():
+                continue
+            relative = Path(value)
+            if relative.is_absolute() or ".." in relative.parts or "\\" in value:
+                raise RuntimeError(f"unsafe third-party notice path in manifest: {value!r}")
+            local = (root / relative).resolve()
+            try:
+                local.relative_to(root.resolve())
+            except ValueError as exc:
+                raise RuntimeError(f"third-party notice path escapes repository root: {value!r}") from exc
+            if not local.is_file():
+                raise FileNotFoundError(f"declared licence/notice file is missing: {value}")
+            actual_sha = sha256_file(local)
+            expected_sha = artifact_hashes.get(value)
+            if expected_sha and actual_sha != expected_sha:
+                raise RuntimeError(f"declared licence-file SHA-256 mismatch: {value}")
+            by_path[relative.as_posix()] = {
+                "path": relative.as_posix(), "sha256": actual_sha,
+                "bytes": local.stat().st_size, "local": local,
+            }
+
+    authored_notice = root / "datasets" / "licenses" / "THIRD_PARTY_NOTICES.md"
+    if authored_notice.is_file():
+        path = Path("datasets/licenses/THIRD_PARTY_NOTICES.md")
+        by_path[path.as_posix()] = {
+            "path": path.as_posix(), "sha256": sha256_file(authored_notice),
+            "bytes": authored_notice.stat().st_size, "local": authored_notice,
+        }
+
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(archive_path, "w:gz") as archive:
+        readme = manifest_dir / "README.md"
+        if readme.is_file():
+            archive.add(readme, arcname="manifests/README.md", recursive=False)
+        for path in sorted(manifest_dir.glob("*.json")):
+            if path.name.casefold() != "example.json":
+                archive.add(path, arcname=f"manifests/{path.name}", recursive=False)
+        for rel, row in sorted(by_path.items()):
+            archive.add(row["local"], arcname=f"source-licenses/{rel}", recursive=False)
+        archive.add(notices_path, arcname="THIRD_PARTY_NOTICES.md", recursive=False)
+    return [
+        {key: value for key, value in row.items() if key != "local"}
+        for _, row in sorted(by_path.items())
+    ]
+
+
 def _inspect_database(db_path: Path, expected_source_digests: dict[str, str]) -> dict[str, Any]:
     if not db_path.is_file() or db_path.stat().st_size <= 0:
         raise FileNotFoundError(f"Knowledge DB missing or empty: {db_path}")
@@ -132,6 +300,8 @@ def _inspect_database(db_path: Path, expected_source_digests: dict[str, str]) ->
                 "SELECT key, value FROM knowledge_meta"
             )
         } if "knowledge_meta" in tables else {}
+        if not missing_tables:
+            _assert_no_etpro_suricata_records(connection)
         stable_fingerprints = (
             _stable_table_fingerprints(connection)
             if not missing_tables else {}
@@ -301,15 +471,19 @@ def package_release(
         raise RuntimeError("compressed package does not reconstruct the exact verified DB")
     db_assets = _split_if_needed(compressed, max_asset_bytes)
 
+    notices_path = output / "THIRD_PARTY_NOTICES.md"
+    notice_ledger = _write_third_party_notices(manifests, notices_path)
     bundle = output / "source-manifests.tar.gz"
-    _bundle_manifests(manifests, bundle)
+    bundled_license_files = _bundle_manifests(manifests, bundle, notices_path)
     checksums_path = output / "knowledge-db-release-checksums.txt"
     checksum_lines = [
         f"{db_sha}  ai_cyber_knowledge.sqlite3",
         f"{compressed_sha}  ai_cyber_knowledge.sqlite3.gz",
     ]
-    for path in db_assets + [bundle, build_path, live_path]:
+    for path in db_assets + [bundle, notices_path, build_path, live_path]:
         checksum_lines.append(f"{sha256_file(path)}  {path.name}")
+    for item in bundled_license_files:
+        checksum_lines.append(f"{item['sha256']}  source-licenses/{item['path']}")
     checksums_path.write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
 
     release_manifest = {
@@ -346,6 +520,13 @@ def package_release(
             "bytes": bundle.stat().st_size,
             "sha256": sha256_file(bundle),
         },
+        "third_party_notices": {
+            "filename": notices_path.name,
+            "bytes": notices_path.stat().st_size,
+            "sha256": sha256_file(notices_path),
+            "datasets": notice_ledger,
+        },
+        "bundled_source_license_files": bundled_license_files,
         "reports": {
             "database_build": build_path.name,
             "live_rag_api": live_path.name,
@@ -359,7 +540,7 @@ def package_release(
     )
 
     asset_names = [p.name for p in db_assets] + [
-        manifest_path.name, checksums_path.name, bundle.name,
+        manifest_path.name, checksums_path.name, bundle.name, notices_path.name,
         build_path.name, live_path.name, "release-assets.json",
     ]
     plan = {

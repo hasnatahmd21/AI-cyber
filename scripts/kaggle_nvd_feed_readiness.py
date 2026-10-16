@@ -31,7 +31,10 @@ sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
 from ai_cyber_os.threat_intel import iter_parse_nvd  # noqa: E402
 
 SOURCE_URI = "https://nvd.nist.gov/vuln/data-feeds"
-LICENSE_TEXT = "NVD data feed terms; preserve source attribution"
+LICENSE_TEXT = (
+    "NIST/NVD public-data policy; retain NIST/NVD attribution; individual CVE records "
+    "may include third-party content with separate rights"
+)
 BASE_URL = "https://nvd.nist.gov/feeds/json/cve/2.0"
 DEFAULT_BRANCH = "fix/dataset-parser-readiness"
 
@@ -262,7 +265,18 @@ def build_manifest(root: Path, year_start: int, year_end: int, include_updates: 
         "source": "NIST National Vulnerability Database (NVD)",
         "source_uri": SOURCE_URI,
         "license": LICENSE_TEXT,
-        "license_basis": "Official NVD data-feed provenance; retain NVD attribution",
+        "license_url": "https://nvd.nist.gov/vuln/data-feeds",
+        "license_terms_url": "https://www.nist.gov/copyrights-disclaimers",
+        "license_verified": True,
+        "license_basis": (
+            "Official NVD feed provenance and NIST public-data policy reviewed 2026-10-17; "
+            "preserve NIST/NVD attribution; third-party content inside individual records "
+            "is not blanket-relicensed by this manifest"
+        ),
+        "license_notice": (
+            "Credit NIST/NVD and preserve record references. Check source-specific rights "
+            "for embedded third-party text and linked material."
+        ),
         "local_path": "datasets/raw/nvd_cve",
         "artifact_set_sha256": aggregate_sha,
         "artifact_set_sha256_scheme": "SHA-256 of newline-joined per-artifact compressed SHA-256 digests in manifest order",

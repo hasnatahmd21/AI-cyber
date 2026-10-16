@@ -20,6 +20,7 @@ on:
       - "layered_defense/**"
       - "tests/**"
       - "datasets/manifests/**"
+      - "datasets/licenses/**"
       - "datasets/raw/**"
 
 permissions:
