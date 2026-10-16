@@ -220,3 +220,55 @@ def test_cpe_jsonl_gzip_preserves_canonical_cpe_name_as_record_id(tmp_path: Path
     assert hits and hits[0]["record_id"] == row["cpeName"]
     assert hits[0]["title"] == row["cpeName"]
     assert hits[0]["source_uri"] == "https://example.invalid/cpe"
+
+
+def test_open_store_repairs_legacy_chunks_and_persists_completion_marker(tmp_path: Path):
+    import sqlite3
+    from ai_cyber_os.knowledge import open_store
+
+    data = tmp_path / "legacy.jsonl"
+    data.write_text(
+        '{"id":"LEGACY-CHUNK-1","content":"legacy evidence requiring a chunk"}\\n',
+        encoding="utf-8",
+    )
+    db_path = tmp_path / "knowledge.db"
+    result = ingest_file(data, db_path=db_path, dataset="legacy")
+    assert result["success"] is True
+
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "DELETE FROM knowledge_chunks_fts WHERE record_id=?",
+            ("LEGACY-CHUNK-1",),
+        )
+        conn.execute(
+            "DELETE FROM knowledge_chunks WHERE record_id=?",
+            ("LEGACY-CHUNK-1",),
+        )
+        # Simulate a DB created before the one-time migration marker existed.
+        conn.execute(
+            "DELETE FROM knowledge_meta WHERE key='chunk_backfill_v1_complete'"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    conn = open_store(db_path)
+    try:
+        chunk_count = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks WHERE record_id=?",
+            ("LEGACY-CHUNK-1",),
+        ).fetchone()[0]
+        fts_count = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks_fts WHERE record_id=?",
+            ("LEGACY-CHUNK-1",),
+        ).fetchone()[0]
+        marker = conn.execute(
+            "SELECT value FROM knowledge_meta WHERE key='chunk_backfill_v1_complete'"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert chunk_count == 1
+    assert fts_count == 1
+    assert marker is not None and marker[0] == "true"
