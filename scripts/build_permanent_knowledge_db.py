@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import faulthandler
 import hashlib
 import importlib.util
 import json
@@ -243,6 +244,9 @@ def main(argv=None) -> int:
               "db_path": str(db_path), "push_performed": False, "database_deleted_or_overwritten": False,
               "ingestion_performed": False, "steps": []}
     try:
+        faulthandler.enable()
+        faulthandler.dump_traceback_later(600, repeat=True)
+        print("Watchdog enabled: traceback every 600 seconds.", flush=True)
         required = [root / ".git", root / "scripts/kaggle_nvd_feed_readiness.py",
                     root / "scripts/kaggle_dataset_parser_readiness_gate.py",
                     root / "src/ai_cyber_os/dataset_pipeline.py", root / "src/ai_cyber_os/knowledge.py",
@@ -281,10 +285,11 @@ def main(argv=None) -> int:
                 return 2
             report["steps"].append({"step": "NVD acquisition + combined readiness", "pass": True,
                                     "gate_report_path": str(gate_path), "gate_overall": gate.get("overall")})
-        print("STAGE 2/4: preflighting all manifests and artifacts again before opening the database; this can take time and is intentionally fail-closed.", flush=True)
+        print("STAGE 2/4: validating artifact hashes and sizes, reusing parser-readiness counts from the just-passed gate, and streaming per-dataset ingestion progress.", flush=True)
         from ai_cyber_os.dataset_pipeline import DEFAULT_REQUIRED_DATASETS, ingest_manifest_directory
         result = ingest_manifest_directory(manifests, db_path=db_path,
-                                           required_datasets=DEFAULT_REQUIRED_DATASETS, require_checksum=True)
+                                           required_datasets=DEFAULT_REQUIRED_DATASETS, require_checksum=True,
+                                           prevalidated_counts=True)
         report["ingestion_report"] = result
         report["ingestion_performed"] = bool(result.get("ingestion_performed"))
         if result.get("overall") != "PASS" or result.get("success") is not True:
