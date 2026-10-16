@@ -145,15 +145,16 @@ def _main_impl(argv: list[str] | None = None) -> int:
         return 1
 
 
-def main(argv: list[str] | None = None) -> int:
-    """Run always-on layered defence once, then the unchanged canonical HYDRA CLI."""
+def _load_defence_module():
+    """Resolve the canonical defence module lazily at the execution boundary."""
     from importlib import import_module
 
-    # Resolve the canonical guard module at call time. This preserves lazy startup,
-    # while ensuring the guard's module identity and its test/deployment overrides
-    # remain consistent even when other guarded entrypoints were imported first.
-    defence = import_module(f"{__package__}._defence")
+    return import_module(f"{__package__}._defence")
 
+
+def main(argv: list[str] | None = None) -> int:
+    """Run always-on layered defence once, then the unchanged canonical HYDRA CLI."""
+    defence = _load_defence_module()
     arguments = list(sys.argv[1:] if argv is None else argv)
     defence.enforce(arguments)
     runtime_arguments = [
