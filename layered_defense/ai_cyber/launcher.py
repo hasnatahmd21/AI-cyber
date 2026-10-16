@@ -37,22 +37,6 @@ def default_hydra_main() -> Callable[[Sequence[str]], int]:
     if not os.path.isfile(entrypoint):
         raise ImportError(f"canonical HYDRA CLI entrypoint not found: {entrypoint}")
 
-    # Load the package from its source root when it has not been imported yet,
-    # then remove our temporary sys.path addition. Leaving a temporary/custom
-    # source root on sys.path leaks test/deployment state into later imports.
-    if "ai_cyber_os" not in sys.modules:
-        inserted = src not in sys.path
-        if inserted:
-            sys.path.insert(0, src)
-        try:
-            importlib.import_module("ai_cyber_os")
-        finally:
-            if inserted:
-                try:
-                    sys.path.remove(src)
-                except ValueError:
-                    pass
-
     cached = sys.modules.get("ai_cyber_os.__main__")
     cached_path = os.path.realpath(getattr(cached, "__file__", "")) if cached is not None else ""
     if cached is not None and cached_path == entrypoint:
@@ -60,7 +44,8 @@ def default_hydra_main() -> Callable[[Sequence[str]], int]:
     else:
         # A module with the same dotted name may already be cached from a different
         # source tree. Execute this selected file explicitly rather than dispatching
-        # into the stale module. Its package context still resolves canonical siblings.
+        # into the stale module. Do not register a temporary tree as the process-wide
+        # ai_cyber_os package; its directory may be deleted immediately after a test.
         spec = importlib.util.spec_from_file_location("ai_cyber_os.__main__", entrypoint)
         if spec is None or spec.loader is None:
             raise ImportError(f"cannot load canonical HYDRA CLI entrypoint: {entrypoint}")
@@ -69,20 +54,32 @@ def default_hydra_main() -> Callable[[Sequence[str]], int]:
         main = module.main
 
     def call(argv: Sequence[str]) -> int:
+        # Relative imports performed during main() need the selected source tree on
+        # sys.path, but the path is scoped to this invocation rather than leaked.
+        inserted = src not in sys.path
+        if inserted:
+            sys.path.insert(0, src)
         try:
-            takes_args = len(inspect.signature(main).parameters) > 0
-            if takes_args:
-                rc = main(list(argv))
-            else:
-                old = sys.argv
-                sys.argv = ["ai-cyber", *argv]
+            try:
+                takes_args = len(inspect.signature(main).parameters) > 0
+                if takes_args:
+                    rc = main(list(argv))
+                else:
+                    old = sys.argv
+                    sys.argv = ["ai-cyber", *argv]
+                    try:
+                        rc = main()
+                    finally:
+                        sys.argv = old
+            except SystemExit as e:
+                rc = e.code if isinstance(e.code, int) else (0 if e.code in (None, 0) else 1)
+            return 0 if rc is None else int(rc)
+        finally:
+            if inserted:
                 try:
-                    rc = main()
-                finally:
-                    sys.argv = old
-        except SystemExit as e:
-            rc = e.code if isinstance(e.code, int) else (0 if e.code in (None, 0) else 1)
-        return 0 if rc is None else int(rc)
+                    sys.path.remove(src)
+                except ValueError:
+                    pass
     return call
 
 
