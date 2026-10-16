@@ -178,6 +178,41 @@ def latest_gate_report(root: Path):
     return reports[-1] if reports else None
 
 
+def _stable_table_fingerprints(conn: sqlite3.Connection) -> dict[str, str]:
+    """Hash stable knowledge tables, excluding volatile open/access metadata."""
+    queries = {
+        "record_table_sha256": (
+            "SELECT record_id,dataset,source,source_uri,license,validation_status,version,"
+            "title,content,content_sha256,metadata_json,schema_version,ingested_at "
+            "FROM knowledge_records ORDER BY record_id"
+        ),
+        "relations_table_sha256": (
+            "SELECT record_id,relation_type,target_id FROM knowledge_relations "
+            "ORDER BY record_id,relation_type,target_id"
+        ),
+        "chunks_table_sha256": (
+            "SELECT chunk_id,record_id,chunk_index,content,content_sha256 "
+            "FROM knowledge_chunks ORDER BY chunk_id"
+        ),
+    }
+    fingerprints: dict[str, str] = {}
+    for name, query in queries.items():
+        digest = hashlib.sha256()
+        cursor = conn.execute(query)
+        while True:
+            rows = cursor.fetchmany(1000)
+            if not rows:
+                break
+            for row in rows:
+                encoded = json.dumps(
+                    list(row), ensure_ascii=False, separators=(",", ":"), default=str
+                ).encode("utf-8")
+                digest.update(encoded)
+                digest.update(b"\\n")
+        fingerprints[name] = digest.hexdigest()
+    return fingerprints
+
+
 def validate_db_and_rag(db_path: Path, required_datasets: tuple[str, ...]) -> dict:
     from ai_cyber_os.knowledge import SCHEMA_VERSION, DATABASE_VERSION, open_store, status, search
     from ai_cyber_os.rag import build_context
@@ -198,6 +233,7 @@ def validate_db_and_rag(db_path: Path, required_datasets: tuple[str, ...]) -> di
         chunk_fts = int(conn.execute("SELECT COUNT(*) FROM knowledge_chunks_fts").fetchone()[0])
         conn.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES('integrity-check')")
         conn.execute("INSERT INTO knowledge_chunks_fts(knowledge_chunks_fts) VALUES('integrity-check')")
+        stable_fingerprints = _stable_table_fingerprints(conn)
         conn.commit()
     finally:
         conn.close()
@@ -233,7 +269,8 @@ def validate_db_and_rag(db_path: Path, required_datasets: tuple[str, ...]) -> di
             "missing_tables": missing_tables, "records": records, "fts_records": fts_records,
             "chunks": chunks, "chunk_fts": chunk_fts, "dataset_counts": dataset_counts,
             "missing_datasets": missing, "schema_version": SCHEMA_VERSION,
-            "database_version": DATABASE_VERSION, "rag_smoke_probes": probes,
+            "database_version": DATABASE_VERSION, **stable_fingerprints,
+            "rag_smoke_probes": probes,
             "nvd_hits_after_reopen": len(persisted), "status_after_reopen": report_status}
 
 

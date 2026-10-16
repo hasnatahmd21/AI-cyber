@@ -62,6 +62,41 @@ def _manifest_snapshot(manifest_dir: Path) -> dict[str, str]:
     return dict(sorted(snapshot.items()))
 
 
+def _stable_table_fingerprints(conn: sqlite3.Connection) -> dict[str, str]:
+    """Hash stable knowledge tables, excluding volatile open/access metadata."""
+    queries = {
+        "record_table_sha256": (
+            "SELECT record_id,dataset,source,source_uri,license,validation_status,version,"
+            "title,content,content_sha256,metadata_json,schema_version,ingested_at "
+            "FROM knowledge_records ORDER BY record_id"
+        ),
+        "relations_table_sha256": (
+            "SELECT record_id,relation_type,target_id FROM knowledge_relations "
+            "ORDER BY record_id,relation_type,target_id"
+        ),
+        "chunks_table_sha256": (
+            "SELECT chunk_id,record_id,chunk_index,content,content_sha256 "
+            "FROM knowledge_chunks ORDER BY chunk_id"
+        ),
+    }
+    fingerprints: dict[str, str] = {}
+    for name, query in queries.items():
+        digest = hashlib.sha256()
+        cursor = conn.execute(query)
+        while True:
+            rows = cursor.fetchmany(1000)
+            if not rows:
+                break
+            for row in rows:
+                encoded = json.dumps(
+                    list(row), ensure_ascii=False, separators=(",", ":"), default=str
+                ).encode("utf-8")
+                digest.update(encoded)
+                digest.update(b"\\n")
+        fingerprints[name] = digest.hexdigest()
+    return fingerprints
+
+
 def _inspect_database(db_path: Path, expected_source_digests: dict[str, str]) -> dict[str, Any]:
     if not db_path.is_file() or db_path.stat().st_size <= 0:
         raise FileNotFoundError(f"Knowledge DB missing or empty: {db_path}")
@@ -97,6 +132,10 @@ def _inspect_database(db_path: Path, expected_source_digests: dict[str, str]) ->
                 "SELECT key, value FROM knowledge_meta"
             )
         } if "knowledge_meta" in tables else {}
+        stable_fingerprints = (
+            _stable_table_fingerprints(connection)
+            if not missing_tables else {}
+        )
     finally:
         connection.close()
 
@@ -142,6 +181,7 @@ def _inspect_database(db_path: Path, expected_source_digests: dict[str, str]) ->
         "dataset_counts": dict(sorted(dataset_counts.items())),
         "schema_version": int(meta.get("schema_version", "0")),
         "database_version": meta.get("database_version", ""),
+        **stable_fingerprints,
         "source_manifest_digests": dict(sorted(db_source_digests.items())),
     }
 
@@ -227,13 +267,17 @@ def package_release(
         raise RuntimeError("build report's source-manifest snapshot differs from current manifests")
     db_sha = sha256_file(db)
     db_bytes = db.stat().st_size
-    if verification.get("db_sha256") != db_sha:
-        raise RuntimeError("DB SHA-256 changed after the full build verification")
-    if int(verification.get("db_bytes", -1)) != db_bytes:
-        raise RuntimeError("DB byte size changed after the full build verification")
-
+    # The live API intentionally updates knowledge_meta.last_opened_at. The raw
+    # SQLite file hash can therefore change without any knowledge evidence being
+    # modified. Pin the stable content tables and compare those after RAG probes.
     actual = _inspect_database(db, source_digests)
-    for field in ("records", "fts_records", "chunks", "chunk_fts", "schema_version", "database_version"):
+    for field in (
+        "records", "fts_records", "chunks", "chunk_fts", "schema_version",
+        "database_version", "record_table_sha256", "relations_table_sha256",
+        "chunks_table_sha256",
+    ):
+        if not verification.get(field):
+            raise RuntimeError(f"build report lacks required stable verification field: {field}")
         if actual.get(field) != verification.get(field):
             raise RuntimeError(
                 f"DB {field} differs from build report: "
@@ -288,6 +332,14 @@ def package_release(
             "max_asset_bytes": max_asset_bytes,
         },
         "verification": actual,
+        "build_validation_db_sha256": verification.get("db_sha256"),
+        "build_validation_db_bytes": verification.get("db_bytes"),
+        "note": (
+            "Final database SHA-256 below is measured after localhost RAG/API probes. "
+            "SQLite open metadata such as last_opened_at may legitimately change the raw "
+            "database hash; stable knowledge records, relations, chunks and counts are "
+            "compared against the full-build report before publication."
+        ),
         "source_manifests": source_digests,
         "source_manifest_bundle": {
             "filename": bundle.name,

@@ -81,6 +81,7 @@ def make_fixture(tmp_path: Path):
             "SELECT dataset, COUNT(*) FROM knowledge_records GROUP BY dataset"
         ))
         meta = dict(connection.execute("SELECT key,value FROM knowledge_meta"))
+        fingerprints = MODULE._stable_table_fingerprints(connection)
     finally:
         connection.close()
 
@@ -92,6 +93,7 @@ def make_fixture(tmp_path: Path):
         "dataset_counts": dict(sorted(counts.items())),
         "schema_version": int(meta["schema_version"]),
         "database_version": meta["database_version"],
+        **fingerprints,
         "rag_smoke_probes": [{"pass": True}] * 4,
     }
     build = tmp_path / "knowledge-db-build-report.json"
@@ -126,6 +128,17 @@ def test_release_packager_refuses_a_failed_database_build(tmp_path: Path):
 
 def test_verified_db_release_bundle_and_split_assets_are_reproducible(tmp_path: Path):
     db, manifests, build, live, expected = make_fixture(tmp_path)
+    pre_api_sha = sha256_file(db)
+    # Exercise a documented open-store side effect without changing indexed records.
+    connection = sqlite3.connect(db)
+    try:
+        connection.execute(
+            "UPDATE knowledge_meta SET value='post-rag-probe-timestamp' WHERE key='last_opened_at'"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    assert sha256_file(db) != pre_api_sha
     output = tmp_path / "out"
     result = MODULE.package_release(
         db_path=db, build_report_path=build, live_rag_report_path=live,
@@ -161,6 +174,30 @@ def test_verified_db_release_bundle_and_split_assets_are_reproducible(tmp_path: 
     assert not any(name.endswith("example.json") for name in members)
     assert len([name for name in members if name.endswith(".json")]) == 12
 
+
+
+def test_release_packager_detects_knowledge_record_mutation(tmp_path: Path):
+    db, manifests, build, live, _ = make_fixture(tmp_path)
+    connection = sqlite3.connect(db)
+    try:
+        connection.execute(
+            "UPDATE knowledge_records SET content='tampered evidence' "
+            "WHERE record_id='NVD_CVE-FIXTURE-1'"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+    try:
+        MODULE.package_release(
+            db_path=db, build_report_path=build, live_rag_report_path=live,
+            manifest_dir=manifests, output_dir=tmp_path / "out",
+            repository="example/AI-cyber", commit_sha="deadbeef",
+            run_number=1, run_attempt=1,
+        )
+    except RuntimeError as exc:
+        assert "record_table_sha256 differs" in str(exc)
+    else:
+        raise AssertionError("modified knowledge records were incorrectly packaged")
 
 def test_release_packager_refuses_failed_live_rag_probes(tmp_path: Path):
     db, manifests, build, live, _ = make_fixture(tmp_path)
