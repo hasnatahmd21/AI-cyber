@@ -1,8 +1,13 @@
 """Regression coverage for canonical CLI defence wiring."""
 from __future__ import annotations
 
+import importlib
+
 import ai_cyber_os.__main__ as cli
-import ai_cyber_os._defence as defence
+
+# Use the canonical module in sys.modules; the production CLI resolves this module
+# lazily before dispatch so its guard cannot be bypassed by stale aliases.
+defence = importlib.import_module("ai_cyber_os._defence")
 
 
 def test_cli_enforces_once_before_hydra_and_strips_control_flags(monkeypatch):
