@@ -199,23 +199,38 @@ def open_store(path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
         db.execute(
             "ALTER TABLE knowledge_records ADD COLUMN validation_status TEXT NOT NULL DEFAULT 'unverified'"
         )
-    missing_chunks = db.execute(
-        """SELECT k.record_id, k.dataset, k.title, k.content
-           FROM knowledge_records k
-           LEFT JOIN knowledge_chunks c ON c.record_id=k.record_id
-           WHERE c.record_id IS NULL
-           LIMIT 1000"""
-    ).fetchall()
-    for row in missing_chunks:
-        _index_chunks(
-            db,
-            {
-                "record_id": row["record_id"],
-                "dataset": row["dataset"],
-                "title": row["title"],
-                "content": row["content"],
-            },
-        )
+    # Backfill legacy rows once. Running this anti-join on every open_store()
+    # call would scan a large knowledge_records table on every query/checkpoint.
+    # New records are chunked by the ingestion path, so a persistent completion
+    # marker is safe after the legacy gap has been fully repaired.
+    backfill_done = db.execute(
+        "SELECT value FROM knowledge_meta WHERE key='chunk_backfill_v1_complete'"
+    ).fetchone()
+    if not backfill_done:
+        missing_chunks = db.execute(
+            """SELECT k.record_id, k.dataset, k.title, k.content
+               FROM knowledge_records k
+               LEFT JOIN knowledge_chunks c ON c.record_id=k.record_id
+               WHERE c.record_id IS NULL
+               LIMIT 1000"""
+        ).fetchall()
+        for row in missing_chunks:
+            _index_chunks(
+                db,
+                {
+                    "record_id": row["record_id"],
+                    "dataset": row["dataset"],
+                    "title": row["title"],
+                    "content": row["content"],
+                },
+            )
+        # Exactly 1000 rows may mean either "done" or "more remain"; require
+        # one extra open in the exact-1000 case rather than marking too early.
+        if len(missing_chunks) < 1000:
+            db.execute(
+                "INSERT INTO knowledge_meta(key,value) VALUES('chunk_backfill_v1_complete','true') "
+                "ON CONFLICT(key) DO UPDATE SET value=excluded.value"
+            )
     db.commit()
     return db
 
