@@ -148,9 +148,19 @@ def _chunk_text(text: str, *, size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERL
         start = max(start + 1, end - overlap)
     return chunks
 
-def _index_chunks(db: sqlite3.Connection, record: dict[str, Any]) -> None:
-    db.execute('DELETE FROM knowledge_chunks_fts WHERE record_id=?', (record['record_id'],))
-    db.execute('DELETE FROM knowledge_chunks WHERE record_id=?', (record['record_id'],))
+def _index_chunks(
+    db: sqlite3.Connection,
+    record: dict[str, Any],
+    *,
+    replace_existing: bool = False,
+) -> None:
+    # FTS5 columns marked UNINDEXED (including record_id) are not lookup indexes.
+    # Deleting by record_id for every newly inserted record forces a full FTS scan
+    # per record and makes large initial ingestions effectively quadratic. Only
+    # remove prior chunks when this record is actually being replaced.
+    if replace_existing:
+        db.execute('DELETE FROM knowledge_chunks_fts WHERE record_id=?', (record['record_id'],))
+        db.execute('DELETE FROM knowledge_chunks WHERE record_id=?', (record['record_id'],))
     for index, chunk in enumerate(_chunk_text(record['content'])):
         chunk_id = f"{record['record_id']}#chunk-{index}"
         db.execute(
@@ -604,7 +614,7 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
                 "INSERT INTO knowledge_fts(record_id,dataset,title,content) VALUES (?,?,?,?)",
                 (record["record_id"], record["dataset"], record["title"], record["content"]),
             )
-            _index_chunks(db, record)
+            _index_chunks(db, record, replace_existing=bool(old))
             if records_seen % 1000 == 0:
                 db.commit()
         db.commit()
