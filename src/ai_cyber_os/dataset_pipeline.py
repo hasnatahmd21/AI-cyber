@@ -420,6 +420,7 @@ def _ingest_one_artifact(
     except ValueError as exc:
         raise ValueError("manifest artifact path must remain inside the project") from exc
 
+    artifact_started = time.monotonic()
     dataset = str(manifest.get("dataset") or Path(manifest_path).stem)
     source = str(item.get("source", manifest.get("source", "")))
     version = str(item.get("version", manifest.get("version", "")))
@@ -433,6 +434,8 @@ def _ingest_one_artifact(
                if isinstance(manifest.get("schema"), dict) else item.get("count_kind") or "").casefold()
     manifest_label = str(Path(manifest_path).resolve())
 
+    print("ARTIFACT START dataset={} artifact={} expected_records={} bytes={}".format(
+        dataset, artifact_label, expected_records, local.stat().st_size), flush=True)
     old = _checkpoint_read(
         db_path,
         manifest_path=manifest_label,
@@ -443,6 +446,8 @@ def _ingest_one_artifact(
     if (old and old["status"] == "complete"
             and int(old["processed_records"]) == expected_records
             and int(old["expected_records"]) == expected_records):
+        print("ARTIFACT SKIP dataset={} artifact={} reason=checkpoint-complete elapsed_s={:.1f}".format(
+            dataset, artifact_label, time.monotonic()-artifact_started), flush=True)
         return {
             "skipped": True,
             "reason": "completed checkpoint matches manifest and artifact digests",
@@ -513,6 +518,8 @@ def _ingest_one_artifact(
             updated_records=updated,
             duplicate_records=duplicates,
         )
+        print("ARTIFACT END dataset={} artifact={} elapsed_s={:.1f} processed={} inserted={} updated={} duplicates={}".format(
+            dataset, artifact_label, time.monotonic()-artifact_started, processed, inserted, updated, duplicates), flush=True)
         return {
             "skipped": False, "inserted": inserted, "updated": updated,
             "duplicates": duplicates, "records": processed, "checkpoint_status": "complete",
