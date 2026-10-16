@@ -14,6 +14,9 @@ on:
       - "src/ai_cyber_os/threat_intel.py"
       - "src/ai_cyber_os/rag.py"
       - "src/ai_cyber_os/ui.py"
+      - "src/ai_cyber_os/**"
+      - "layered_defense/**"
+      - "tests/**"
       - "datasets/manifests/**"
       - "datasets/raw/**"
 
@@ -22,7 +25,7 @@ permissions:
   actions: write
 
 concurrency:
-  group: permanent-knowledge-db-v2-${{ github.ref }}
+  group: permanent-knowledge-db-v3-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
