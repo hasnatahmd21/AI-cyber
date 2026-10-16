@@ -275,6 +275,54 @@ def test_open_store_repairs_legacy_chunks_and_persists_completion_marker(tmp_pat
 
 
 
+def test_chunk_index_skips_full_fts_delete_for_new_record(tmp_path: Path):
+    from ai_cyber_os import knowledge
+
+    db = tmp_path / "chunk-index.db"
+    conn = knowledge.open_store(db)
+    statements = []
+    conn.set_trace_callback(statements.append)
+    record = {
+        "record_id": "NEW-CHUNK-1",
+        "dataset": "fixture",
+        "title": "New chunk",
+        "content": "first version of evidence " * 300,
+    }
+    try:
+        knowledge._index_chunks(conn, record)
+        conn.commit()
+        assert not any(
+            statement.lstrip().upper().startswith("DELETE FROM KNOWLEDGE_CHUNKS_FTS")
+            for statement in statements
+        )
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks WHERE record_id=?",
+            (record["record_id"],),
+        ).fetchone()[0] > 1
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks_fts WHERE record_id=?",
+            (record["record_id"],),
+        ).fetchone()[0] > 1
+
+        statements.clear()
+        record["content"] = "replacement evidence " * 300
+        knowledge._index_chunks(conn, record, replace_existing=True)
+        conn.commit()
+        assert any(
+            statement.lstrip().upper().startswith("DELETE FROM KNOWLEDGE_CHUNKS_FTS")
+            for statement in statements
+        )
+        assert conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks_fts WHERE record_id=?",
+            (record["record_id"],),
+        ).fetchone()[0] == conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks WHERE record_id=?",
+            (record["record_id"],),
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+
 def test_dataset_filtered_search_avoids_dataset_wide_id_scan(tmp_path: Path, monkeypatch):
     from ai_cyber_os import knowledge
 
