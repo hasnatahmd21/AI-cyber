@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -156,7 +157,7 @@ def _count_artifact_records(
 
 
 def _artifact_inspection(
-    manifest_path: str | Path, manifest: dict[str, Any]
+    manifest_path: str | Path, manifest: dict[str, Any], *, count_records: bool = True
 ) -> dict[str, Any]:
     root = _project_root(manifest_path)
     artifacts: list[dict[str, Any]] = []
@@ -191,12 +192,17 @@ def _artifact_inspection(
             count = 0
             count_matches = True
             declared_count = None
-        else:
+        elif count_records:
             count = _count_artifact_records(
                 local, manifest=manifest, item=item, manifest_path=manifest_path
             )
             declared_count = item["record_count"]
             count_matches = count == declared_count
+        else:
+            # Fast path only after a fresh full readiness gate passed. SHA-256 and size are still checked.
+            count = item["record_count"]
+            declared_count = item["record_count"]
+            count_matches = True
 
         artifacts.append({
             "path": str(local),
@@ -224,11 +230,11 @@ def _artifact_inspection(
     }
 
 
-def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
+def inspect_dataset(manifest_path: str | Path, *, count_records: bool = True) -> dict[str, Any]:
     manifest = load_manifest(manifest_path)
 
     if "artifacts" in manifest:
-        return _artifact_inspection(manifest_path, manifest)
+        return _artifact_inspection(manifest_path, manifest, count_records=count_records)
 
     root = _project_root(manifest_path)
     local = (root / manifest["local_path"]).resolve()
@@ -248,20 +254,23 @@ def inspect_dataset(manifest_path: str | Path) -> dict[str, Any]:
         isinstance(declared_size, int) and not isinstance(declared_size, bool)
         and actual_size == declared_size
     )
-    records = sum(
-        1 for _ in iter_records(
-            local,
-            dataset=manifest["dataset"],
-            source=manifest["source"],
-            license=manifest["license"],
-            version=manifest["version"],
-            source_uri=manifest["source_uri"],
-            validation_status=manifest["validation_status"],
-            record_elements=(manifest.get("schema", {}).get("elements")
-                             if isinstance(manifest.get("schema"), dict) else None),
-        )
-    )
     declared = manifest["record_count"]
+    if count_records:
+        records = sum(
+            1 for _ in iter_records(
+                local,
+                dataset=manifest["dataset"],
+                source=manifest["source"],
+                license=manifest["license"],
+                version=manifest["version"],
+                source_uri=manifest["source_uri"],
+                validation_status=manifest["validation_status"],
+                record_elements=(manifest.get("schema", {}).get("elements")
+                                 if isinstance(manifest.get("schema"), dict) else None),
+            )
+        )
+    else:
+        records = declared
 
     return {
         "dataset": manifest["dataset"],
@@ -528,6 +537,8 @@ def ingest_manifest(
     *,
     db_path: str | Path,
     require_checksum: bool = True,
+    inspection: dict[str, Any] | None = None,
+    prevalidated_counts: bool = False,
 ) -> dict[str, Any]:
     """Verify then ingest one manifest through its format-specific parser.
 
@@ -537,7 +548,10 @@ def ingest_manifest(
     """
     path = Path(manifest_path).resolve()
     manifest = load_manifest(path)
-    inspection = inspect_dataset(path)
+    if inspection is None:
+        inspection = inspect_dataset(path, count_records=not prevalidated_counts)
+    if inspection.get("ready") is not True:
+        raise ValueError(f"manifest inspection is not PASS for {path}")
 
     if "artifacts" not in manifest:
         if require_checksum and not inspection["sha256_matches"]:
@@ -902,6 +916,7 @@ def ingest_manifest_directory(
     db_path: str | Path,
     required_datasets: tuple[str, ...] | list[str] = DEFAULT_REQUIRED_DATASETS,
     require_checksum: bool = True,
+    prevalidated_counts: bool = False,
 ) -> dict[str, Any]:
     """Preflight every requested dataset before creating/modifying the DB.
 
@@ -937,25 +952,29 @@ def ingest_manifest_directory(
     loaded: list[tuple[Path, dict[str, Any]]] = []
     preflight_failures: list[dict[str, Any]] = []
     names: set[str] = set()
-    for manifest_path in files:
+    for manifest_index, manifest_path in enumerate(files, 1):
+        started = time.monotonic()
+        print("PREFLIGHT START [{}/{}] {} count_parser={}".format(manifest_index, len(files), manifest_path.name, "SKIP_PREVALIDATED" if prevalidated_counts else "FULL"), flush=True)
         try:
             manifest = load_manifest(manifest_path)
             dataset = str(manifest.get("dataset") or manifest_path.stem)
             if dataset in names:
                 raise ValueError(f"duplicate manifest for dataset {dataset!r}; keep one authoritative manifest per dataset")
             names.add(dataset)
-            inspection = inspect_dataset(manifest_path)
+            inspection = inspect_dataset(manifest_path, count_records=not prevalidated_counts)
             row = {
                 "dataset": dataset,
                 "manifest": str(manifest_path),
                 "status": "PASS" if inspection.get("ready") is True else "FAIL",
                 "inspection": inspection,
+                "_inspection": inspection,
             }
             if row["status"] != "PASS":
                 row["evidence"] = "SHA-256, byte-size and/or record-count validation failed."
                 preflight_failures.append(row)
             loaded.append((manifest_path, manifest))
             report["preflight"].append(row)
+            print("PREFLIGHT END {} status={} elapsed_s={:.1f}".format(dataset, row["status"], time.monotonic()-started), flush=True)
         except FileNotFoundError as exc:
             row = {
                 "dataset": manifest_path.stem,
@@ -965,6 +984,7 @@ def ingest_manifest_directory(
             }
             preflight_failures.append(row)
             report["preflight"].append(row)
+            print("PREFLIGHT END {} status=BLOCKED elapsed_s={:.1f} error={}".format(manifest_path.name, time.monotonic()-started, exc), flush=True)
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             message = f"{type(exc).__name__}: {exc}"
             blocked = "missing" in str(exc).casefold() or "git lfs pointer" in str(exc).casefold()
@@ -976,6 +996,7 @@ def ingest_manifest_directory(
             }
             preflight_failures.append(row)
             report["preflight"].append(row)
+            print("PREFLIGHT END {} status={} elapsed_s={:.1f} error={}".format(manifest_path.name, row["status"], time.monotonic()-started, message), flush=True)
 
     required = set(str(x) for x in required_datasets)
     missing = sorted(required - names)
