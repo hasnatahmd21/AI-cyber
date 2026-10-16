@@ -281,11 +281,11 @@ def test_dataset_filtered_search_avoids_dataset_wide_id_scan(tmp_path: Path, mon
     wanted = tmp_path / "wanted.jsonl"
     other = tmp_path / "other.jsonl"
     wanted.write_text(
-        '{"id":"FILTER-1","content":"shared searchable candidate evidence"}\\n',
+        '{"id":"FILTER-1","content":"shared searchable candidate evidence"}\n',
         encoding="utf-8",
     )
     other.write_text(
-        '{"id":"OTHER-1","content":"shared searchable candidate evidence"}\\n',
+        '{"id":"OTHER-1","content":"shared searchable candidate evidence"}\n',
         encoding="utf-8",
     )
     db = tmp_path / "knowledge.db"
