@@ -31,7 +31,7 @@ jobs:
     timeout-minutes: 360
     env:
       AI_CYBER_KNOWLEDGE_DB: ${{ github.workspace }}/build-output/ai_cyber_knowledge.sqlite3
-      PYTHONPATH: src:layered_defense
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}/layered_defense
       PYTHONFAULTHANDLER: "1"
 
     steps:
