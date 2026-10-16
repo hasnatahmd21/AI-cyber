@@ -26,7 +26,8 @@ permissions:
 
 concurrency:
   group: permanent-knowledge-db-v4-${{ github.ref }}
-  cancel-in-progress: true
+  # The full NVD+CPE build is long-running; a newer regression commit must not cancel it.
+  cancel-in-progress: false
 
 jobs:
   build-ingest-test:
@@ -71,7 +72,7 @@ jobs:
             2>&1 | tee build-output/knowledge-db-build.log
 
       - name: Run non-legacy-UI regression suite and populated-DB live RAG/API probes
-        if: always()
+        if: success()
         shell: bash
         run: |
           mkdir -p build-output
