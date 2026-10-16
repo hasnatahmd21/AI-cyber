@@ -311,7 +311,7 @@ def test_dataset_filtered_search_avoids_dataset_wide_id_scan(tmp_path: Path, mon
     assert [row["record_id"] for row in hits] == ["FILTER-1"]
     normalized = [" ".join(statement.upper().split()) for statement in statements]
     assert any(
-        "SELECT RECORD_ID FROM KNOWLEDGE_RECORDS WHERE DATASET = 'WANTED' "
+        "SELECT RECORD_ID FROM KNOWLEDGE_RECORDS WHERE DATASET='WANTED'"
         in statement
         and "RECORD_ID IN (" in statement
         for statement in normalized
