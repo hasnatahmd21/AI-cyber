@@ -1135,12 +1135,20 @@ def ingest_manifest_directory(
     report["ready"] = True
     report["preflight_passed"] = len(loaded)
     total_inserted = total_updated = total_duplicates = 0
-    for manifest_path, manifest in loaded:
+    inspection_by_dataset = {str(row.get("dataset")): row.get("_inspection") for row in report["preflight"]}
+    for ingest_index, (manifest_path, manifest) in enumerate(loaded, 1):
         dataset = str(manifest.get("dataset") or manifest_path.stem)
+        ingest_started = time.monotonic()
+        print("INGEST START [{}/{}] {}".format(ingest_index, len(loaded), dataset), flush=True)
         try:
             result = ingest_manifest(
-                manifest_path, db_path=db_file, require_checksum=require_checksum
+                manifest_path, db_path=db_file, require_checksum=require_checksum,
+                inspection=inspection_by_dataset.get(dataset),
+                prevalidated_counts=prevalidated_counts,
             )
+            print("INGEST END {} elapsed_s={:.1f} records={}".format(
+                dataset, time.monotonic()-ingest_started,
+                result.get("records", result.get("processed_records", 0))), flush=True)
             report["results"].append({"dataset": dataset, **result})
             total_inserted += int(result.get("inserted", 0))
             total_updated += int(result.get("updated", 0))
