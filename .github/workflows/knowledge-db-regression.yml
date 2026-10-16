@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     env:
-      PYTHONPATH: src:layered_defense
+      PYTHONPATH: ${{ github.workspace }}/src:${{ github.workspace }}/layered_defense
       PYTHONFAULTHANDLER: "1"
     steps:
       - name: Checkout current isolated build branch
