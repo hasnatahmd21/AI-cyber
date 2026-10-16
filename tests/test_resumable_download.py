@@ -82,3 +82,18 @@ def test_server_ignoring_range_restarts_without_duplicate_append(tmp_path: Path)
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+def test_nvd_metadata_download_uses_short_bounded_timeout(monkeypatch, tmp_path: Path):
+    calls = []
+
+    def fake_download(url, target, *, retries=5, timeout=180):
+        calls.append((url, target, retries, timeout))
+
+    monkeypatch.setattr(MODULE, "resumable_download_to", fake_download)
+    MODULE._nvd_download_to("https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-2025.meta",
+                            tmp_path / "feed.meta")
+    MODULE._nvd_download_to("https://nvd.nist.gov/feeds/json/cve/2.0/nvdcve-2.0-2025.json.gz",
+                            tmp_path / "feed.json.gz")
+
+    assert [(item[2], item[3]) for item in calls] == [(2, 20), (5, 180)]
+
