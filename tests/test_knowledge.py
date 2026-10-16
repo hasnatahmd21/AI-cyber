@@ -318,7 +318,7 @@ def test_dataset_filtered_search_avoids_dataset_wide_id_scan(tmp_path: Path, mon
     )
     assert not any(
         statement.startswith(
-            "SELECT RECORD_ID FROM KNOWLEDGE_RECORDS WHERE DATASET = 'WANTED'"
+            "SELECT RECORD_ID FROM KNOWLEDGE_RECORDS WHERE DATASET='WANTED'"
         )
         and "RECORD_ID IN (" not in statement
         for statement in normalized
