@@ -45,12 +45,74 @@ jobs:
       - name: Compile project and scripts
         run: python -m compileall -q src scripts
 
-      - name: Run non-legacy-UI regression suite
+      - name: Verify canonical source imports before running tests
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from pathlib import Path
+          import ai_cyber_os
+
+          expected = (Path.cwd() / "src" / "ai_cyber_os").resolve()
+          roots = [Path(p).resolve() for p in ai_cyber_os.__path__]
+          print("PACKAGE_FILE=", getattr(ai_cyber_os, "__file__", None))
+          print("PACKAGE_PATH=", roots)
+          print("EXPECTED_SOURCE=", expected)
+          assert expected in roots, f"canonical source package not on package path: {roots}"
+          for name in ("hydra", "dataset_pipeline", "knowledge", "security_relationships", "rag"):
+              spec = importlib.util.find_spec(f"ai_cyber_os.{name}")
+              print("SUBMODULE", name, "=", getattr(spec, "origin", None))
+              assert spec is not None, f"missing canonical submodule before pytest: {name}"
+          PY
+
+      - name: Run non-legacy-UI regression suite with import tracing
         shell: bash
         run: |
           mkdir -p build-output
-          python -m pytest -q --ignore=tests/test_ui.py \
-            --junitxml=build-output/pytest-report.xml
+          cat > build-output/trace_imports.py <<'PY'
+          import importlib.util
+          import sys
+          from pathlib import Path
+
+          def _snapshot():
+              try:
+                  import ai_cyber_os
+                  roots = [str(Path(p).resolve()) for p in ai_cyber_os.__path__]
+                  pkg_file = str(Path(ai_cyber_os.__file__).resolve()) if getattr(ai_cyber_os, "__file__", None) else None
+              except Exception as exc:
+                  return {"package_error": repr(exc), "roots": [], "pkg_file": None, "missing": ["package"]}
+              missing = []
+              origins = {}
+              for name in ("hydra", "dataset_pipeline", "knowledge", "security_relationships", "rag"):
+                  try:
+                      spec = importlib.util.find_spec(f"ai_cyber_os.{name}")
+                      origins[name] = getattr(spec, "origin", None) if spec else None
+                      if spec is None:
+                          missing.append(name)
+                  except Exception as exc:
+                      origins[name] = "ERROR:" + repr(exc)
+                      missing.append(name)
+              return {"roots": roots, "pkg_file": pkg_file, "origins": origins, "missing": missing}
+
+          def pytest_configure(config):
+              config._aicyber_initial_snapshot = _snapshot()
+              print("IMPORT_TRACE_INITIAL", config._aicyber_initial_snapshot)
+
+          def pytest_runtest_setup(item):
+              snap = _snapshot()
+              initial = getattr(item.config, "_aicyber_initial_snapshot", {})
+              if snap != initial:
+                  print("IMPORT_TRACE_SETUP", item.nodeid, snap)
+
+          def pytest_runtest_teardown(item, nextitem):
+              snap = _snapshot()
+              initial = getattr(item.config, "_aicyber_initial_snapshot", {})
+              if snap != initial:
+                  print("IMPORT_TRACE_TEARDOWN", item.nodeid, snap)
+          PY
+          python -m pytest -q -p trace_imports --ignore=tests/test_ui.py \
+            --junitxml=build-output/pytest-report.xml \
+            2>&1 | tee build-output/pytest.log
 
       - name: Upload test report
         if: always()
