@@ -34,10 +34,11 @@
   "dataset": "suricata",
   "execution_status": "acquired",
   "ingestion_status": "pending",
-  "license": "BSD-style (Emerging Threats Open; verbatim text in license file)",
-  "license_basis": "LICENSE file shipped inside the upstream archive",
+  "license": "Mixed licence by upstream SID range (GPLv2, BSD-style and ETPRO-specific); not a single BSD-only licence",
+  "license_basis": "Pinned upstream Emerging Threats licence notice reviewed 2026-10-17; package includes the upstream notice and GPL-2.0-only text and rejects the ETPRO-only SID range.",
   "license_files": [
-    "datasets/raw/suricata/LICENSE.emerging-threats.txt"
+    "datasets/raw/suricata/LICENSE.emerging-threats.txt",
+    "datasets/licenses/GPL-2.0-only.txt"
   ],
   "license_url": "https://rules.emergingthreats.net/open/",
   "license_verified": true,

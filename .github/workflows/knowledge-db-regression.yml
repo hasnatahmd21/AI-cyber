@@ -11,7 +11,16 @@ on:
       - "tests/**"
       - "scripts/build_permanent_knowledge_db.py"
       - "scripts/verify_live_rag_api.py"
-
+  pull_request:
+    branches:
+      - work/permanent-knowledge-db-build
+    paths:
+      - ".github/workflows/knowledge-db-regression.yml"
+      - "pyproject.toml"
+      - "src/ai_cyber_os/**"
+      - "tests/**"
+      - "scripts/build_permanent_knowledge_db.py"
+      - "scripts/verify_live_rag_api.py"
 permissions:
   contents: read
 
@@ -26,7 +35,7 @@ jobs:
       - name: Checkout current isolated build branch
         uses: actions/checkout@v4
         with:
-          ref: work/permanent-knowledge-db-build
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
           lfs: true
           persist-credentials: false

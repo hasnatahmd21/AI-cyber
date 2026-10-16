@@ -147,6 +147,19 @@ def can_resume(db_path: Path, manifest_dir: Path) -> tuple[bool, str]:
     return True, "source-manifest digest ledger matches"
 
 
+def _nvd_download_to(url: str, target: Path) -> None:
+    """Use short bounded retries for tiny NVD metadata files, resumable transfer for feeds.
+
+    A metadata endpoint stall must not consume up to 15 minutes per yearly feed.
+    Feed downloads retain the longer timeout and resume behavior because the
+    compressed NVD archives can be large.
+    """
+    if url.split("?", 1)[0].lower().endswith(".meta"):
+        resumable_download_to(url, target, retries=2, timeout=20)
+    else:
+        resumable_download_to(url, target, retries=5, timeout=180)
+
+
 def load_nvd_module(root: Path):
     source = root / "scripts" / "kaggle_nvd_feed_readiness.py"
     spec = importlib.util.spec_from_file_location("_ai_cyber_nvd_for_db_build", source)
@@ -155,7 +168,7 @@ def load_nvd_module(root: Path):
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    module.download_to = resumable_download_to
+    module.download_to = _nvd_download_to
     return module
 
 
@@ -163,6 +176,41 @@ def latest_gate_report(root: Path):
     reports = sorted((root / "datasets" / "acquisition_reports").glob("parser-readiness-*.json"),
                      key=lambda p: p.stat().st_mtime)
     return reports[-1] if reports else None
+
+
+def _stable_table_fingerprints(conn: sqlite3.Connection) -> dict[str, str]:
+    """Hash stable knowledge tables, excluding volatile open/access metadata."""
+    queries = {
+        "record_table_sha256": (
+            "SELECT record_id,dataset,source,source_uri,license,validation_status,version,"
+            "title,content,content_sha256,metadata_json,schema_version,ingested_at "
+            "FROM knowledge_records ORDER BY record_id"
+        ),
+        "relations_table_sha256": (
+            "SELECT record_id,relation_type,target_id FROM knowledge_relations "
+            "ORDER BY record_id,relation_type,target_id"
+        ),
+        "chunks_table_sha256": (
+            "SELECT chunk_id,record_id,chunk_index,content,content_sha256 "
+            "FROM knowledge_chunks ORDER BY chunk_id"
+        ),
+    }
+    fingerprints: dict[str, str] = {}
+    for name, query in queries.items():
+        digest = hashlib.sha256()
+        cursor = conn.execute(query)
+        while True:
+            rows = cursor.fetchmany(1000)
+            if not rows:
+                break
+            for row in rows:
+                encoded = json.dumps(
+                    list(row), ensure_ascii=False, separators=(",", ":"), default=str
+                ).encode("utf-8")
+                digest.update(encoded)
+                digest.update(b"\\n")
+        fingerprints[name] = digest.hexdigest()
+    return fingerprints
 
 
 def validate_db_and_rag(db_path: Path, required_datasets: tuple[str, ...]) -> dict:
@@ -185,6 +233,7 @@ def validate_db_and_rag(db_path: Path, required_datasets: tuple[str, ...]) -> di
         chunk_fts = int(conn.execute("SELECT COUNT(*) FROM knowledge_chunks_fts").fetchone()[0])
         conn.execute("INSERT INTO knowledge_fts(knowledge_fts) VALUES('integrity-check')")
         conn.execute("INSERT INTO knowledge_chunks_fts(knowledge_chunks_fts) VALUES('integrity-check')")
+        stable_fingerprints = _stable_table_fingerprints(conn)
         conn.commit()
     finally:
         conn.close()
@@ -220,7 +269,8 @@ def validate_db_and_rag(db_path: Path, required_datasets: tuple[str, ...]) -> di
             "missing_tables": missing_tables, "records": records, "fts_records": fts_records,
             "chunks": chunks, "chunk_fts": chunk_fts, "dataset_counts": dataset_counts,
             "missing_datasets": missing, "schema_version": SCHEMA_VERSION,
-            "database_version": DATABASE_VERSION, "rag_smoke_probes": probes,
+            "database_version": DATABASE_VERSION, **stable_fingerprints,
+            "rag_smoke_probes": probes,
             "nvd_hits_after_reopen": len(persisted), "status_after_reopen": report_status}
 
 

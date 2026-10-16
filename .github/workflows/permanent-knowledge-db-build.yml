@@ -1,12 +1,14 @@
 name: Permanent Knowledge DB Build and Full RAG Verification
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - work/permanent-knowledge-db-build
     paths:
       - ".github/workflows/permanent-knowledge-db-build.yml"
       - "scripts/build_permanent_knowledge_db.py"
+      - "scripts/package_knowledge_db_release.py"
       - "scripts/verify_live_rag_api.py"
       - "tests/test_resumable_download.py"
       - "src/ai_cyber_os/knowledge.py"
@@ -18,16 +20,17 @@ on:
       - "layered_defense/**"
       - "tests/**"
       - "datasets/manifests/**"
+      - "datasets/licenses/**"
       - "datasets/raw/**"
 
 permissions:
-  contents: read
+  contents: write
   actions: write
 
 concurrency:
   group: permanent-knowledge-db-v5-${{ github.ref }}
-  # The full NVD+CPE build is long-running; a newer regression commit must not cancel it.
-  cancel-in-progress: false
+  # Do not leave a stale multi-hour source-acquisition run competing with the latest snapshot.
+  cancel-in-progress: true
 
 jobs:
   build-ingest-test:
@@ -46,6 +49,14 @@ jobs:
           fetch-depth: 1
           lfs: true
           persist-credentials: false
+
+      - name: Restore resumable NVD feed cache
+        uses: actions/cache@v4
+        with:
+          path: datasets/raw/nvd_cve
+          key: nvd-cve-feeds-v1-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            nvd-cve-feeds-v1-${{ runner.os }}-
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -95,6 +106,26 @@ jobs:
             exit 1
           fi
 
+      - name: Package and independently verify the permanent DB release
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/package_knowledge_db_release.py \
+            --db-path "$AI_CYBER_KNOWLEDGE_DB" \
+            --build-report build-output/knowledge-db-build-report.json \
+            --live-rag-report build-output/live-rag-api-report.json \
+            --manifest-dir datasets/manifests \
+            --output-dir build-output \
+            --repository "$GITHUB_REPOSITORY" \
+            --commit-sha "$GITHUB_SHA" \
+            --run-number "$GITHUB_RUN_NUMBER" \
+            --run-attempt "$GITHUB_RUN_ATTEMPT"
+          test -s build-output/knowledge-db-release-manifest.json
+          test -s build-output/knowledge-db-release-checksums.txt
+          test -s build-output/source-manifests.tar.gz
+          test -s build-output/release-assets.json
+
       - name: Upload reports even when build or tests fail
         if: always()
         uses: actions/upload-artifact@v4
@@ -109,12 +140,39 @@ jobs:
           retention-days: 90
           compression-level: 3
 
-      - name: Publish verified Knowledge DB artifact
-        if: success() && hashFiles('build-output/ai_cyber_knowledge.sqlite3') != ''
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-cyber-permanent-knowledge-db-${{ github.run_number }}
-          path: build-output/ai_cyber_knowledge.sqlite3
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 1
+      - name: Publish verified Knowledge DB as a durable GitHub Release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="$(python -c 'import json; print(json.load(open("build-output/release-assets.json", encoding="utf-8"))["release_tag"])')"
+          mapfile -t ASSET_NAMES < <(python -c 'import json; print("\n".join(json.load(open("build-output/release-assets.json", encoding="utf-8"))["asset_files"]))')
+          if [[ "${#ASSET_NAMES[@]}" -eq 0 ]]; then
+            echo "No database release assets were prepared." >&2
+            exit 1
+          fi
+          RELEASE_FILES=()
+          for name in "${ASSET_NAMES[@]}"; do
+            test -s "build-output/$name"
+            RELEASE_FILES+=("build-output/$name")
+          done
+          cat > build-output/knowledge-db-release-notes.md <<EOF
+          AI-CYBER Knowledge DB, produced only after the full build, SQLite/FTS verification, and real localhost RAG/API probes passed.
+
+          Source commit: $GITHUB_SHA
+          Workflow run: $GITHUB_RUN_NUMBER (attempt $GITHUB_RUN_ATTEMPT)
+          Release manifest: knowledge-db-release-manifest.json
+          Checksums: knowledge-db-release-checksums.txt
+          Source manifests snapshot: source-manifests.tar.gz
+
+          If the DB is split into .part-000, .part-001, ... assets, concatenate those assets in lexical order to reconstruct ai_cyber_knowledge.sqlite3.gz, then decompress it. Verify the uncompressed SHA-256 against the release manifest before using the DB.
+          EOF
+          RELEASE_FILES+=("build-output/knowledge-db-release-notes.md")
+          gh release create "$TAG" "${RELEASE_FILES[@]}" \
+            --target "$GITHUB_SHA" \
+            --title "AI-CYBER Permanent Knowledge DB $GITHUB_RUN_NUMBER.$GITHUB_RUN_ATTEMPT" \
+            --notes-file build-output/knowledge-db-release-notes.md
+          gh release view "$TAG" --json tagName,url,assets --jq '{tag: .tagName, url: .url, assets: [.assets[].name]}'
+

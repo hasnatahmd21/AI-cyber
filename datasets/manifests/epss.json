@@ -22,10 +22,10 @@
   "execution_status": "acquired",
   "ingestion_status": "pending",
   "license": "FIRST EPSS usage terms (free use, attribution to FIRST/EPSS required)",
-  "license_basis": "declared by script from EPSS usage statement; verify at URL",
+  "license_basis": "Official FIRST/EPSS FAQ reviewed 2026-10-17; the project freely publishes scores and requests attribution for products, reports and publications.",
   "license_files": [],
-  "license_url": "https://www.first.org/epss/",
-  "license_verified": false,
+  "license_url": "https://www.first.org/epss/faq",
+  "license_verified": true,
   "local_path": "datasets/raw/epss/epss_scores_2026-10-06.csv.gz",
   "manifest_format": 1,
   "provenance": {
