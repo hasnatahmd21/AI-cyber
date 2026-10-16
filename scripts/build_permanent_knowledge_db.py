@@ -147,6 +147,19 @@ def can_resume(db_path: Path, manifest_dir: Path) -> tuple[bool, str]:
     return True, "source-manifest digest ledger matches"
 
 
+def _nvd_download_to(url: str, target: Path) -> None:
+    """Use short bounded retries for tiny NVD metadata files, resumable transfer for feeds.
+
+    A metadata endpoint stall must not consume up to 15 minutes per yearly feed.
+    Feed downloads retain the longer timeout and resume behavior because the
+    compressed NVD archives can be large.
+    """
+    if url.split("?", 1)[0].lower().endswith(".meta"):
+        resumable_download_to(url, target, retries=2, timeout=20)
+    else:
+        resumable_download_to(url, target, retries=5, timeout=180)
+
+
 def load_nvd_module(root: Path):
     source = root / "scripts" / "kaggle_nvd_feed_readiness.py"
     spec = importlib.util.spec_from_file_location("_ai_cyber_nvd_for_db_build", source)
@@ -155,7 +168,7 @@ def load_nvd_module(root: Path):
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
-    module.download_to = resumable_download_to
+    module.download_to = _nvd_download_to
     return module
 
 
