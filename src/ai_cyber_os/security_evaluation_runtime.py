@@ -193,7 +193,9 @@ def evaluate_permanent_database(
                 "errors": [],
             }
             try:
-                context = build_context(query, db_path=path, limit=50, dataset=dataset)
+                context = build_context(
+                    query, db_path=path, limit=50, dataset=dataset, read_only=True
+                )
                 matches = [
                     evidence for evidence in context.get("evidence", [])
                     if evidence.get("record_id") == record_id
@@ -233,6 +235,7 @@ def evaluate_permanent_database(
                     path,
                     outputs={case_id: extractive},
                     thresholds=EvaluationThresholds(),
+                    read_only=True,
                 )
                 end_to_end_pass = (
                     end_to_end.get("success") is True
