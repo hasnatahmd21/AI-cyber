@@ -768,7 +768,7 @@ class Handler(BaseHTTPRequestHandler):
                     result = evaluate_end_to_end(
                         case_items, require_runtime_database(), outputs=outputs_map,
                         thresholds=EvaluationThresholds(**thresholds),
-                        read_only=require_verified_db_enabled(),
+                        read_only=True,
                     )
                     saved = save_report("security-evaluation", result)
                     return {
