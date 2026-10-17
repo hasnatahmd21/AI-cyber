@@ -220,3 +220,151 @@ def test_cpe_jsonl_gzip_preserves_canonical_cpe_name_as_record_id(tmp_path: Path
     assert hits and hits[0]["record_id"] == row["cpeName"]
     assert hits[0]["title"] == row["cpeName"]
     assert hits[0]["source_uri"] == "https://example.invalid/cpe"
+
+def test_chunk_index_recovers_orphaned_chunk_primary_key_collision(tmp_path: Path):
+    from ai_cyber_os import knowledge
+
+    db_path = tmp_path / "orphaned-chunk.db"
+    conn = knowledge.open_store(db_path)
+    record = {
+        "record_id": "NVD-CVE-EXAMPLE",
+        "dataset": "nvd_cve",
+        "title": "NVD CVE example",
+        "content": "verified vulnerability evidence",
+    }
+    try:
+        # Simulate an interrupted/legacy build that left a chunk row without
+        # its matching evidence record or FTS row.
+        chunk_id = f"{record['record_id']}#chunk-0"
+        conn.execute(
+            "INSERT INTO knowledge_chunks(chunk_id,record_id,chunk_index,content,content_sha256) "
+            "VALUES (?,?,?,?,?)",
+            (chunk_id, record["record_id"], 0, "stale", "0" * 64),
+        )
+        conn.commit()
+
+        knowledge._index_chunks(conn, record)
+        conn.commit()
+
+        chunk = conn.execute(
+            "SELECT content, content_sha256 FROM knowledge_chunks WHERE chunk_id=?",
+            (chunk_id,),
+        ).fetchone()
+        fts_count = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks_fts WHERE chunk_id=?",
+            (chunk_id,),
+        ).fetchone()[0]
+        assert chunk is not None and chunk["content"] == record["content"]
+        assert chunk["content_sha256"] == knowledge._hash(record["content"])
+        assert fts_count == 1
+    finally:
+        conn.close()
+
+
+def test_new_chunk_indexing_avoids_unindexed_record_id_delete_scan(tmp_path: Path):
+    import re
+    from ai_cyber_os import knowledge
+
+    conn = knowledge.open_store(tmp_path / "chunk-performance.db")
+    statements = []
+    conn.set_trace_callback(statements.append)
+    try:
+        knowledge._index_chunks(conn, {
+            "record_id": "NVD-CVE-NEW",
+            "dataset": "nvd_cve",
+            "title": "new evidence",
+            "content": "fresh vulnerability record",
+        })
+        conn.commit()
+    finally:
+        conn.close()
+
+    normalized = [re.sub(r"\s+", " ", sql).strip().lower() for sql in statements]
+    assert not any(
+        sql.startswith("delete from knowledge_chunks_fts where record_id")
+        for sql in normalized
+    ), "new records must not full-scan the FTS table to delete nonexistent prior chunks"
+
+
+def test_ingest_file_replaces_old_chunks_when_record_content_changes(tmp_path: Path):
+    data_old = tmp_path / "old-record.jsonl"
+    data_new = tmp_path / "new-record.jsonl"
+    db_path = tmp_path / "updated-record.db"
+    record_id = "GENERIC-UPDATE-1"
+    old_content = "obsoletegenericmarkerxyz " * 900
+    data_old.write_text(
+        json.dumps({"id": record_id, "title": "fixture", "content": old_content}) + "\n",
+        encoding="utf-8",
+    )
+    data_new.write_text(
+        json.dumps({"id": record_id, "title": "fixture", "content": "replacementgenericmarkerxyz latest evidence"}) + "\n",
+        encoding="utf-8",
+    )
+
+    first = ingest_file(data_old, db_path=db_path, dataset="generic", source="fixture")
+    assert first["inserted"] == 1
+    assert search("obsoletegenericmarkerxyz", db_path=db_path, dataset="generic")
+
+    second = ingest_file(data_new, db_path=db_path, dataset="generic", source="fixture")
+    assert second["updated"] == 1
+    assert search("obsoletegenericmarkerxyz", db_path=db_path, dataset="generic") == []
+    hits = search("replacementgenericmarkerxyz", db_path=db_path, dataset="generic")
+    assert hits and hits[0]["record_id"] == record_id
+
+    from ai_cyber_os import knowledge
+    conn = knowledge.open_store(db_path)
+    try:
+        chunks = conn.execute(
+            "SELECT content FROM knowledge_chunks WHERE record_id=? ORDER BY chunk_index",
+            (record_id,),
+        ).fetchall()
+        fts_chunks = conn.execute(
+            "SELECT content FROM knowledge_chunks_fts WHERE record_id=?",
+            (record_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(chunks) == 1 and chunks[0]["content"] == "replacementgenericmarkerxyz latest evidence"
+    assert len(fts_chunks) == 1 and fts_chunks[0]["content"] == chunks[0]["content"]
+
+
+def test_parsed_ingestion_replaces_old_chunks_when_record_content_changes(tmp_path: Path):
+    from ai_cyber_os import knowledge
+    from ai_cyber_os.threat_intel import ingest_parsed
+
+    db_path = tmp_path / "parsed-record-update.db"
+    record_id = "CVE-2026-987654"
+    old_record = knowledge._normalize(
+        {"id": record_id, "title": "Fixture vulnerability", "content": "obsoleteparsedmarkerxyz " * 900},
+        dataset="nvd_cve", source="NVD fixture", validation_status="fixture-validated",
+    )
+    first = ingest_parsed([old_record], db_path=db_path)
+    assert first["processed_records"] == 1
+    assert search("obsoleteparsedmarkerxyz", db_path=db_path, dataset="nvd_cve")
+    assert status(db_path=db_path)["records"] == 1
+
+    new_record = knowledge._normalize(
+        {"id": record_id, "title": "Fixture vulnerability", "content": "replacementparsedmarkerxyz latest evidence"},
+        dataset="nvd_cve", source="NVD fixture", validation_status="fixture-validated",
+    )
+    second = ingest_parsed([new_record], db_path=db_path)
+    assert second["processed_records"] == 1
+    assert status(db_path=db_path)["records"] == 1
+    assert search("obsoleteparsedmarkerxyz", db_path=db_path, dataset="nvd_cve") == []
+    hits = search("replacementparsedmarkerxyz", db_path=db_path, dataset="nvd_cve")
+    assert hits and hits[0]["record_id"] == record_id
+
+    conn = knowledge.open_store(db_path)
+    try:
+        chunks = conn.execute(
+            "SELECT content FROM knowledge_chunks WHERE record_id=? ORDER BY chunk_index",
+            (record_id,),
+        ).fetchall()
+        fts_chunks = conn.execute(
+            "SELECT content FROM knowledge_chunks_fts WHERE record_id=?",
+            (record_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(chunks) == 1 and chunks[0]["content"] == new_record["content"]
+    assert len(fts_chunks) == 1 and fts_chunks[0]["content"] == new_record["content"]
