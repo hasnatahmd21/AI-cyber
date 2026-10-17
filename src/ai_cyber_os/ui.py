@@ -689,12 +689,43 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(body, dict):
                     raise ValueError("JSON object required")
                 allowed = {
-                    "cases", "outputs", "min_recall_at_k", "min_precision_at_k",
+                    "mode", "cases", "outputs", "min_recall_at_k", "min_precision_at_k",
                     "min_mrr", "min_ndcg_at_k", "min_evidence_quality", "min_output_grounding",
                 }
                 unknown = set(body) - allowed
                 if unknown:
                     raise ValueError("unknown request fields: " + ", ".join(sorted(str(x) for x in unknown)))
+                mode = body.get("mode", "files")
+                if mode not in {"files", "live-sampled"}:
+                    raise ValueError("mode must be 'files' or 'live-sampled'")
+                if mode == "live-sampled":
+                    if set(body) != {"mode"}:
+                        raise ValueError("live-sampled mode accepts only {'mode':'live-sampled'}")
+                    def live_evaluation_action():
+                        db_path = require_runtime_database()
+                        from .security_evaluation_runtime import evaluate_permanent_database
+                        live_result = evaluate_permanent_database(
+                            db_path, sample_size=10, deep_verify=True
+                        )
+                        saved_report = save_report("security-evaluation", live_result)
+                        return {
+                            "success": live_result.get("success") is True,
+                            "kind": "security-evaluation",
+                            "mode": "live-sampled",
+                            "timestamp": saved_report.get("timestamp"),
+                            "cases_total": live_result.get("sample_count", 0),
+                            "passed": live_result.get("passed", 0),
+                            "failed": live_result.get("failed", 0),
+                            "source_families_sampled": live_result.get("source_families_sampled", []),
+                            "source_families_not_sampled": live_result.get("source_families_not_sampled", []),
+                            "evaluation_contract": live_result.get("evaluation_contract"),
+                            "errors": live_result.get("errors", []),
+                        }
+                    result = _guarded_operation(
+                        "security-evaluation-live-sampled", body, live_evaluation_action
+                    )
+                    self._send(200 if result.get("success") is True else 422, result)
+                    return
                 raw_cases, raw_outputs = body.get("cases"), body.get("outputs")
                 if not isinstance(raw_cases, str) or not raw_cases.strip():
                     raise ValueError("cases must be a project-relative JSON path")
