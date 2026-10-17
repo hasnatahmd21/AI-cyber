@@ -1102,3 +1102,54 @@ def test_default_build_scope_is_eleven_and_skips_out_of_scope_nvd_cvss_manifests
     assert {row["dataset"] for row in ingested["excluded_manifests_skipped"]} == {
         "nvd_cve", "cvss"
     }
+
+def test_lfs_confirmation_report_is_committed_after_database_push(tmp_path: Path, monkeypatch):
+    """The final confirmed report is a report-only commit after the DB push."""
+    from types import SimpleNamespace
+
+    import scripts.kaggle_build_knowledge_db as builder
+
+    repo = tmp_path / "repo"
+    (repo / ".git").mkdir(parents=True)
+    report_path = repo / "datasets" / "acquisition_reports" / "build-report.json"
+    report_path.parent.mkdir(parents=True)
+    report_path.write_text(json.dumps({
+        "overall": "PASS",
+        "permanent_persistence": "CONFIRMED_GITHUB_LFS",
+        "persistence": {"status": "pushed", "database_path": "datasets/processed/knowledge-v1.sqlite3"},
+    }), encoding="utf-8")
+    monkeypatch.setattr(builder, "REPOSITORY_ROOT", repo)
+    monkeypatch.setenv("GITHUB_TOKEN", "test-token-not-for-output")
+
+    calls = []
+    fake_sha = "b" * 40
+
+    def fake_run(command, **kwargs):
+        command = list(command)
+        calls.append((command, kwargs))
+        if command[3:] == ["branch", "--show-current"]:
+            return SimpleNamespace(returncode=0, stdout="fix/dataset-parser-readiness", stderr="")
+        if command[3:] == ["diff", "--cached", "--quiet"]:
+            return SimpleNamespace(returncode=1, stdout="", stderr="")
+        if command[3:] == ["rev-parse", "HEAD"]:
+            return SimpleNamespace(returncode=0, stdout=fake_sha, stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(builder.subprocess, "run", fake_run)
+    result = builder.persist_lfs_confirmation_report(report_path, "fix/dataset-parser-readiness")
+
+    assert result == {
+        "status": "pushed",
+        "branch": "fix/dataset-parser-readiness",
+        "commit": fake_sha,
+        "report_path": "datasets/acquisition_reports/build-report.json",
+    }
+    commands = [command for command, _ in calls]
+    assert ["git", "-C", str(repo), "add", "--",
+            "datasets/acquisition_reports/build-report.json"] in commands
+    commit = next(command for command in commands if command[3:4] == ["commit"])
+    assert "report: confirm Knowledge DB persistence" in commit[-1]
+    push = next(command for command in commands if command[3:4] == ["push"])
+    assert push[-2:] == ["origin", "fix/dataset-parser-readiness"]
+    assert all("test-token-not-for-output" not in str(command) for command in commands)
+
