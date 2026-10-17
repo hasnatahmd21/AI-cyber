@@ -704,7 +704,7 @@ def test_restart_smoke_test_uses_configured_db_and_returns_cited_evidence(tmp_pa
         source="CISA KEV fixture",
         source_uri="https://example.invalid/cisa-kev",
         license="fixture",
-        version="nvd-fixture-1",
+        version="cisa-kev-fixture-1",
         validation_status="fixture-validated",
     )
 
