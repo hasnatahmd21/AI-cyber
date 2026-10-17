@@ -4,7 +4,7 @@ AI-CYBER — Kaggle master dataset acquisition/push runner.
 
 Purpose:
   1. Clone the AI-CYBER repair branch into a fresh Kaggle workspace.
-  2. Acquire the 13 locked dataset families from authoritative/public sources.
+  2. Acquire the 11 selected dataset families from authoritative/public sources.
   3. Preserve the exact downloaded artifact, provenance, version/snapshot metadata,
      SHA-256 and byte count.
   4. Place data under the canonical datasets/ tree.
@@ -34,7 +34,6 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import hashlib
-import importlib.util
 import json
 import os
 import shutil
@@ -59,9 +58,8 @@ LFS_THRESHOLD = int(os.environ.get("GIT_LFS_THRESHOLD_MB", "50")) * 1024 * 1024
 PUSH = os.environ.get("PUSH_DATASETS", "1").lower() not in {"0", "false", "no"}
 
 LOCKED = (
-    "nvd_cve", "cisa_kev", "epss", "cwe", "cpe", "cvss",
-    "mitre_attack", "capec", "d3fend", "sigma",
-    "suricata_rules", "zeek_intel", "mbc",
+    "capec", "cisa_kev", "cpe", "cwe", "epss", "mitre_attack",
+    "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel",
 )
 
 FAMILIES = [x.strip() for x in os.environ.get("DATASET_FAMILIES", "all").split(",") if x.strip()]
@@ -194,98 +192,6 @@ def ensure_lfs() -> bool:
     return True
 
 
-def _load_nvd_readiness_module():
-    """Load the repository's official NVD .meta/hash/parser validator from this checkout."""
-    module_path = CHECKOUT / "scripts" / "kaggle_nvd_feed_readiness.py"
-    if not module_path.is_file():
-        raise FileNotFoundError(f"official NVD readiness script not found: {module_path}")
-    spec = importlib.util.spec_from_file_location("ai_cyber_nvd_feed_readiness", module_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"could not load official NVD readiness script: {module_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def _nvd_records_from_manifest(manifest: dict) -> list[dict]:
-    """Convert only a source-verified NVD feed manifest into the acquisition report shape."""
-    schema = manifest.get("schema")
-    if (
-        manifest.get("dataset") != "nvd_cve"
-        or not isinstance(schema, dict)
-        or schema.get("parser_kind") != "nvd"
-        or manifest.get("validation_status") != "local-integrity-verified"
-        or not isinstance(manifest.get("artifacts"), list)
-        or not manifest["artifacts"]
-    ):
-        raise ValueError("NVD artifacts must come from a verified NVD 2.0 feed manifest")
-
-    records: list[dict] = []
-    required = ("path", "version", "source_uri", "byte_size", "sha256", "record_count", "count_kind", "upstream_meta")
-    for artifact in manifest["artifacts"]:
-        if not isinstance(artifact, dict) or any(key not in artifact for key in required):
-            raise ValueError("verified NVD manifest contains an incomplete artifact record")
-        if artifact["count_kind"] != "nvd-feed":
-            raise ValueError("NVD artifact is missing the nvd-feed parser contract")
-        records.append({
-            "dataset": "nvd_cve",
-            "version": artifact["version"],
-            "source": manifest["source"],
-            "source_uri": artifact["source_uri"],
-            "license": manifest["license"],
-            "local_path": artifact["path"],
-            "bytes": artifact["byte_size"],
-            "sha256": artifact["sha256"],
-            "format": artifact.get("format", "NVD JSON 2.0 gzip"),
-            "acquired_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
-            "validation_status": manifest["validation_status"],
-            "ingestion_status": manifest.get("ingestion_status", "not-started"),
-            "record_count": artifact["record_count"],
-            "count_kind": artifact["count_kind"],
-            "upstream_meta": artifact["upstream_meta"],
-        })
-    return records
-
-
-def nvd_family() -> list[dict]:
-    """Use the existing official NVD readiness pipeline, not a checksum-blind downloader."""
-    root = RAW / "nvd_cve"
-    root.mkdir(parents=True, exist_ok=True)
-    current_year = dt.datetime.now(dt.timezone.utc).year
-    nvd_readiness = _load_nvd_readiness_module()
-
-    # This validates each official .meta contract, compressed/uncompressed SHA-256
-    # and size, JSON structure, and parsed CVE IDs before any NVD manifest is written.
-    manifest = nvd_readiness.build_manifest(
-        root, 2002, current_year, include_updates=True, project_root=CHECKOUT
-    )
-    records = _nvd_records_from_manifest(manifest)
-    manifest_path = MANIFESTS / "nvd_cve.json"
-    nvd_readiness.write_json_atomic(manifest_path, manifest)
-
-    report = {
-        "overall": "SOURCE_INTEGRITY_PASS",
-        "dataset": "nvd_cve",
-        "raw_root": str(root),
-        "manifest_path": str(manifest_path),
-        "manifest_sha256": sha256(manifest_path),
-        "feed_count": len(manifest["artifacts"]),
-        "feed_record_occurrences": manifest["record_count"],
-        "unique_cve_id_count": manifest["unique_cve_id_count"],
-        "duplicate_feed_record_occurrences": manifest["duplicate_feed_record_occurrences"],
-        "ingestion_performed": False,
-        "database_created": False,
-        "feeds": manifest["artifacts"],
-    }
-    write_json(REPORTS / f"nvd-readiness-{STAMP}.json", report)
-    print(
-        f"PASS nvd_cve: feeds={len(records)} records={manifest['record_count']} "
-        f"unique_cves={manifest['unique_cve_id_count']} "
-        f"manifest={manifest_path}",
-        flush=True,
-    )
-    return records
-
 def cpe_family() -> list[dict]:
     out = []
     root = RAW / "cpe"
@@ -386,7 +292,7 @@ def capec_family() -> list[dict]:
 
 
 def d3fend_family() -> list[dict]:
-    root = RAW / "d3fend"
+    root = RAW / "mitre_d3fend"
     root.mkdir(parents=True, exist_ok=True)
     base = "https://d3fend.mitre.org/ontologies/"
     out = []
@@ -394,7 +300,7 @@ def d3fend_family() -> list[dict]:
         uri = base + name
         p = get(uri, root / name)
         out.append(artifact_record(
-            family="d3fend", path=p, source="MITRE D3FEND", source_uri=uri,
+            family="mitre_d3fend", path=p, source="MITRE D3FEND", source_uri=uri,
             version="1.6.0", license_text="MITRE D3FEND Terms of Use",
             format_name=p.suffix.lstrip("."),
         ))
@@ -419,13 +325,13 @@ def attack_family() -> list[dict]:
 
 def mbc_family() -> list[dict]:
     return github_snapshot(
-        "MBCProject/mbc-markdown", "mbc",
+        "MBCProject/mbc-markdown", "mitre_mbc",
         license_text="MITRE Malware Behavior Catalog Terms of Use",
     )
 
 
 def suricata_family() -> list[dict]:
-    root = RAW / "suricata_rules"
+    root = RAW / "suricata"
     root.mkdir(parents=True, exist_ok=True)
     # Official Suricata documentation identifies Emerging Threats Open as a
     # free ruleset and suricata-update as the official management mechanism.
@@ -447,7 +353,7 @@ def suricata_family() -> list[dict]:
     target = root / "suricata.rules"
     shutil.copy2(src, target)
     return [artifact_record(
-        family="suricata_rules", path=target, source="Suricata-Update / Emerging Threats Open",
+        family="suricata", path=target, source="Suricata-Update / Emerging Threats Open",
         source_uri="https://docs.suricata.io/en/latest/rules/intro.html",
         version=STAMP,
         license_text="Ruleset license/provenance preserved from upstream rule headers",
@@ -465,36 +371,8 @@ def zeek_family() -> list[dict]:
     )
 
 
-def cvss_family(nvd_records: list[dict]) -> list[dict]:
-    # CVSS is an enrichment extracted from the authoritative NVD CVE snapshots,
-    # not a second copy of the CVE corpus.
-    # The actual extraction is performed from downloaded NVD JSON in a later
-    # normalization stage; this marker records the dependency explicitly.
-    marker = RAW / "cvss" / "README.json"
-    write_json(marker, {
-        "dataset": "cvss",
-        "version": f"derived-from-nvd-2.0-{TODAY}",
-        "source": "NVD CVE 2.0 CVSS metadata",
-        "source_uri": "https://nvd.nist.gov/vuln/data-feeds",
-        "license": "NVD data feed terms; preserve source attribution",
-        "derivation": "Extract CVSS v4/v3 metrics from NVD CVE records; do not duplicate CVE records.",
-        "dependencies": [x["local_path"] for x in nvd_records],
-        "validation_status": "pending-derived-extraction",
-    })
-    return [artifact_record(
-        family="cvss", path=marker, source="NVD CVE 2.0 CVSS metadata",
-        source_uri="https://nvd.nist.gov/vuln/data-feeds",
-        version=f"derived-from-nvd-2.0-{TODAY}",
-        license_text="NVD data feed terms; preserve source attribution",
-        format_name="json-marker",
-    )]
-
-
 def acquire_family(name: str) -> list[dict]:
-    if name == "cvss":
-        return []
-    if name == "nvd_cve":
-        return nvd_family()
+    """Acquire one of the eleven approved source families using canonical IDs."""
     if name == "cpe":
         return cpe_family()
     if name == "cisa_kev":
@@ -505,19 +383,19 @@ def acquire_family(name: str) -> list[dict]:
         return cwe_family()
     if name == "capec":
         return capec_family()
-    if name == "d3fend":
+    if name == "mitre_d3fend":
         return d3fend_family()
     if name == "mitre_attack":
         return attack_family()
     if name == "sigma":
         return sigma_family()
-    if name == "suricata_rules":
+    if name == "suricata":
         return suricata_family()
     if name == "zeek_intel":
         return zeek_family()
-    if name == "mbc":
+    if name == "mitre_mbc":
         return mbc_family()
-    raise AssertionError(name)
+    raise ValueError(f"dataset family is not in the approved 11-source set: {name}")
 
 
 def push() -> None:
@@ -559,37 +437,17 @@ def push() -> None:
 
 
 def write_family_manifests(by_family: dict[str, list[dict]]) -> None:
-    """Write generic family manifests, preserving the richer verified NVD contract."""
+    """Write per-family manifests using only the canonical eleven-dataset IDs."""
     for family, records in sorted(by_family.items()):
+        if family not in LOCKED:
+            raise ValueError(f"refusing to write out-of-scope dataset manifest: {family}")
         target = MANIFESTS / f"{family}.json"
-        if family == "nvd_cve":
-            if not target.is_file():
-                raise RuntimeError(
-                    "refusing to write an unverified nvd_cve manifest; "
-                    "the official NVD readiness pipeline must create it first"
-                )
-            try:
-                manifest = json.loads(target.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as exc:
-                raise RuntimeError(f"verified NVD manifest cannot be read: {target}") from exc
-            schema = manifest.get("schema")
-            if (
-                manifest.get("dataset") != "nvd_cve"
-                or not isinstance(schema, dict)
-                or schema.get("parser_kind") != "nvd"
-                or manifest.get("validation_status") != "local-integrity-verified"
-                or not manifest.get("artifact_set_sha256")
-            ):
-                raise RuntimeError(
-                    "refusing to overwrite nvd_cve.json because its official feed-verification contract is absent"
-                )
-            print(f"Keeping source-verified NVD manifest: {target}", flush=True)
-            continue
         write_json(target, {
             "dataset": family,
             "artifacts": records,
             "source_of_truth": "acquisition-report",
         })
+
 
 def main() -> int:
     print("=" * 88)
@@ -605,30 +463,16 @@ def main() -> int:
 
     all_records: list[dict] = []
     errors: list[dict] = []
-    nvd_records: list[dict] = []
 
     for family in FAMILIES:
-        print("\n---", family, "---")
+        print("\\n---", family, "---")
         try:
             records = acquire_family(family)
-            if family == "nvd_cve":
-                nvd_records = records
             all_records.extend(records)
-            if family == "cvss":
-                print("OK: cvss: deferred to NVD-derived extraction")
-            else:
-                print(f"OK: {family}: {len(records)} artifact(s)")
+            print(f"OK: {family}: {len(records)} artifact(s)")
         except Exception as exc:
             errors.append({"dataset": family, "error": repr(exc)})
             print(f"FAILED: {family}: {exc}")
-
-    if "cvss" in FAMILIES and nvd_records:
-        try:
-            records = cvss_family(nvd_records)
-            all_records.extend(records)
-            print(f"OK: cvss: {len(records)} derivation marker")
-        except Exception as exc:
-            errors.append({"dataset": "cvss", "error": repr(exc)})
 
     report = {
         "runner": "tools/kaggle_acquire_datasets.py",
