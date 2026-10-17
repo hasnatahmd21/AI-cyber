@@ -691,7 +691,7 @@ def test_restart_smoke_test_uses_configured_db_and_returns_cited_evidence(tmp_pa
     source = tmp_path / "known-cve.jsonl"
     source.write_text(
         '{"id":"CVE-2021-44228","title":"Fixture CVE","content":"critical remote code execution vulnerability",'
-        '"source":"NVD fixture","source_uri":"https://example.invalid/nvd",'
+        '"source":"CISA KEV fixture","source_uri":"https://example.invalid/cisa-kev",'
         '"license":"fixture","version":"nvd-fixture-1",'
         '"validation_status":"fixture-validated"}\n',
         encoding="utf-8",
@@ -700,9 +700,9 @@ def test_restart_smoke_test_uses_configured_db_and_returns_cited_evidence(tmp_pa
     ingest_file(
         source,
         db_path=db_path,
-        dataset="nvd_cve",
-        source="NVD fixture",
-        source_uri="https://example.invalid/nvd",
+        dataset="cisa_kev",
+        source="CISA KEV fixture",
+        source_uri="https://example.invalid/cisa-kev",
         license="fixture",
         version="nvd-fixture-1",
         validation_status="fixture-validated",
@@ -1069,7 +1069,7 @@ def test_default_build_scope_is_eleven_and_skips_out_of_scope_nvd_cvss_manifests
 
     manifest = _manifest(
         tmp_path,
-        '{"id":"SCOPE-1","title":"scope fixture","content":"eleven source scope"}\\n',
+        '{"id":"SCOPE-1","title":"scope fixture","content":"eleven source scope"}\n',
         count=1,
     )
     manifests_dir = manifest.parent
