@@ -695,7 +695,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
-        from ai_cyber_os.knowledge import status as knowledge_status, search as knowledge_search
+        from ai_cyber_os.knowledge import status as knowledge_status
         from ai_cyber_os.rag import build_context
 
         batch_options: dict[str, Any] = {"required_datasets": tuple(report["required_datasets"])}
