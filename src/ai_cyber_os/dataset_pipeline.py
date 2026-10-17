@@ -542,12 +542,41 @@ def ingest_manifest(
     if preflight_inspection is None:
         inspection = inspect_dataset(path)
     else:
-        # ingest_manifest_directory has already completed an integrity/count
-        # preflight for this exact manifest and artifact snapshot. Reusing that
-        # measured result avoids reparsing every large artifact a second time.
+        # Reuse the readiness gate's parser/count inspection, but re-hash the
+        # raw artifact bytes before ingestion. This avoids a second expensive
+        # parse while still detecting an artifact changed after preflight.
         if preflight_inspection.get("ready") is not True:
             raise ValueError("preflight_inspection must be a ready inspection result")
         inspection = preflight_inspection
+        root = _project_root(path)
+        if "artifacts" in manifest:
+            snapshot_items = zip(manifest["artifacts"], inspection.get("artifacts", []))
+            if len(manifest["artifacts"]) != len(inspection.get("artifacts", [])):
+                raise ValueError("preflight artifact list no longer matches manifest; rerun readiness")
+            for item, measured in snapshot_items:
+                local = (root / str(item["path"])).resolve()
+                try:
+                    local.relative_to(root)
+                except ValueError as exc:
+                    raise ValueError("manifest artifact path must remain inside the project") from exc
+                if not local.is_file():
+                    raise FileNotFoundError(f"preflight artifact disappeared before ingestion: {local}")
+                if local.stat().st_size != measured.get("byte_size"):
+                    raise ValueError(f"artifact byte size changed after preflight: {item['path']}")
+                if sha256_file(local) != measured.get("sha256"):
+                    raise ValueError(f"artifact SHA-256 changed after preflight: {item['path']}")
+        else:
+            local = (root / str(manifest["local_path"])).resolve()
+            try:
+                local.relative_to(root)
+            except ValueError as exc:
+                raise ValueError("manifest artifact path must remain inside the project") from exc
+            if not local.is_file():
+                raise FileNotFoundError(f"preflight artifact disappeared before ingestion: {local}")
+            if local.stat().st_size != inspection.get("byte_size"):
+                raise ValueError("artifact byte size changed after preflight")
+            if sha256_file(local) != inspection.get("sha256"):
+                raise ValueError("artifact SHA-256 changed after preflight")
 
     if "artifacts" not in manifest:
         if require_checksum and not inspection["sha256_matches"]:
@@ -916,6 +945,7 @@ def ingest_manifest_directory(
     required_datasets: tuple[str, ...] | list[str] = DEFAULT_REQUIRED_DATASETS,
     require_checksum: bool = True,
     progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    preflight_inspections: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Preflight every requested dataset before creating/modifying the DB.
 
@@ -941,6 +971,7 @@ def ingest_manifest_directory(
         "required_datasets": sorted(requested_required),
         "excluded_manifests_skipped": [],
         "preflight": [],
+        "preflight_inspection_reuse_count": 0,
         "results": [],
         "missing_required_datasets": [],
     }
@@ -985,6 +1016,20 @@ def ingest_manifest_directory(
                 })
             manifest = load_manifest(manifest_path)
             dataset = str(manifest.get("dataset") or manifest_path.stem)
+            cached_entry = (preflight_inspections or {}).get(str(manifest_path.resolve()))
+            if cached_entry is not None:
+                expected_manifest_sha = cached_entry.get("manifest_sha256")
+                if expected_manifest_sha != sha256_file(manifest_path):
+                    raise ValueError(
+                        "manifest changed after source-readiness gate; rerun the complete preflight"
+                    )
+                inspection = cached_entry.get("inspection")
+                if not isinstance(inspection, dict) or inspection.get("ready") is not True:
+                    raise ValueError("cached source-readiness inspection is missing or not ready")
+                inspection_reused = True
+            else:
+                inspection = inspect_dataset(manifest_path)
+                inspection_reused = False
             if dataset.casefold() in excluded_by_scope:
                 report["excluded_manifests_skipped"].append({
                     "manifest": str(manifest_path),
@@ -995,12 +1040,12 @@ def ingest_manifest_directory(
             if dataset in names:
                 raise ValueError(f"duplicate manifest for dataset {dataset!r}; keep one authoritative manifest per dataset")
             names.add(dataset)
-            inspection = inspect_dataset(manifest_path)
             row = {
                 "dataset": dataset,
                 "manifest": str(manifest_path),
                 "status": "PASS" if inspection.get("ready") is True else "FAIL",
                 "inspection": inspection,
+                "inspection_reused_from_readiness_gate": inspection_reused,
             }
             if row["status"] != "PASS":
                 row["evidence"] = "SHA-256, byte-size and/or record-count validation failed."
@@ -1015,6 +1060,7 @@ def ingest_manifest_directory(
                     "dataset": dataset,
                     "status": row["status"],
                     "records": inspection.get("records"),
+                    "inspection_reused_from_readiness_gate": inspection_reused,
                 })
         except FileNotFoundError as exc:
             row = {
@@ -1191,6 +1237,10 @@ def ingest_manifest_directory(
     )
     report["ready"] = True
     report["preflight_passed"] = len(loaded)
+    report["preflight_inspection_reuse_count"] = sum(
+        1 for row in report["preflight"]
+        if row.get("inspection_reused_from_readiness_gate") is True
+    )
     total_inserted = total_updated = total_duplicates = 0
     for dataset_index, (manifest_path, manifest, inspection) in enumerate(loaded, start=1):
         dataset = str(manifest.get("dataset") or manifest_path.stem)
