@@ -225,6 +225,7 @@ def evaluate_retrieval_cases(
     db_path: str | Path,
     *,
     thresholds: EvaluationThresholds | None = None,
+    read_only: bool = False,
 ) -> dict[str, Any]:
     """Run retrieval evaluation using the real local knowledge store."""
     thresholds = thresholds or EvaluationThresholds()
@@ -594,6 +595,7 @@ def evaluate_end_to_end(
             db_path=db_path,
             limit=limit,
             dataset=case.get("dataset"),
+            read_only=read_only,
         )
         retrieval = evaluate_retrieval_case(case, context)
         metrics = retrieval["metrics"]
