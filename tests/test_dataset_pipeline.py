@@ -692,7 +692,7 @@ def test_restart_smoke_test_uses_configured_db_and_returns_cited_evidence(tmp_pa
     source.write_text(
         '{"id":"CVE-2021-44228","title":"Fixture CVE","content":"critical remote code execution vulnerability",'
         '"source":"CISA KEV fixture","source_uri":"https://example.invalid/cisa-kev",'
-        '"license":"fixture","version":"nvd-fixture-1",'
+        '"license":"fixture","version":"cisa-kev-fixture-1",'
         '"validation_status":"fixture-validated"}\n',
         encoding="utf-8",
     )
