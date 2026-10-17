@@ -804,7 +804,16 @@ def main(argv: list[str] | None = None) -> int:
         sys.path.insert(0, str(REPOSITORY_ROOT / "src"))
 
         readiness_path = report_path.with_name(report_path.stem + "-source-readiness.json")
+        print("[knowledge-db-progress] source_readiness_start", flush=True)
         readiness = run_readiness_gate(raw_root, readiness_path)
+        print(
+            "[knowledge-db-progress] source_readiness_complete "
+            + json.dumps({
+                "overall": readiness.get("overall"),
+                "counts": readiness.get("manifest_readiness", {}),
+            }, ensure_ascii=False, sort_keys=True, default=str),
+            flush=True,
+        )
         report["source_readiness_report"] = str(readiness_path)
         report["source_readiness"] = readiness.get("overall")
         report["source_readiness_counts"] = readiness.get("manifest_readiness", {})
@@ -823,7 +832,19 @@ def main(argv: list[str] | None = None) -> int:
         from ai_cyber_os.knowledge import status as knowledge_status
         from ai_cyber_os.rag import build_context
 
-        batch_options: dict[str, Any] = {"required_datasets": tuple(report["required_datasets"])}
+        def report_ingestion_progress(event: dict[str, Any]) -> None:
+            # Emit one compact line per manifest/artifact stage so notebook users
+            # can distinguish active ingestion from a stalled cell.
+            print(
+                "[knowledge-db-progress] "
+                + json.dumps(event, ensure_ascii=False, sort_keys=True, default=str),
+                flush=True,
+            )
+
+        batch_options: dict[str, Any] = {
+            "required_datasets": tuple(report["required_datasets"]),
+            "progress_callback": report_ingestion_progress,
+        }
         preflight_and_ingestion = ingest_manifest_directory(
             manifests_dir, db_path=db_path, **batch_options
         )
