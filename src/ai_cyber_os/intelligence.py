@@ -29,15 +29,18 @@ def correlate(
     db_path: str,
     limit: int = 10,
     dataset: str | None = None,
+    read_only: bool = False,
 ) -> dict[str, Any]:
-    hits = search(query, db_path=db_path, limit=limit, dataset=dataset)
+    hits = search(
+        query, db_path=db_path, limit=limit, dataset=dataset, read_only=read_only
+    )
     identifiers = extract_identifiers(query)
     for hit in hits:
         hit["identifiers"] = extract_identifiers(
             f'{hit.get("title", "")} {hit.get("content", "")}'
         )
     related: dict[str, list[dict[str, Any]]] = {}
-    db = open_store(db_path)
+    db = open_store(db_path, read_only=read_only)
     try:
         for kind, values in identifiers.items():
             for identifier in values:
