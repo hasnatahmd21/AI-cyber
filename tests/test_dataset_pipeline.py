@@ -1304,8 +1304,8 @@ def test_sqlite_integrity_smoke_test_checks_indexes_and_exact_dataset_scope(tmp_
     from scripts.kaggle_build_knowledge_db import sqlite_integrity_smoke_test
 
     payload = (
-        '{"id":"DB-CHECK-1","title":"SQLite check","content":"integrity and FTS evidence"}\\n'
-        '{"id":"DB-CHECK-2","title":"SQLite check two","content":"second evidence row"}\\n'
+        '{"id":"DB-CHECK-1","title":"SQLite check","content":"integrity and FTS evidence"}\n'
+        '{"id":"DB-CHECK-2","title":"SQLite check two","content":"second evidence row"}\n'
     )
     manifest = _manifest(tmp_path, payload, count=2)
     db_path = tmp_path / "knowledge-v1.sqlite3"
