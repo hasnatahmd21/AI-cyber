@@ -137,3 +137,20 @@ The repository workflow `.github/workflows/permanent-knowledge-db-build.yml` use
 The RAG surface in this branch retrieves cited evidence; it does not generate a natural-language answer. The ten-record gate therefore evaluates retrieval fidelity and exact source/hash/validation provenance, not generative-answer correctness.
 
 The repository is public, so do not use the GitHub Release/Git LFS persistence option for these records until redistribution permissions for every source are explicitly reviewed and approved.
+
+
+## Stage 3 — persistent DB to live RAG/API runtime
+
+Stage 3 consumes an already-built/published DB; it does not rebuild datasets. Run the verifier before starting the UI/API:
+
+    export AI_CYBER_KNOWLEDGE_DB=/path/to/restored/knowledge-v1.sqlite3
+    export AI_CYBER_REQUIRE_VERIFIED_DB=1
+    ai-cyber-knowledge-verify --db "$AI_CYBER_KNOWLEDGE_DB"
+
+The DB path must refer to a real, writable restored copy of the private artifact (for example under `/kaggle/working`), not the read-only `/kaggle/input` mount. The verification CLI opens the file read-only and never creates, migrates, or fills in a missing DB. A full check validates SQLite integrity, exact approved 11-source scope, schema/database versions, pinned source-manifest SHA-256 ledger, FTS row parity, chunk-FTS parity, foreign keys, and failed/incomplete ingestion checkpoints. Exit code `0` means PASS; `2` means the runtime must remain blocked.
+
+When `AI_CYBER_REQUIRE_VERIFIED_DB=1`, the localhost runtime re-resolves `AI_CYBER_KNOWLEDGE_DB` at request time, rejects missing/unpopulated/wrong-scope stores before retrieval, blocks UI/API ingestion mutations, and exposes `GET /api/knowledge/health` for the full read-only gate. `GET /api/knowledge/status` reports readiness without creating an empty fallback database. Keep this strict flag enabled when serving the persistent Knowledge DB.
+
+The live API verifier `scripts/verify_live_rag_api.py` performs the full DB gate before starting the localhost server, then selects one random cited record from each of the 11 datasets and checks that `/api/knowledge` returns the exact record ID and matching source URI, content hash, title, and validation state. It also checks fixed CISA KEV/CVE, CWE, and ATT&CK retrieval probes. These are retrieval/provenance checks, not generated-answer accuracy tests: `ai_cyber_os.rag` returns evidence only. Actual generated outputs must be separately supplied to `ai-cyber-evaluate` and pass `validate_security_output` before being treated as grounded answers.
+
+Stage 3 runtime verification is not complete until `ai-cyber-knowledge-verify` passes against the actual restored private artifact, the live API report passes, and the restored DB SHA-256 matches the private publication manifest. A fixture database passing unit tests is not evidence that a permanent production DB has been published.
