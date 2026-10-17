@@ -543,15 +543,15 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
         encoding="utf-8",
     )
     db_path = tmp_path / "persistent" / "knowledge-v1.sqlite3"
-    ingest_file(source, db_path=db_path, dataset="nvd_cve", source="fixture",
+    ingest_file(source, db_path=db_path, dataset="cisa_kev", source="fixture",
                 source_uri="https://example.invalid/source", license="fixture license",
                 validation_status="fixture-validated")
     report_path = tmp_path / "build-report.json"
     source_manifests = tmp_path / "source-manifests"
     source_manifests.mkdir()
-    real_manifest = source_manifests / "nvd_cve.json"
+    real_manifest = source_manifests / "cisa_kev.json"
     real_manifest.write_text(json.dumps({
-        "dataset": "nvd_cve",
+        "dataset": "cisa_kev",
         "version": "fixture-feed-1",
         "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
         "record_count": 1,
@@ -635,10 +635,10 @@ def test_private_kaggle_db_persistence_checks_sqlite_hash_and_never_sets_public(
         assert metadata["licenses"] == [{"name": "other"}]
         assert artifact["sha256"] == hashlib.sha256((upload_dir / "knowledge-v1.sqlite3").read_bytes()).hexdigest()
         assert artifact["source_manifest_count"] == 1
-        assert artifact["source_manifest_sha256"]["nvd_cve.json"] == hashlib.sha256(real_manifest.read_bytes()).hexdigest()
-        copied_manifest_name = artifact["source_manifest_files"]["nvd_cve.json"]
+        assert artifact["source_manifest_sha256"]["cisa_kev.json"] == hashlib.sha256(real_manifest.read_bytes()).hexdigest()
+        copied_manifest_name = artifact["source_manifest_files"]["cisa_kev.json"]
         assert copied_manifest_name.startswith("source-manifest-")
-        assert json.loads((upload_dir / copied_manifest_name).read_text())["dataset"] == "nvd_cve"
+        assert json.loads((upload_dir / copied_manifest_name).read_text())["dataset"] == "cisa_kev"
         assert not (upload_dir / "source-manifest-example.json").exists()
         assert (upload_dir / "source-readiness-report.json").read_text() == source_readiness_report.read_text()
         assert artifact["source_readiness_report_sha256"] == hashlib.sha256(source_readiness_report.read_bytes()).hexdigest()
