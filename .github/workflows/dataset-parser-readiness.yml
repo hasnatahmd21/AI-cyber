@@ -8,6 +8,8 @@ on:
     paths:
       - "src/ai_cyber_os/knowledge.py"
       - "src/ai_cyber_os/knowledge_runtime.py"
+      - "src/ai_cyber_os/security_evaluation.py"
+      - "src/ai_cyber_os/security_evaluation_runtime.py"
       - "src/ai_cyber_os/dataset_pipeline.py"
       - "src/ai_cyber_os/threat_intel.py"
       - "src/ai_cyber_os/dataset_readiness.py"
@@ -19,6 +21,8 @@ on:
       - "tests/test_knowledge.py"
       - "tests/test_knowledge_runtime.py"
       - "tests/test_knowledge_api_runtime.py"
+      - "tests/test_security_evaluation.py"
+      - "tests/test_security_evaluation_runtime.py"
       - "tests/test_rag.py"
       - "scripts/kaggle_dataset_parser_readiness_gate.py"
       - "scripts/kaggle_nvd_feed_readiness.py"
