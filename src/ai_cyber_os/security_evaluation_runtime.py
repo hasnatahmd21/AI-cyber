@@ -222,6 +222,7 @@ def evaluate_permanent_database(
                     [{
                         "id": case_id,
                         "query": query,
+                        "dataset": dataset,
                         "limit": 1,
                         "k": 1,
                         "expected_record_ids": [record_id],
