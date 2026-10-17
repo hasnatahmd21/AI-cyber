@@ -248,6 +248,11 @@ def build_manifest(root: Path, year_start: int, year_end: int, include_updates: 
     feed_record_count = 0
     for filename, version in feed_specs:
         artifact, cve_ids = process_feed(root, filename, dataset_version=version, project_root=project_root)
+        # Cache reuse is execution telemetry, not source identity. Persisting this
+        # boolean in the manifest makes identical source bytes hash differently
+        # depending on whether a previous run downloaded or reused the file,
+        # which prevents checkpoint resume. Keep source manifests deterministic.
+        artifact.pop("cache_reused", None)
         artifacts.append(artifact)
         feed_record_count += int(artifact["record_count"])
         seen_cve_ids.update(cve_ids)

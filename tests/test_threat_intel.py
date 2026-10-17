@@ -74,6 +74,7 @@ def test_nvd_manifest_version_is_content_addressed_and_stable(tmp_path: Path, mo
     feed_root = project / "datasets" / "raw" / "nvd_cve"
     feed_root.mkdir(parents=True)
 
+    cache_states = iter([False, True])
     def fake_process_feed(root, feed_name, *, dataset_version, project_root):
         digest = hashlib.sha256(feed_name.encode("utf-8")).hexdigest()
         artifact = {
@@ -83,6 +84,8 @@ def test_nvd_manifest_version_is_content_addressed_and_stable(tmp_path: Path, mo
             "byte_size": 100,
             "version": dataset_version,
             "upstream_meta": {"last_modified_date": "fixed-fixture-date"},
+            # This transient status deliberately changes between identical runs.
+            "cache_reused": next(cache_states),
         }
         return artifact, {"CVE-2025-1234"}
 
