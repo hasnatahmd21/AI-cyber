@@ -563,7 +563,7 @@ def _run_regression() -> dict[str, Any]:
 
 def _command_status() -> dict[str, Any]:
     state = _snapshot()
-    state["knowledge"] = knowledge_status(db_path=configured_database_path())
+    state["knowledge"] = knowledge_status(db_path=require_runtime_database())
     state["live"] = telemetry.snapshot()
     return state
 
@@ -733,7 +733,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not case_items or len(case_items) > 200:
                         raise ValueError("evaluation cases must contain 1-200 cases")
                     result = evaluate_end_to_end(
-                        case_items, configured_database_path(), outputs=outputs_map,
+                        case_items, require_runtime_database(), outputs=outputs_map,
                         thresholds=EvaluationThresholds(**thresholds),
                     )
                     saved = save_report("security-evaluation", result)
@@ -770,7 +770,7 @@ class Handler(BaseHTTPRequestHandler):
                     lambda: execute_command(
                         command,
                         run_phase=_execute_runtime,
-                        search=lambda query: intelligence_analyze(query, db_path=configured_database_path(), limit=10),
+                        search=lambda query: intelligence_analyze(query, db_path=require_runtime_database(), limit=10),
                         status=_command_status,
                         regression=_run_regression,
                         red_team=_run_redteam,
@@ -819,13 +819,13 @@ class Handler(BaseHTTPRequestHandler):
                     if action == "context":
                         result = _guarded_operation(
                             "knowledge-context", body,
-                            lambda: build_rag_context(query.strip(), db_path=configured_database_path(), dataset=dataset, limit=limit),
+                            lambda: build_rag_context(query.strip(), db_path=require_runtime_database(), dataset=dataset, limit=limit),
                         )
                         result["success"] = True
                     else:
                         result = _guarded_operation(
                             "knowledge-search", body,
-                            lambda: knowledge_search(query.strip(), db_path=configured_database_path(), dataset=dataset, limit=limit),
+                            lambda: knowledge_search(query.strip(), db_path=require_runtime_database(), dataset=dataset, limit=limit),
                         )
                         if isinstance(result, list):
                             result = {"success": True, "query": query.strip(), "results": result}
@@ -843,7 +843,7 @@ class Handler(BaseHTTPRequestHandler):
                         "knowledge-ingest", body,
                         lambda: ingest_file(
                             candidate,
-                            db_path=configured_database_path(),
+                            db_path=require_runtime_database(),
                             dataset=body.get("dataset"),
                             source=body.get("source"),
                             license=body.get("license", ""),
@@ -860,7 +860,7 @@ class Handler(BaseHTTPRequestHandler):
                     _assert_inside_project(manifest_path, "manifest")
                     result = _guarded_operation(
                         "dataset-ingest-manifest", body,
-                        lambda: ingest_manifest(manifest_path, db_path=configured_database_path()),
+                        lambda: ingest_manifest(manifest_path, db_path=require_runtime_database()),
                     )
                 elif action == "inspect-manifest":
                     raw_manifest = body.get("manifest")
@@ -886,7 +886,7 @@ class Handler(BaseHTTPRequestHandler):
                         lambda: ingest_source(
                             kind,
                             candidate,
-                            db_path=configured_database_path(),
+                            db_path=require_runtime_database(),
                             dataset=body.get("dataset"),
                             source=body.get("source"),
                             version=body.get("version", ""),
