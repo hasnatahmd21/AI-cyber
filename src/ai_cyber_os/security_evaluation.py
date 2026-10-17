@@ -225,7 +225,7 @@ def evaluate_retrieval_cases(
     db_path: str | Path,
     *,
     thresholds: EvaluationThresholds | None = None,
-    read_only: bool = False,
+    read_only: bool = True,
 ) -> dict[str, Any]:
     """Run retrieval evaluation using the real local knowledge store."""
     thresholds = thresholds or EvaluationThresholds()
@@ -575,7 +575,7 @@ def evaluate_end_to_end(
     *,
     outputs: Mapping[str, Mapping[str, Any] | str] | None = None,
     thresholds: EvaluationThresholds | None = None,
-    read_only: bool = False,
+    read_only: bool = True,
 ) -> dict[str, Any]:
     """Evaluate retrieval, evidence integrity and optional generated outputs."""
     thresholds = thresholds or EvaluationThresholds()
