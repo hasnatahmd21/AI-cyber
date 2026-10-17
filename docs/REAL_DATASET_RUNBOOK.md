@@ -23,13 +23,13 @@ No live feed, API credential, freshness claim, or external execution is introduc
 
 ## Target families
 
-NVD/CVE, CVSS, CWE, CPE, CISA KEV, MITRE ATT&CK, Suricata, Zeek, and malware feature/metadata datasets.
+CAPEC, CISA KEV, CPE, CWE, EPSS, MITRE ATT&CK, MITRE D3FEND, MITRE MBC, Sigma, Suricata, and Zeek.
 
 
 ## Dataset family metadata
 
 Use `src/ai_cyber_os/dataset_profiles.py` for the supported families:
-NVD/CVE, CVSS, CWE, CPE, CISA KEV, MITRE ATT&CK, Suricata, Zeek, and malware.
+CAPEC, CISA KEV, CPE, CWE, EPSS, MITRE ATT&CK, MITRE D3FEND, MITRE MBC, Sigma, Suricata, and Zeek.
 
 Profiles intentionally do not invent version, license, URI, or validation claims.
 Populate those fields from the exact artifact's authoritative provenance before
@@ -44,8 +44,8 @@ Example metadata shape:
 
     {
       "_datasets": {
-        "nvd_cve": {
-          "dataset": "nvd_cve",
+        "cisa_kev": {
+          "dataset": "cisa_kev",
           "version": "<artifact version>",
           "source": "<authoritative source>",
           "source_uri": "<authoritative URI>",
@@ -55,7 +55,7 @@ Example metadata shape:
         }
       },
       "_files": {
-        "datasets/nvd/nvdcve-export.jsonl": {
+        "datasets/cisa_kev/known_exploited_vulnerabilities.json": {
           "dataset": "nvd_cve",
           "version": "<artifact version>",
           "source": "<authoritative source>",
@@ -78,35 +78,24 @@ Run the committed parser regressions first:
     python -m compileall -q src/ai_cyber_os tests scripts
     python -m pytest -q tests/test_dataset_specific_parsers.py tests/test_dataset_pipeline.py tests/test_threat_intel.py tests/test_knowledge.py tests/test_rag.py
 
-Then acquire and validate the missing NVD source from official NVD JSON 2.0 feeds. This command does not create a Knowledge DB or ingest records:
+The approved build scope is the eleven existing manifests: CAPEC, CISA KEV, CPE, CWE, EPSS, MITRE ATT&CK, MITRE D3FEND, MITRE MBC, Sigma, Suricata, and Zeek Intel. NVD's full CVE feed and the CVSS derivation dependent on it are intentionally excluded. Do not download NVD feeds or wait for an NVD manifest.
 
-    python scripts/kaggle_nvd_feed_readiness.py
+Run the consolidated gate against the existing source artifacts only:
 
-The runner reads each feed's official `.meta` file, verifies compressed size plus uncompressed SHA-256 and size, parses actual CVE IDs, creates `datasets/manifests/nvd_cve.json`, and executes the consolidated raw-source readiness gate. Yearly feeds are full snapshots; recent/modified feeds overlap them, so the report separates feed-record occurrences from distinct CVE IDs.
+    python scripts/kaggle_dataset_parser_readiness_gate.py --raw-root datasets/raw --report datasets/acquisition_reports/dataset_parser_readiness_report.json
 
-To persist the verified NVD feed snapshot into the current Git branch with Git LFS, explicitly request:
-
-    python scripts/kaggle_nvd_feed_readiness.py --push --branch fix/dataset-parser-readiness
-
-The push requires Git LFS and the Kaggle Secret `cyber repo` (or `GITHUB_TOKEN`/ `GH_TOKEN` environment variable). The script refuses to push from a different active branch. Do not use `--push` unless the checkout is the intended repository/branch.
-
-Only proceed to Knowledge DB construction after `OVERALL_READINESS=PASS` and the persisted JSON report shows every required source as `PASS`. A parser-test pass by itself is not a real-source readiness pass.
-
+The gate verifies each in-scope manifest, raw-artifact integrity/counts and the source-specific ATT&CK, D3FEND, MBC and Suricata parser/count checks. A passing parser test is not a substitute for real-source PASS.
 
 ## Permanent Knowledge DB and RAG build (only after real-source PASS)
 
-The approved first-wave builder is scripts/kaggle_build_knowledge_db.py. It reruns the real-artifact gate before opening the target DB, preflights all twelve required raw-source manifests, then ingests through the verified format-specific parser for each source. A missing source, Git LFS pointer, SHA-256/byte-size mismatch, or record-count mismatch blocks ingestion before a new DB is created.
+The approved first-wave builder is scripts/kaggle_build_knowledge_db.py. It reruns the real-artifact gate before opening the target DB, preflights all eleven required raw-source manifests, then ingests through the verified format-specific parser for each source. A missing source, Git LFS pointer, SHA-256/byte-size mismatch, or record-count mismatch blocks ingestion before a new DB is created.
 
 From a fresh Kaggle session, first ensure existing Git LFS files have real bytes (not pointer text):
 
     git lfs install
     git lfs pull
 
-Then acquire NVD's official JSON 2.0 feeds and create the NVD manifest:
-
-    python scripts/kaggle_nvd_feed_readiness.py
-
-This verifies the compressed feed size plus upstream .meta uncompressed SHA-256 and size, parses actual CVE IDs, and runs the consolidated source-readiness gate. Proceed only when its full report says overall: PASS; NVD's source acquisition pass alone does not imply all datasets passed.
+The eleven checked-in dataset families are the entire required input set. NVD CVE bulk feeds and NVD-derived CVSS are excluded and are neither downloaded nor required by the gate or builder. Proceed only after the eleven-source report says overall: PASS.
 
 For the first DB build, use a dedicated path under Kaggle working storage, and request a private Kaggle Dataset to make the result durable:
 
@@ -126,9 +115,9 @@ For an intentional rebuild after any source manifest/version changes, use a new 
       --persist-kaggle-dataset-id YOUR_KAGGLE_USERNAME/ai-cyber-knowledge-db \
       --kaggle-dataset-action version
 
-The builder stores the database version, source manifest hash, artifact hashes, record counts and build report, then checks SQLite integrity before publication. The Knowledge DB retains deterministic IDs, source URI/version/license, content SHA-256, validation status, relationships, FTS/chunk indexes, and per-artifact ingestion checkpoints. CVSS is derived from NVD's indexed metric payload with deterministic IDs and page checkpoints; it is not counted as a thirteenth independent raw source and does not fetch a duplicate CVE corpus.
+The builder stores the database version, source manifest hash, artifact hashes, record counts and build report, then checks SQLite integrity before publication. The Knowledge DB retains deterministic IDs, source URI/version/license, content SHA-256, validation status, relationships, FTS/chunk indexes, and per-artifact ingestion checkpoints. The selected scope intentionally excludes NVD CVE bulk feeds and dependent CVSS derivation.
 
-Before reporting overall PASS, the builder verifies a real CVE query, derived CVSS retrieval, evidence-only RAG output, source/hash/validation citation fields, the shared AI_CYBER_KNOWLEDGE_DB setting, and a separate Python-process restart query. It also records DB file SHA-256 and byte size. A local build without successful durable publication is reported as persistence-pending and exits non-zero by default.
+Before reporting overall PASS, the builder verifies a CISA KEV CVE query, CWE and ATT&CK retrieval, evidence-only RAG output, source/hash/validation citation fields, the shared AI_CYBER_KNOWLEDGE_DB setting, and a separate Python-process restart query. It also records DB file SHA-256 and byte size. A local build without successful durable publication is reported as persistence-pending and exits non-zero by default.
 
 The Kaggle Dataset metadata uses the "other" label because the DB combines sources with separate licenses. This label is not a blanket relicense: per-record source/license metadata remains in the DB, and the published dataset stays private. Do not make it public unless each upstream source's redistribution terms are independently reviewed. Kaggle documents support dataset metadata licenses and private datasets; see the Kaggle dataset metadata reference at https://github.com/Kaggle/kaggle-cli/blob/main/docs/datasets_metadata.md and dataset publishing CLI at https://github.com/Kaggle/kaggle-cli/blob/main/docs/datasets.md.
 
