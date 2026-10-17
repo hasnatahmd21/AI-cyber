@@ -3,19 +3,17 @@ from __future__ import annotations
 
 DATASET_SELECTION = {
     "core_now": [
-        ("nvd_cve", "Primary vulnerability corpus"),
-        ("cisa_kev", "Known-exploited vulnerability overlay"),
-        ("epss", "CVSS-adjacent exploitation-likelihood overlay"),
-        ("cwe", "Weakness taxonomy"),
-        ("cpe", "Product/platform identity and applicability"),
-        ("cvss", "Scoring reference and CVE score metadata, not duplicate CVEs"),
-        ("mitre_attack", "Adversary behavior and relationships"),
         ("capec", "Attack-pattern taxonomy"),
-        ("d3fend", "Defensive countermeasure ontology"),
+        ("cisa_kev", "Known-exploited vulnerability overlay"),
+        ("cpe", "Product/platform identity and applicability"),
+        ("cwe", "Weakness taxonomy"),
+        ("epss", "Exploitation-likelihood overlay"),
+        ("mitre_attack", "Adversary behavior and relationships"),
+        ("mitre_d3fend", "Defensive countermeasure ontology"),
+        ("mitre_mbc", "Malware behavior taxonomy; no binaries"),
         ("sigma", "Vendor-neutral log/SIEM detection content"),
-        ("suricata_rules", "Network IDS detection content"),
+        ("suricata", "Network IDS detection content"),
         ("zeek_intel", "Network indicator enrichment"),
-        ("mbc", "Malware behavior taxonomy; no binaries"),
     ],
     "phase_two_optional": [
         ("attck_attack_flows", "Only for a demonstrated flow-analysis use case"),
