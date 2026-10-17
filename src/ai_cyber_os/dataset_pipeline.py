@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -1193,7 +1194,7 @@ def ingest_manifest_directory(
     total_inserted = total_updated = total_duplicates = 0
     for dataset_index, (manifest_path, manifest, inspection) in enumerate(loaded, start=1):
         dataset = str(manifest.get("dataset") or manifest_path.stem)
-        started_at = __import__("time").monotonic()
+        started_at = time.monotonic()
         if progress_callback is not None:
             progress_callback({
                 "stage": "ingestion_start",
@@ -1220,7 +1221,7 @@ def ingest_manifest_directory(
                     "inserted": result.get("inserted", 0),
                     "updated": result.get("updated", 0),
                     "duplicates": result.get("duplicates", 0),
-                    "elapsed_seconds": round(__import__("time").monotonic() - started_at, 2),
+                    "elapsed_seconds": round(time.monotonic() - started_at, 2),
                 })
             total_inserted += int(result.get("inserted", 0))
             total_updated += int(result.get("updated", 0))
@@ -1238,7 +1239,7 @@ def ingest_manifest_directory(
                     "total": len(loaded),
                     "dataset": dataset,
                     "error": f"{type(exc).__name__}: {exc}",
-                    "elapsed_seconds": round(__import__("time").monotonic() - started_at, 2),
+                    "elapsed_seconds": round(time.monotonic() - started_at, 2),
                 })
             report["overall"] = "FAIL"
             report["evidence"] = (
