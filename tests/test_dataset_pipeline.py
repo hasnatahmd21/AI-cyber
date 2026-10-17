@@ -1297,3 +1297,30 @@ def test_cached_readiness_rehash_blocks_changed_artifact_before_ingest(tmp_path:
     assert result["overall"] == "FAIL"
     assert result["ingestion_performed"] is True
     assert "artifact SHA-256 changed after preflight" in result["results"][0]["error"]
+
+
+def test_sqlite_integrity_smoke_test_checks_indexes_and_exact_dataset_scope(tmp_path: Path):
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+    from scripts.kaggle_build_knowledge_db import sqlite_integrity_smoke_test
+
+    payload = (
+        '{"id":"DB-CHECK-1","title":"SQLite check","content":"integrity and FTS evidence"}\\n'
+        '{"id":"DB-CHECK-2","title":"SQLite check two","content":"second evidence row"}\\n'
+    )
+    manifest = _manifest(tmp_path, payload, count=2)
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+    result = ingest_manifest_directory(
+        manifest.parent,
+        db_path=db_path,
+        required_datasets=["fixture-threat-intel"],
+    )
+    assert result["overall"] == "PASS"
+
+    check = sqlite_integrity_smoke_test(db_path, ["fixture-threat-intel"])
+    assert check["status"] == "PASS"
+    assert check["sqlite_integrity_check"] == "ok"
+    assert check["record_count"] == 2
+    assert check["datasets"] == {"fixture-threat-intel": 2}
+    assert check["fts_rows"] == check["record_count"]
+    assert check["chunk_fts_rows"] == check["chunks"]
+    assert check["checkpoint_status_counts"] == {"complete": 1}
