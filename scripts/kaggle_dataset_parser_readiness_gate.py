@@ -34,12 +34,13 @@ EXPECTED_D3FEND_NODES = 7688
 EXPECTED_MBC_BUNDLES = 1906
 EXPECTED_SURICATA_ACTIVE = 52588
 EXPECTED_SURICATA_DISABLED = 19500
-# Twelve independent raw datasets were intended for the initial Knowledge DB.
-# CVSS is a derived dataset and is reported separately, dependent on the NVD CVE source.
+# The approved first wave contains eleven independent datasets.
+# NVD CVE feeds and the CVSS derivation stage are intentionally out of scope.
 REQUIRED_DATASET_NAMES = (
-    "cisa_kev", "epss", "cwe", "capec", "mitre_d3fend", "mitre_attack",
-    "sigma", "suricata", "zeek_intel", "mitre_mbc", "cpe", "nvd_cve",
+    "capec", "cisa_kev", "cpe", "cwe", "epss", "mitre_attack",
+    "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel",
 )
+EXCLUDED_DATASET_NAMES = ("nvd_cve", "cvss")
 EXPECTED_MBC_STIX_OBJECTS = 1905
 
 ATTACK_RESTORE_URLS = (
@@ -507,16 +508,25 @@ def main() -> int:
         manifests_dir = raw_root.parent / "manifests"
         if manifests_dir.is_dir():
             manifest_summary = readiness_report(
-                manifests_dir, required_datasets=REQUIRED_DATASET_NAMES
+                manifests_dir,
+                required_datasets=REQUIRED_DATASET_NAMES,
+                excluded_datasets=EXCLUDED_DATASET_NAMES,
             )
-            available_files = [
-                p for p in manifests_dir.rglob("*.json")
-                if p.name.casefold() != "example.json"
-            ]
-            available_names = {
-                str(json.loads(p.read_text(encoding="utf-8")).get("dataset") or p.stem)
-                for p in available_files
-            }
+            available_files = []
+            available_names = set()
+            for manifest_path in sorted(manifests_dir.rglob("*.json")):
+                if manifest_path.name.casefold() == "example.json":
+                    continue
+                try:
+                    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+                    identity = str(payload.get("dataset") or manifest_path.stem) if isinstance(payload, dict) else manifest_path.stem
+                except (OSError, json.JSONDecodeError):
+                    available_files.append(manifest_path)  # Malformed in-scope manifests remain visible.
+                    continue
+                if identity.casefold() in EXCLUDED_DATASET_NAMES or manifest_path.stem.casefold() in EXCLUDED_DATASET_NAMES:
+                    continue
+                available_files.append(manifest_path)
+                available_names.add(identity)
             manifest_summary["available_manifest_count"] = len(available_files)
             manifest_summary["available_dataset_count"] = len(available_names)
             manifest_summary["expected_dataset_count"] = len(REQUIRED_DATASET_NAMES)
@@ -528,23 +538,14 @@ def main() -> int:
                     f"Missing manifests for: {', '.join(sorted(set(REQUIRED_DATASET_NAMES) - available_names))}."
                 )
             report["manifest_readiness"] = manifest_summary
-            missing_raw_sources = set(REQUIRED_DATASET_NAMES) - available_names
-            cvss_ready = "nvd_cve" not in missing_raw_sources
-            report["derived_dataset_checks"] = [{
-                "dataset": "cvss",
-                "status": "READY_TO_DERIVE" if cvss_ready else "BLOCKED",
-                "evidence": (
-                    "Verified NVD CVE feed manifests are present; CVSS metrics are not declared PASS until derived records, database persistence, and retrieval are tested."
-                    if cvss_ready else
-                    "CVSS is derived from NVD CVE data; blocked because the required nvd_cve manifest/artifact is missing."
-                ),
-                "depends_on": ["nvd_cve"],
-                "database_derivation_performed": False,
-            }]
+            report["excluded_dataset_scope"] = {
+                name: {"status": "EXCLUDED_BY_SCOPE", "required": False}
+                for name in EXCLUDED_DATASET_NAMES
+            }
         else:
             report["manifest_readiness"] = {
                 "overall": "BLOCKED",
-                "evidence": f"No manifests directory found at {manifests_dir}; the full 12-source readiness gate cannot pass.",
+                "evidence": f"No manifests directory found at {manifests_dir}; the selected 11-source readiness gate cannot pass.",
                 "count": 0,
             }
 
@@ -560,7 +561,7 @@ def main() -> int:
             else "BLOCKED"
         )
         report["evidence"] = (
-            "Parser-specific raw-source checks and all twelve independent raw-source readiness checks passed; no data was ingested."
+            "Parser-specific checks and all eleven in-scope source manifests passed; NVD/CVSS were excluded and no data was ingested."
             if report["overall"] == "PASS"
             else "Readiness is not green. Review per-dataset evidence; do not start ingestion until every required dataset is PASS."
         )
