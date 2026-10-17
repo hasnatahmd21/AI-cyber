@@ -868,6 +868,43 @@ def main(argv: list[str] | None = None) -> int:
             print(f"REPORT_FILE={report_path}")
             return 2
 
+        # Reuse the exact integrity/count inspection already produced by the
+        # readiness gate. ingest_manifest_directory still validates manifest
+        # digests and re-hashes artifact bytes immediately before ingestion.
+        readiness_inspections: dict[str, dict[str, Any]] = {}
+        readiness_names: set[str] = set()
+        manifest_readiness = readiness.get("manifest_readiness", {})
+        for row in manifest_readiness.get("datasets", []):
+            if row.get("status") != "PASS":
+                continue
+            dataset = str(row.get("dataset") or "")
+            manifest_value = row.get("manifest")
+            inspection = row.get("inspection")
+            if dataset not in set(report["required_datasets"]):
+                continue
+            if not manifest_value or not isinstance(inspection, dict):
+                raise RuntimeError(
+                    f"readiness gate omitted reusable inspection evidence for {dataset!r}"
+                )
+            manifest_path = Path(str(manifest_value)).expanduser().resolve()
+            if not manifest_path.is_file():
+                raise FileNotFoundError(
+                    f"manifest disappeared after readiness gate: {manifest_path}"
+                )
+            readiness_inspections[str(manifest_path)] = {
+                "manifest_sha256": sha256_file(manifest_path),
+                "inspection": inspection,
+            }
+            readiness_names.add(dataset)
+        expected_readiness_names = set(report["required_datasets"])
+        if readiness_names != expected_readiness_names:
+            raise RuntimeError(
+                "readiness gate inspections do not exactly cover the selected 11-source set; "
+                f"missing={sorted(expected_readiness_names - readiness_names)}, "
+                f"unexpected={sorted(readiness_names - expected_readiness_names)}"
+            )
+        report["readiness_inspections_reused"] = len(readiness_inspections)
+
         from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
         from ai_cyber_os.knowledge import status as knowledge_status
         from ai_cyber_os.rag import build_context
@@ -884,6 +921,7 @@ def main(argv: list[str] | None = None) -> int:
         batch_options: dict[str, Any] = {
             "required_datasets": tuple(report["required_datasets"]),
             "progress_callback": report_ingestion_progress,
+            "preflight_inspections": readiness_inspections,
         }
         preflight_and_ingestion = ingest_manifest_directory(
             manifests_dir, db_path=db_path, **batch_options
