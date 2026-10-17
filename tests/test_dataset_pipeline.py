@@ -1153,3 +1153,43 @@ def test_lfs_confirmation_report_is_committed_after_database_push(tmp_path: Path
     assert push[-2:] == ["origin", "fix/dataset-parser-readiness"]
     assert all("test-token-not-for-output" not in str(command) for command in commands)
 
+
+def test_manifest_directory_reuses_preflight_inspection_and_reports_progress(tmp_path: Path, monkeypatch):
+    from ai_cyber_os import dataset_pipeline
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+
+    payload = (
+        '{"id":"PROGRESS-1","title":"progress fixture one","content":"first evidence record"}\\n'
+        '{"id":"PROGRESS-2","title":"progress fixture two","content":"second evidence record"}\\n'
+    )
+    manifest = _manifest(tmp_path, payload, count=2)
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+
+    original_inspect = dataset_pipeline.inspect_dataset
+    inspected = []
+
+    def counted_inspect(path):
+        inspected.append(Path(path))
+        return original_inspect(path)
+
+    monkeypatch.setattr(dataset_pipeline, "inspect_dataset", counted_inspect)
+    events = []
+    result = ingest_manifest_directory(
+        manifest.parent,
+        db_path=db_path,
+        required_datasets=["fixture-threat-intel"],
+        progress_callback=events.append,
+    )
+
+    assert result["overall"] == "PASS"
+    assert result["inserted"] == 2
+    assert inspected == [manifest]
+    stages = [event["stage"] for event in events]
+    assert "preflight_start" in stages
+    assert "preflight_complete" in stages
+    assert "ingestion_start" in stages
+    assert "ingestion_complete" in stages
+    completed = next(event for event in events if event["stage"] == "ingestion_complete")
+    assert completed["dataset"] == "fixture-threat-intel"
+    assert completed["inserted"] == 2
+
