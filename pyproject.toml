@@ -14,6 +14,7 @@ dependencies = [
 ai-cyber = "ai_cyber_os.__main__:main"
 ai-cyber-ui = "ai_cyber_os.ui:main"
 ai-cyber-knowledge = "ai_cyber_os.knowledge_cli:main"
+ai-cyber-knowledge-verify = "ai_cyber_os.knowledge_runtime:main"
 ai-cyber-evaluate = "ai_cyber_os.security_evaluation:main"
 
 [build-system]
