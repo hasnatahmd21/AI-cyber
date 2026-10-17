@@ -371,3 +371,43 @@ def test_dataset_filtered_search_avoids_dataset_wide_id_scan(tmp_path: Path, mon
         and "RECORD_ID IN (" not in statement
         for statement in normalized
     )
+
+
+def test_chunk_index_recovers_orphaned_chunk_primary_key_collision(tmp_path: Path):
+    from ai_cyber_os import knowledge
+
+    db = tmp_path / "orphaned-chunk.db"
+    conn = knowledge.open_store(db)
+    record = {
+        "record_id": "NVD-CVE-EXAMPLE",
+        "dataset": "nvd_cve",
+        "title": "NVD CVE example",
+        "content": "verified vulnerability evidence",
+    }
+    try:
+        # Simulate an interrupted/legacy build that left a chunk without its
+        # corresponding record row or FTS row.
+        chunk_id = f"{record['record_id']}#chunk-0"
+        conn.execute(
+            "INSERT INTO knowledge_chunks(chunk_id,record_id,chunk_index,content,content_sha256) "
+            "VALUES (?,?,?,?,?)",
+            (chunk_id, record["record_id"], 0, "stale", "0" * 64),
+        )
+        conn.commit()
+
+        knowledge._index_chunks(conn, record)
+        conn.commit()
+
+        chunk = conn.execute(
+            "SELECT content, content_sha256 FROM knowledge_chunks WHERE chunk_id=?",
+            (chunk_id,),
+        ).fetchone()
+        fts = conn.execute(
+            "SELECT COUNT(*) FROM knowledge_chunks_fts WHERE chunk_id=?",
+            (chunk_id,),
+        ).fetchone()[0]
+        assert chunk is not None and chunk["content"] == record["content"]
+        assert chunk["content_sha256"] == knowledge._hash(record["content"])
+        assert fts == 1
+    finally:
+        conn.close()

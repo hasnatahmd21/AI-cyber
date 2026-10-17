@@ -163,8 +163,17 @@ def _index_chunks(
         db.execute('DELETE FROM knowledge_chunks WHERE record_id=?', (record['record_id'],))
     for index, chunk in enumerate(_chunk_text(record['content'])):
         chunk_id = f"{record['record_id']}#chunk-{index}"
+        # A failed/resumed build can leave an orphaned chunk row if an earlier
+        # process died between record/chunk updates. Recover only on this rare
+        # primary-key collision; keep the normal new-record path free of an FTS
+        # delete so large initial ingestions do not become quadratic.
+        existing_chunk = db.execute(
+            'SELECT 1 FROM knowledge_chunks WHERE chunk_id=?', (chunk_id,)
+        ).fetchone()
+        if existing_chunk:
+            db.execute('DELETE FROM knowledge_chunks_fts WHERE chunk_id=?', (chunk_id,))
         db.execute(
-            'INSERT INTO knowledge_chunks(chunk_id,record_id,chunk_index,content,content_sha256) VALUES (?,?,?,?,?)',
+            'INSERT OR REPLACE INTO knowledge_chunks(chunk_id,record_id,chunk_index,content,content_sha256) VALUES (?,?,?,?,?)',
             (chunk_id, record['record_id'], index, chunk, _hash(chunk)),
         )
         db.execute(
