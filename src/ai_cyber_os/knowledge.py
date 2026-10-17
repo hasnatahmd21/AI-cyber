@@ -184,11 +184,36 @@ def _safe_id(dataset: str, source: str, content: str) -> str:
         (dataset + "\0" + source + "\0" + content).encode("utf-8")
     ).hexdigest()
 
-def open_store(path: str | Path = DEFAULT_DB) -> sqlite3.Connection:
-    # A fresh install may not have the hidden application-data directory yet.
-    # Create it before SQLite opens the file, otherwise live status/search routes
-    # can terminate the HTTP connection with "unable to open database file".
+def open_store(
+    path: str | Path = DEFAULT_DB,
+    *,
+    read_only: bool = False,
+) -> sqlite3.Connection:
     db_path = Path(path).expanduser()
+    if read_only:
+        # Evaluation and strict runtime consumers must never create, migrate,
+        # backfill, or update the persistent DB as a side effect of retrieval.
+        if not db_path.is_file():
+            raise FileNotFoundError(f"Knowledge DB does not exist: {db_path}")
+        uri = db_path.resolve().as_uri() + "?mode=ro"
+        db = sqlite3.connect(uri, uri=True, timeout=60)
+        db.row_factory = sqlite3.Row
+        required = {"knowledge_records", "knowledge_relations", "knowledge_chunks_fts"}
+        found = {
+            str(row[0]) for row in db.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table','view')"
+            )
+        }
+        missing = sorted(required - found)
+        if missing:
+            db.close()
+            raise sqlite3.OperationalError(
+                f"read-only Knowledge DB is missing required tables: {missing}"
+            )
+        return db
+
+    # Writable/open-or-create behavior is retained for existing ingestion and
+    # migration call sites. Strict evaluation explicitly selects read_only=True.
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db = sqlite3.connect(str(db_path))
     db.row_factory = sqlite3.Row
@@ -620,7 +645,8 @@ def ingest_file(path: str | Path, *, db_path: str | Path = DEFAULT_DB,
     }
 
 def search(query: str, *, db_path: str | Path = DEFAULT_DB,
-           limit: int = 10, dataset: str | None = None) -> list[dict[str, Any]]:
+           limit: int = 10, dataset: str | None = None,
+           read_only: bool = False) -> list[dict[str, Any]]:
     query = re.sub(r"[^\w\-.: ]+", " ", query, flags=re.UNICODE).strip()
     if not query:
         return []
@@ -630,7 +656,7 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
         for token in query.split()
     )
     limit = max(1, min(int(limit), 50))
-    db = open_store(db_path)
+    db = open_store(db_path, read_only=read_only)
     try:
         # SQLite FTS5 auxiliary functions such as bm25() must be evaluated
         # directly in the FTS query context. They cannot reliably be wrapped
