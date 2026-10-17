@@ -20,6 +20,7 @@ on:
       - "scripts/kaggle_dataset_parser_readiness_gate.py"
       - "scripts/kaggle_nvd_feed_readiness.py"
       - "scripts/kaggle_build_knowledge_db.py"
+      - "scripts/verify_live_rag_api.py"
       - "tools/kaggle_acquire_datasets.py"
       - "tests/test_dataset_acquisition_runner.py"
       - "docs/REAL_DATASET_RUNBOOK.md"
@@ -48,7 +49,7 @@ jobs:
           python -m pip install pytest
       - name: Compile parser, readiness, and test modules
         run: |
-          python -m compileall -q src/ai_cyber_os tests scripts/kaggle_dataset_parser_readiness_gate.py scripts/kaggle_nvd_feed_readiness.py scripts/kaggle_build_knowledge_db.py tools/kaggle_acquire_datasets.py
+          python -m compileall -q src/ai_cyber_os tests scripts/kaggle_dataset_parser_readiness_gate.py scripts/kaggle_nvd_feed_readiness.py scripts/kaggle_build_knowledge_db.py scripts/verify_live_rag_api.py tools/kaggle_acquire_datasets.py
       - name: Run focused parser/readiness and existing knowledge regression tests
         env:
           PYTHONPATH: src
