@@ -409,6 +409,17 @@ def persist_via_kaggle_dataset(
                 for manifest_file in sorted(manifests_root.rglob("*.json")):
                     if not manifest_file.is_file() or manifest_file.name.casefold() == "example.json":
                         continue
+                    if manifest_file.stem.casefold() in {"nvd_cve", "cvss"}:
+                        continue
+                    try:
+                        manifest_payload = json.loads(manifest_file.read_text(encoding="utf-8"))
+                    except (OSError, json.JSONDecodeError):
+                        # The readiness gate has already failed closed for malformed
+                        # in-scope manifests; do not copy malformed out-of-scope data.
+                        raise RuntimeError(f"source manifest became unreadable during publication: {manifest_file}")
+                    manifest_identity = str(manifest_payload.get("dataset") or manifest_file.stem) if isinstance(manifest_payload, dict) else manifest_file.stem
+                    if manifest_identity.casefold() in {"nvd_cve", "cvss"}:
+                        continue
                     relative = manifest_file.relative_to(manifests_root)
                     relative_name = relative.as_posix()
                     prefix = hashlib.sha256(relative_name.encode("utf-8")).hexdigest()[:10]
