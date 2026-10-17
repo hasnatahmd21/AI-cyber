@@ -52,6 +52,80 @@ def write_json(path: Path, report: dict[str, Any]) -> None:
     temp.replace(path)
 
 
+
+def print_build_summary(report: dict[str, Any], report_path: Path) -> None:
+    """Print compact stage results; the full auditable evidence stays in the JSON report."""
+    batch = report.get("batch_ingestion") or {}
+    core = report.get("core_query_smoke_test") or {}
+    queries = core.get("queries") or {}
+    dataset_results = []
+    for row in batch.get("results", []):
+        dataset_results.append({
+            "dataset": row.get("dataset"),
+            "status": "PASS" if row.get("success") is True else "FAIL",
+            "records": row.get("records", row.get("processed_records", 0)),
+            "inserted": row.get("inserted", 0),
+            "updated": row.get("updated", 0),
+            "duplicates": row.get("duplicates", 0),
+            "skipped_artifacts": row.get("skipped_artifacts", 0),
+        })
+    rag_queries_ok = bool(queries) and all(
+        item.get("success") is True
+        and item.get("evidence_only") is True
+        and item.get("has_citations") is True
+        and item.get("rag", {}).get("success") is True
+        and item.get("rag", {}).get("has_citations") is True
+        for item in queries.values()
+    )
+    stages = {
+        "source_readiness": report.get("source_readiness", "NOT_RUN"),
+        "11_dataset_integrity_preflight": (
+            "PASS" if batch.get("overall") == "PASS" and batch.get("ready") is True
+            else batch.get("overall", "NOT_RUN")
+        ),
+        "sqlite_ingestion": (
+            "PASS" if batch.get("overall") == "PASS" and report.get("ingestion_performed") is True
+            else "NOT_RUN" if not report.get("ingestion_performed") else batch.get("overall", "FAIL")
+        ),
+        "runtime_and_direct_rag": "PASS" if rag_queries_ok else "NOT_RUN" if not queries else "FAIL",
+        "fresh_process_restart": "PASS" if report.get("restart_smoke_test") else "NOT_RUN",
+        "permanent_storage": report.get("permanent_persistence", "NOT_CONFIRMED"),
+    }
+    db_status = report.get("database_status") or (batch.get("store_status") or {})
+    summary = {
+        "status": report.get("overall", "UNKNOWN"),
+        "stages": stages,
+        "required_dataset_count": len(report.get("required_datasets", [])),
+        "readiness_inspections_reused": report.get("readiness_inspections_reused", 0),
+        "pipeline_preflight_inspections_reused": batch.get("preflight_inspection_reuse_count", 0),
+        "datasets": dataset_results,
+        "database": {
+            "path": report.get("database_path"),
+            "records": db_status.get("records"),
+            "chunks": db_status.get("chunks"),
+            "bytes": report.get("database_byte_size"),
+            "sha256": report.get("database_sha256"),
+        },
+        "rag_queries": {
+            key: {
+                "runtime_success": item.get("success"),
+                "runtime_count": item.get("count"),
+                "direct_rag_success": item.get("rag", {}).get("success"),
+                "direct_rag_count": item.get("rag", {}).get("count"),
+                "citations": item.get("rag", {}).get("has_citations"),
+            }
+            for key, item in queries.items()
+        },
+        "error": report.get("evidence") if report.get("overall") not in {
+            "PASS", "LOCAL_BUILD_PASS_PERSISTENCE_PENDING"
+        } else None,
+        "report_file": str(report_path),
+    }
+    print("[knowledge-db-summary] " + json.dumps(
+        summary, ensure_ascii=False, sort_keys=True, default=str
+    ), flush=True)
+
+
 def run_readiness_gate(raw_root: Path, report_path: Path) -> dict[str, Any]:
     gate = REPOSITORY_ROOT / "scripts" / "kaggle_dataset_parser_readiness_gate.py"
     if not gate.is_file():
@@ -833,7 +907,7 @@ def main(argv: list[str] | None = None) -> int:
                 "permanent_persistence": "NOT_CONFIRMED",
             })
             write_json(report_path, report)
-            print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+            print_build_summary(report, report_path)
             print(f"REPORT_FILE={report_path}")
             return 2
 
@@ -864,7 +938,7 @@ def main(argv: list[str] | None = None) -> int:
                 "ingestion_performed": False,
             })
             write_json(report_path, report)
-            print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+            print_build_summary(report, report_path)
             print(f"REPORT_FILE={report_path}")
             return 2
 
@@ -932,7 +1006,7 @@ def main(argv: list[str] | None = None) -> int:
             report["overall"] = preflight_and_ingestion.get("overall", "FAIL")
             report["evidence"] = "Batch source preflight/ingestion did not PASS."
             write_json(report_path, report)
-            print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+            print_build_summary(report, report_path)
             print(f"REPORT_FILE={report_path}")
             return 2
 
@@ -992,7 +1066,7 @@ def main(argv: list[str] | None = None) -> int:
             # Persist the final CONFIRMED report itself. The database was
             # already pushed in persist_via_lfs; this commit stages only report_path.
             report_push = persist_lfs_confirmation_report(report_path, args.branch)
-            print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+            print_build_summary(report, report_path)
             print(f"REPORT_FILE={report_path}")
             print(f"PERSISTENCE_REPORT_COMMIT={report_push.get('commit')}")
             print(f"PERMANENT_PERSISTENCE={report['permanent_persistence']}")
@@ -1010,7 +1084,7 @@ def main(argv: list[str] | None = None) -> int:
             report["persistence"] = persistence
             report["permanent_persistence"] = "CONFIRMED_KAGGLE_DATASET_PRIVATE"
             write_json(report_path, report)
-            print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+            print_build_summary(report, report_path)
             print(f"REPORT_FILE={report_path}")
             print(f"PERMANENT_PERSISTENCE=CONFIRMED_KAGGLE_DATASET_PRIVATE:{args.persist_kaggle_dataset_id}")
             return 0
@@ -1023,7 +1097,7 @@ def main(argv: list[str] | None = None) -> int:
             "durable destination before treating the full task as complete."
         )
         write_json(report_path, report)
-        print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+        print_build_summary(report, report_path)
         print(f"REPORT_FILE={report_path}")
         print("PERMANENT_PERSISTENCE=NOT_CONFIRMED")
         return 0 if args.accept_local_only else 2
@@ -1035,7 +1109,7 @@ def main(argv: list[str] | None = None) -> int:
             "ingestion_performed": bool(report.get("ingestion_performed")),
         })
         write_json(report_path, report)
-        print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+        print_build_summary(report, report_path)
         print(f"REPORT_FILE={report_path}")
         return 2
 
