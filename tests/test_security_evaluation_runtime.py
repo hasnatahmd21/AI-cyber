@@ -109,3 +109,17 @@ def test_live_evaluator_fails_closed_when_sampled_evidence_hashes_are_tampered(t
         or row.get("end_to_end_gate", {}).get("success") is False
         for row in result["samples"]
     )
+
+
+
+def test_read_only_retrieval_does_not_create_a_missing_database(tmp_path: Path):
+    from ai_cyber_os.knowledge import search
+
+    missing = tmp_path / "must-stay-missing.sqlite3"
+    try:
+        search("CWE-79", db_path=missing, read_only=True)
+    except FileNotFoundError as exc:
+        assert "does not exist" in str(exc)
+    else:
+        raise AssertionError("read-only retrieval unexpectedly opened/created a missing DB")
+    assert not missing.exists()
