@@ -169,7 +169,7 @@ def _data_fabric_status() -> dict[str, Any]:
             "evidence": "Configured permanent Knowledge DB failed the read-only runtime gate.",
         }
     else:
-        status = knowledge_status(db_path=db_path)
+        status = knowledge_status(db_path=db_path, read_only=strict)
         status = dict(status)
         status["db"] = db_path.name if os.environ.get("AI_CYBER_KNOWLEDGE_DB") else "~/.ai-cyber/knowledge.db"
         status.update(
@@ -768,6 +768,7 @@ class Handler(BaseHTTPRequestHandler):
                     result = evaluate_end_to_end(
                         case_items, require_runtime_database(), outputs=outputs_map,
                         thresholds=EvaluationThresholds(**thresholds),
+                        read_only=require_verified_db_enabled(),
                     )
                     saved = save_report("security-evaluation", result)
                     return {
@@ -803,7 +804,10 @@ class Handler(BaseHTTPRequestHandler):
                     lambda: execute_command(
                         command,
                         run_phase=_execute_runtime,
-                        search=lambda query: intelligence_analyze(query, db_path=require_runtime_database(), limit=10),
+                        search=lambda query: intelligence_analyze(
+                            query, db_path=require_runtime_database(), limit=10,
+                            read_only=require_verified_db_enabled(),
+                        ),
                         status=_command_status,
                         regression=_run_regression,
                         red_team=_run_redteam,
@@ -852,13 +856,19 @@ class Handler(BaseHTTPRequestHandler):
                     if action == "context":
                         result = _guarded_operation(
                             "knowledge-context", body,
-                            lambda: build_rag_context(query.strip(), db_path=require_runtime_database(), dataset=dataset, limit=limit),
+                            lambda: build_rag_context(
+                                query.strip(), db_path=require_runtime_database(), dataset=dataset,
+                                limit=limit, read_only=require_verified_db_enabled(),
+                            ),
                         )
                         result["success"] = True
                     else:
                         result = _guarded_operation(
                             "knowledge-search", body,
-                            lambda: knowledge_search(query.strip(), db_path=require_runtime_database(), dataset=dataset, limit=limit),
+                            lambda: knowledge_search(
+                                query.strip(), db_path=require_runtime_database(), dataset=dataset,
+                                limit=limit, read_only=require_verified_db_enabled(),
+                            ),
                         )
                         if isinstance(result, list):
                             result = {"success": True, "query": query.strip(), "results": result}
