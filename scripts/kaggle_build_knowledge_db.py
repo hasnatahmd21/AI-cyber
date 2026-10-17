@@ -81,15 +81,25 @@ def restart_smoke_test(db_path: Path, cve_id: str) -> dict[str, Any]:
         "import json\n"
         "from ai_cyber_os.knowledge import DEFAULT_DB, status, search\n"
         "from ai_cyber_os.runtime_intelligence import analyze\n"
+        "from ai_cyber_os.rag import build_context\n"
         "s=status()\n"
         "hits=search(" + repr(cve_id) + ", dataset='cisa_kev', limit=10)\n"
         "a=analyze(" + repr(cve_id) + ", dataset='cisa_kev', limit=10)\n"
+        "r=build_context(" + repr(cve_id) + ", db_path=DEFAULT_DB, dataset='cisa_kev', limit=10)\n"
+        "e=r.get('evidence',[])\n"
         "print(json.dumps({'default_db':str(DEFAULT_DB.resolve()),'status':s,'hits':"
         "[{'record_id':x['record_id'],'dataset':x['dataset']} for x in hits],"
         "'analysis':{'success':a.get('success'),'evidence_only':a.get('evidence_only'),"
-        "'count':len(a.get('evidence',[])),'has_citations':all("
+        "'count':len(a.get('evidence',[])),'has_citations':bool(a.get('evidence',[])) and all("
         "bool(x.get('source_uri')) and bool(x.get('content_sha256')) and "
-        "bool(x.get('validation_status')) for x in a.get('evidence',[]))}}))\n"
+        "bool(x.get('validation_status')) for x in a.get('evidence',[]))},"
+        "'rag':{'success':bool(e) and r.get('evidence_only') is True,"
+        "'evidence_only':r.get('evidence_only'),'count':r.get('count',len(e)),"
+        "'has_citations':bool(e) and all(bool(x.get('source_uri')) and "
+        "bool(x.get('content_sha256')) and bool(x.get('validation_status')) for x in e),"
+        "'evidence':[{'record_id':x.get('record_id'),'dataset':x.get('dataset'),"
+        "'source_uri':x.get('source_uri'),'content_sha256':x.get('content_sha256'),"
+        "'validation_status':x.get('validation_status')} for x in e]}}))\n"
     )
     proc = subprocess.run(
         [sys.executable, "-c", program],
@@ -114,7 +124,11 @@ def restart_smoke_test(db_path: Path, cve_id: str) -> dict[str, Any]:
     if not data["analysis"].get("success") or not data["analysis"].get("evidence_only"):
         raise RuntimeError("runtime intelligence did not return an evidence-only result")
     if not data["analysis"].get("has_citations"):
-        raise RuntimeError("RAG evidence is missing source URI/hash/validation citation fields")
+        raise RuntimeError("runtime-intelligence evidence is missing source URI/hash/validation citation fields")
+    if not data.get("rag", {}).get("success") or not data["rag"].get("evidence_only"):
+        raise RuntimeError("direct RAG build_context retrieval failed after process restart")
+    if not data["rag"].get("has_citations"):
+        raise RuntimeError("direct RAG evidence is missing source URI/hash/validation citation fields after restart")
     return data
 
 
@@ -138,11 +152,14 @@ def core_query_smoke_test(
         "import json\n"
         "from ai_cyber_os.knowledge import DEFAULT_DB, status\n"
         "from ai_cyber_os.runtime_intelligence import analyze\n"
+        "from ai_cyber_os.rag import build_context\n"
         "probes = " + repr(probes) + "\n"
         "out = {}\n"
         "for family, spec in probes.items():\n"
         "    result = analyze(spec['query'], db_path=DEFAULT_DB, dataset=spec['dataset'], limit=10)\n"
         "    evidence = result.get('evidence', [])\n"
+        "    rag_result = build_context(spec['query'], db_path=DEFAULT_DB, dataset=spec['dataset'], limit=10)\n"
+        "    rag_evidence = rag_result.get('evidence', [])\n"
         "    out[family] = {\n"
         "        'query': spec['query'], 'dataset': spec['dataset'],\n"
         "        'success': result.get('success') is True,\n"
@@ -157,6 +174,20 @@ def core_query_smoke_test(
         "            'validation_status': row.get('validation_status'),\n"
         "            'content_sha256': row.get('content_sha256'),\n"
         "        } for row in evidence],\n"
+        "        'rag': {\n"
+        "            'success': bool(rag_evidence) and rag_result.get('evidence_only') is True,\n"
+        "            'evidence_only': rag_result.get('evidence_only') is True,\n"
+        "            'count': rag_result.get('count', len(rag_evidence)),\n"
+        "            'has_citations': bool(rag_evidence) and all(\n"
+        "                bool(row.get('source_uri')) and bool(row.get('content_sha256'))\n"
+        "                and bool(row.get('validation_status')) for row in rag_evidence),\n"
+        "            'evidence': [{\n"
+        "                'record_id': row.get('record_id'), 'dataset': row.get('dataset'),\n"
+        "                'source_uri': row.get('source_uri'),\n"
+        "                'validation_status': row.get('validation_status'),\n"
+        "                'content_sha256': row.get('content_sha256'),\n"
+        "            } for row in rag_evidence],\n"
+        "        },\n"
         "    }\n"
         "print(json.dumps({'default_db': str(DEFAULT_DB.resolve()), 'status': status(), 'queries': out}))\n"
     )
@@ -188,7 +219,16 @@ def core_query_smoke_test(
             )
         if not query_result.get("has_citations"):
             raise RuntimeError(
-                f"{family.upper()} query returned evidence without source URI/hash/validation citation fields"
+                f"{family.upper()} runtime-intelligence query returned evidence without source URI/hash/validation citation fields"
+            )
+        rag_result = query_result.get("rag", {})
+        if not rag_result.get("success") or not rag_result.get("evidence_only"):
+            raise RuntimeError(
+                f"{family.upper()} direct rag.build_context query returned no evidence-only context"
+            )
+        if int(rag_result.get("count", 0)) <= 0 or not rag_result.get("has_citations"):
+            raise RuntimeError(
+                f"{family.upper()} direct RAG evidence is empty or missing source/hash/validation provenance"
             )
     return data
 
