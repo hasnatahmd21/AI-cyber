@@ -1016,6 +1016,13 @@ def ingest_manifest_directory(
                 })
             manifest = load_manifest(manifest_path)
             dataset = str(manifest.get("dataset") or manifest_path.stem)
+            if dataset.casefold() in excluded_by_scope:
+                report["excluded_manifests_skipped"].append({
+                    "manifest": str(manifest_path),
+                    "dataset": dataset,
+                    "status": "EXCLUDED_BY_SCOPE",
+                })
+                continue
             cached_entry = (preflight_inspections or {}).get(str(manifest_path.resolve()))
             if cached_entry is not None:
                 expected_manifest_sha = cached_entry.get("manifest_sha256")
@@ -1030,13 +1037,6 @@ def ingest_manifest_directory(
             else:
                 inspection = inspect_dataset(manifest_path)
                 inspection_reused = False
-            if dataset.casefold() in excluded_by_scope:
-                report["excluded_manifests_skipped"].append({
-                    "manifest": str(manifest_path),
-                    "dataset": dataset,
-                    "status": "EXCLUDED_BY_SCOPE",
-                })
-                continue
             if dataset in names:
                 raise ValueError(f"duplicate manifest for dataset {dataset!r}; keep one authoritative manifest per dataset")
             names.add(dataset)
