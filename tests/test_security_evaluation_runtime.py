@@ -58,8 +58,11 @@ def _make_11_source_db(tmp_path: Path) -> Path:
 
 def test_live_evaluator_checks_ten_real_rows_across_eleven_scope(tmp_path: Path):
     db_path = _make_11_source_db(tmp_path)
+    before_sha256 = hashlib.sha256(db_path.read_bytes()).hexdigest()
     result = evaluate_permanent_database(db_path, deep_verify=True)
+    after_sha256 = hashlib.sha256(db_path.read_bytes()).hexdigest()
 
+    assert before_sha256 == after_sha256, "Stage 4 must not mutate the Knowledge DB"
     assert result["success"] is True
     assert result["overall"] == "PASS"
     assert result["sample_size_requested"] == 10
@@ -82,3 +85,27 @@ def test_live_evaluator_fails_closed_for_wrong_sample_size(tmp_path: Path):
     assert result["success"] is False
     assert result["overall"] == "BLOCKED"
     assert "exactly 10" in result["errors"][0]
+
+
+
+def test_live_evaluator_fails_closed_when_sampled_evidence_hashes_are_tampered(tmp_path: Path):
+    db_path = _make_11_source_db(tmp_path)
+    connection = sqlite3.connect(db_path)
+    try:
+        connection.execute("UPDATE knowledge_records SET content_sha256 = ?", ("0" * 64,))
+        connection.commit()
+    finally:
+        connection.close()
+
+    result = evaluate_permanent_database(db_path, deep_verify=True)
+
+    assert result["success"] is False
+    assert result["overall"] == "FAIL"
+    assert result["sample_count"] == 10
+    assert result["failed"] == 10
+    assert all(row["pass"] is False for row in result["samples"])
+    assert all(
+        row.get("checks", {}).get("evidence_hash_and_validation_pass") is False
+        or row.get("end_to_end_gate", {}).get("success") is False
+        for row in result["samples"]
+    )
