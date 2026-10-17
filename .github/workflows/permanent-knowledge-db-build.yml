@@ -1,0 +1,208 @@
+name: Permanent Knowledge DB Build (11 approved datasets)
+
+on:
+  push:
+    branches:
+      - fix/dataset-parser-readiness
+    paths:
+      - ".github/workflows/permanent-knowledge-db-build.yml"
+      - "scripts/kaggle_build_knowledge_db.py"
+      - "scripts/verify_live_rag_api.py"
+      - "src/ai_cyber_os/knowledge.py"
+      - "src/ai_cyber_os/dataset_pipeline.py"
+      - "src/ai_cyber_os/rag.py"
+      - "src/ai_cyber_os/ui.py"
+      - "datasets/manifests/**"
+      - "datasets/raw/**"
+      - "tests/**"
+  workflow_dispatch:
+    inputs:
+      kaggle_dataset_id:
+        description: "Private Kaggle Dataset owner/slug. Reuse an existing ID for a version action."
+        required: false
+        type: string
+      kaggle_dataset_action:
+        description: "Create the private dataset, or publish a new version of an existing one."
+        required: false
+        type: choice
+        options:
+          - create
+          - version
+        default: create
+
+permissions:
+  contents: read
+
+concurrency:
+  group: private-knowledge-db-11-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-ingest-verify-persist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      AI_CYBER_KNOWLEDGE_DB: ${{ github.workspace }}/build-output/knowledge-v1.sqlite3
+      PYTHONPATH: ${{ github.workspace }}/src
+      PYTHONFAULTHANDLER: "1"
+      KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
+      KAGGLE_USERNAME: ${{ secrets.KAGGLE_USERNAME }}
+      KAGGLE_KEY: ${{ secrets.KAGGLE_KEY }}
+      DATASET_ID_INPUT: ${{ github.event.inputs.kaggle_dataset_id }}
+      DATASET_ACTION_INPUT: ${{ github.event.inputs.kaggle_dataset_action }}
+      DATASET_ID_CONFIG: ${{ vars.AI_CYBER_KNOWLEDGE_DATASET_ID }}
+      DATASET_ACTION_CONFIG: ${{ vars.AI_CYBER_KNOWLEDGE_DATASET_ACTION }}
+
+    steps:
+      - name: Checkout the 11-dataset build branch and restore tracked LFS assets
+        uses: actions/checkout@v4
+        with:
+          ref: fix/dataset-parser-readiness
+          fetch-depth: 1
+          lfs: true
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install project and test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e . pytest
+          python -m pip check
+          python --version
+
+      - name: Compile and run focused DB/RAG regression gates
+        shell: bash
+        env:
+          PYTHONPATH: ${{ github.workspace }}/src
+        run: |
+          set -euo pipefail
+          python -m compileall -q \
+            src/ai_cyber_os tests \
+            scripts/kaggle_dataset_parser_readiness_gate.py \
+            scripts/kaggle_build_knowledge_db.py \
+            scripts/verify_live_rag_api.py \
+            tools/kaggle_acquire_datasets.py
+          python -m pytest -q \
+            tests/test_dataset_specific_parsers.py \
+            tests/test_dataset_pipeline.py \
+            tests/test_threat_intel.py \
+            tests/test_knowledge.py \
+            tests/test_rag.py \
+            tests/test_dataset_acquisition_runner.py
+
+      - name: Validate private durable destination before long ingestion
+        id: destination
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-output
+          DATASET_ID="${DATASET_ID_INPUT:-${DATASET_ID_CONFIG:-}}"
+          DATASET_ACTION="${DATASET_ACTION_INPUT:-${DATASET_ACTION_CONFIG:-create}}"
+          if [[ -z "$DATASET_ID" ]]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          Path("build-output/knowledge-db-build-report.json").write_text(
+              json.dumps({
+                  "overall": "BLOCKED",
+                  "success": False,
+                  "ingestion_performed": False,
+                  "permanent_persistence": "NOT_CONFIRMED",
+                  "error": (
+                      "Private Kaggle Dataset destination is missing. Set the workflow_dispatch "
+                      "input kaggle_dataset_id or repository variable AI_CYBER_KNOWLEDGE_DATASET_ID. "
+                      "No DB ingestion was started."
+                  ),
+                  "approved_datasets": [
+                      "capec", "cisa_kev", "cpe", "cwe", "epss", "mitre_attack",
+                      "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel"
+                  ],
+              }, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            echo "BLOCKED: private Kaggle Dataset destination not configured; no ingestion was started." >&2
+            exit 2
+          fi
+          if [[ "$DATASET_ACTION" != "create" && "$DATASET_ACTION" != "version" ]]; then
+            echo "BLOCKED: Kaggle dataset action must be create or version." >&2
+            exit 2
+          fi
+          if [[ -z "${KAGGLE_API_TOKEN:-}" && ( -z "${KAGGLE_USERNAME:-}" || -z "${KAGGLE_KEY:-}" ) ]]; then
+            python - <<'PY'
+          import json
+          from pathlib import Path
+          Path("build-output/knowledge-db-build-report.json").write_text(
+              json.dumps({
+                  "overall": "BLOCKED",
+                  "success": False,
+                  "ingestion_performed": False,
+                  "permanent_persistence": "NOT_CONFIRMED",
+                  "error": (
+                      "Kaggle credentials are not configured as repository secrets "
+                      "KAGGLE_API_TOKEN or KAGGLE_USERNAME plus KAGGLE_KEY. "
+                      "No DB ingestion was started."
+                  ),
+              }, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+            echo "BLOCKED: configure Kaggle API credentials before spending time on ingestion." >&2
+            exit 2
+          fi
+          echo "dataset_id=$DATASET_ID" >> "$GITHUB_OUTPUT"
+          echo "dataset_action=$DATASET_ACTION" >> "$GITHUB_OUTPUT"
+          echo "Private persistence target preflight: PASS (ID hidden from logs)."
+
+      - name: Build, ingest, evaluate 10 real records, verify live RAG, and publish privately
+        shell: bash
+        env:
+          KAGGLE_DATASET_ID: ${{ steps.destination.outputs.dataset_id }}
+          KAGGLE_DATASET_ACTION: ${{ steps.destination.outputs.dataset_action }}
+        run: |
+          set -euo pipefail
+          mkdir -p build-output
+          set -o pipefail
+          python scripts/kaggle_build_knowledge_db.py \
+            --raw-root datasets/raw \
+            --manifests-dir datasets/manifests \
+            --db-path "$AI_CYBER_KNOWLEDGE_DB" \
+            --report build-output/knowledge-db-build-report.json \
+            --persist-kaggle-dataset-id "$KAGGLE_DATASET_ID" \
+            --kaggle-dataset-action "$KAGGLE_DATASET_ACTION" \
+            2>&1 | tee build-output/knowledge-db-build.log
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path("build-output/knowledge-db-build-report.json").read_text(encoding="utf-8"))
+          if report.get("overall") != "PASS":
+              raise SystemExit(f"build report overall is not PASS: {report.get('overall')!r}")
+          if report.get("permanent_persistence") != "CONFIRMED_KAGGLE_DATASET_PRIVATE":
+              raise SystemExit("private durable persistence was not confirmed")
+          sample = report.get("sampled_record_retrieval_smoke_test") or {}
+          if sample.get("success") is not True or sample.get("sample_count") != 10 or sample.get("passed") != 10:
+              raise SystemExit("10-record retrieval fidelity gate did not pass")
+          api = report.get("live_rag_api_smoke_test") or {}
+          if api.get("success") is not True or api.get("overall") != "PASS":
+              raise SystemExit("live RAG API gate did not pass")
+          print("BUILD_INGESTION_SQLITE_10_RECORD_QA_LIVE_API_PRIVATE_PERSISTENCE=PASS")
+          PY
+
+      - name: Upload build reports (never upload the database as a temporary artifact)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: knowledge-db-11-dataset-build-${{ github.run_number }}-${{ github.run_attempt }}
+          path: |
+            build-output/*.json
+            build-output/*.log
+          if-no-files-found: warn
+          retention-days: 90
+          compression-level: 3
