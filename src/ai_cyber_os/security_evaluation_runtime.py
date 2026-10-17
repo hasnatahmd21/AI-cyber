@@ -96,8 +96,10 @@ def _make_query(record: dict[str, Any]) -> str:
 def _extractive_output(record: dict[str, Any]) -> dict[str, Any]:
     """Return only a verbatim source extract, with a claim citing its record."""
     content = str(record["content"]).strip()
-    title = str(record.get("title") or "").strip()
-    answer = (title + "\n" + content).strip() if title else content
+    # Return only text that is also inside the cited content. Title metadata may
+    # contain an identifier absent from the content body and must not be silently
+    # upgraded into a content-grounded security claim.
+    answer = content
     return {
         "answer": answer,
         "claims": [{
