@@ -920,11 +920,22 @@ def main(argv: list[str] | None = None) -> int:
         readiness_path = report_path.with_name(report_path.stem + "-source-readiness.json")
         print("[knowledge-db-progress] source_readiness_start", flush=True)
         readiness = run_readiness_gate(raw_root, readiness_path)
+        manifest_summary = readiness.get("manifest_readiness") or {}
         print(
             "[knowledge-db-progress] source_readiness_complete "
             + json.dumps({
                 "overall": readiness.get("overall"),
-                "counts": readiness.get("manifest_readiness", {}),
+                "manifest_readiness": {
+                    "overall": manifest_summary.get("overall"),
+                    "count": manifest_summary.get("count"),
+                    "pass": manifest_summary.get("pass"),
+                    "blocked": manifest_summary.get("blocked"),
+                    "fail": manifest_summary.get("fail"),
+                },
+                "parser_checks": [
+                    {"dataset": row.get("dataset"), "status": row.get("status")}
+                    for row in readiness.get("datasets", [])
+                ],
             }, ensure_ascii=False, sort_keys=True, default=str),
             flush=True,
         )
