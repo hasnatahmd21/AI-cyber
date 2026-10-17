@@ -563,7 +563,9 @@ def _run_regression() -> dict[str, Any]:
 
 def _command_status() -> dict[str, Any]:
     state = _snapshot()
-    state["knowledge"] = knowledge_status(db_path=require_runtime_database())
+    # Status must remain readable when strict mode blocks a missing/corrupt DB;
+    # the fabric status is explicit about readiness and does not create a file.
+    state["knowledge"] = _data_fabric_status()
     state["live"] = telemetry.snapshot()
     return state
 
