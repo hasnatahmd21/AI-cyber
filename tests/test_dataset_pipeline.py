@@ -1267,3 +1267,33 @@ def test_manifest_directory_rejects_manifest_changed_after_readiness_gate(tmp_pa
     assert result["overall"] == "FAIL"
     assert result["ingestion_performed"] is False
     assert "manifest changed after source-readiness gate" in result["preflight_failures"][0]["evidence"]
+
+
+def test_cached_readiness_rehash_blocks_changed_artifact_before_ingest(tmp_path: Path):
+    from ai_cyber_os import dataset_pipeline
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+
+    original = '{"id":"ARTIFACT-1","title":"original","content":"original evidence"}\\n'
+    manifest = _manifest(tmp_path, original, count=1)
+    inspection = dataset_pipeline.inspect_dataset(manifest)
+    cache = {
+        str(manifest.resolve()): {
+            "manifest_sha256": dataset_pipeline.sha256_file(manifest),
+            "inspection": inspection,
+        }
+    }
+    artifact = tmp_path / "datasets" / "fixtures.jsonl"
+    artifact.write_text(
+        '{"id":"ARTIFACT-1","title":"changed","content":"different evidence"}\\n',
+        encoding="utf-8",
+    )
+
+    result = ingest_manifest_directory(
+        manifest.parent,
+        db_path=tmp_path / "changed-artifact-knowledge.db",
+        required_datasets=["fixture-threat-intel"],
+        preflight_inspections=cache,
+    )
+    assert result["overall"] == "FAIL"
+    assert result["ingestion_performed"] is True
+    assert "artifact SHA-256 changed after preflight" in result["results"][0]["error"]
