@@ -269,6 +269,109 @@ def persist_via_lfs(db_path: Path, report_path: Path, branch: str) -> dict[str, 
 
 
 
+
+def persist_lfs_confirmation_report(report_path: Path, branch: str) -> dict[str, Any]:
+    """Commit and push the final post-persistence report after the DB push succeeds.
+
+    The first LFS commit necessarily contains a PUBLISH_PENDING report. This
+    second, report-only commit records confirmation only after the DB commit was
+    accepted by the remote. It never stages the database a second time.
+    """
+    git_root = REPOSITORY_ROOT
+    if not (git_root / ".git").exists():
+        raise RuntimeError("--persist-lfs report finalization requires the Git checkout")
+    current = subprocess.run(
+        ["git", "-C", str(git_root), "branch", "--show-current"],
+        text=True, capture_output=True, check=True,
+    ).stdout.strip()
+    if current != branch:
+        raise RuntimeError(
+            f"current Git branch is {current!r}; refusing report update on {branch!r}"
+        )
+    try:
+        relative_report = report_path.resolve().relative_to(git_root.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError("final persistence report must be inside the repository") from exc
+    if not report_path.is_file():
+        raise FileNotFoundError(f"final persistence report missing: {report_path}")
+
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if not token:
+        try:
+            from kaggle_secrets import UserSecretsClient
+            token = UserSecretsClient().get_secret("cyber repo")
+        except Exception as exc:
+            raise RuntimeError(
+                'GitHub token unavailable to publish the final report; configure Kaggle secret "cyber repo"'
+            ) from exc
+    if not isinstance(token, str) or not token.strip():
+        raise RuntimeError("GitHub token is empty; final persistence report was not pushed")
+
+    subprocess.run(
+        ["git", "-C", str(git_root), "add", "--", relative_report],
+        check=True,
+    )
+    staged = subprocess.run(
+        ["git", "-C", str(git_root), "diff", "--cached", "--quiet"],
+        check=False,
+    )
+    if staged.returncode == 0:
+        sha = subprocess.run(
+            ["git", "-C", str(git_root), "rev-parse", "HEAD"],
+            text=True, capture_output=True, check=True,
+        ).stdout.strip()
+        return {"status": "already-committed", "branch": branch, "commit": sha}
+    if staged.returncode != 1:
+        raise RuntimeError(
+            f"unable to inspect staged final report (git diff exit {staged.returncode})"
+        )
+
+    subprocess.run(
+        ["git", "-C", str(git_root), "config", "user.name", "AI-CYBER Knowledge DB Builder"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(git_root), "config", "user.email",
+         "ai-cyber-knowledge-db@users.noreply.github.com"],
+        check=True,
+    )
+    stamp = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    subprocess.run(
+        ["git", "-C", str(git_root), "commit", "-m",
+         f"report: confirm Knowledge DB persistence {stamp}"],
+        check=True,
+    )
+
+    ask_fd, ask_name = tempfile.mkstemp(prefix="ai-cyber-report-askpass-")
+    os.close(ask_fd)
+    askpass = Path(ask_name)
+    try:
+        askpass.write_text(
+            "#!/bin/sh\nprintf '%s\\n' \"$GITHUB_TOKEN\"\n", encoding="utf-8"
+        )
+        askpass.chmod(0o700)
+        env = os.environ.copy()
+        env["GITHUB_TOKEN"] = token.strip()
+        env["GIT_ASKPASS"] = str(askpass)
+        env["GIT_TERMINAL_PROMPT"] = "0"
+        subprocess.run(
+            ["git", "-C", str(git_root), "remote", "set-url", "origin",
+             "https://x-access-token@github.com/hasnatahmd21/AI-cyber.git"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(git_root), "push", "origin", branch],
+            check=True, env=env,
+        )
+        sha = subprocess.run(
+            ["git", "-C", str(git_root), "rev-parse", "HEAD"],
+            text=True, capture_output=True, check=True,
+        ).stdout.strip()
+        return {"status": "pushed", "branch": branch, "commit": sha,
+                "report_path": relative_report}
+    finally:
+        askpass.unlink(missing_ok=True)
+
 def _kaggle_credentials() -> dict[str, str]:
     """Resolve Kaggle API token or legacy credentials without logging secrets."""
     env = os.environ.copy()
@@ -765,9 +868,13 @@ def main(argv: list[str] | None = None) -> int:
             )
             report["published_commit"] = persistence.get("commit")
             write_json(report_path, report)
+            # Persist the final CONFIRMED report itself. The database was
+            # already pushed in persist_via_lfs; this commit stages only report_path.
+            report_push = persist_lfs_confirmation_report(report_path, args.branch)
             print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
             print(f"REPORT_FILE={report_path}")
-            print("PERMANENT_PERSISTENCE=CONFIRMED_GITHUB_LFS")
+            print(f"PERSISTENCE_REPORT_COMMIT={report_push.get('commit')}")
+            print(f"PERMANENT_PERSISTENCE={report['permanent_persistence']}")
             return 0
 
         if args.persist_kaggle_dataset_id:
