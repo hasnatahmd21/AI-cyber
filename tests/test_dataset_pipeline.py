@@ -837,8 +837,8 @@ def test_core_query_smoke_test_checks_cve_cwe_attack_and_citations_in_new_proces
             "id": "CVE-2021-44228",
             "title": "Log4Shell CVE fixture",
             "content": "Critical remote code execution vulnerability evidence",
-            "source": "NVD fixture",
-            "source_uri": "https://example.invalid/nvd",
+            "source": "CISA KEV fixture",
+            "source_uri": "https://example.invalid/kev",
             "license": "fixture",
             "version": "nvd-fixture",
             "validation_status": "fixture-validated",
@@ -866,7 +866,7 @@ def test_core_query_smoke_test_checks_cve_cwe_attack_and_citations_in_new_proces
     ]
     source.write_text("".join(json.dumps(row) + "\n" for row in records), encoding="utf-8")
     db_path = tmp_path / "knowledge-v1.sqlite3"
-    for dataset, record in zip(("nvd_cve", "cwe", "mitre_attack"), records):
+    for dataset, record in zip(("cisa_kev", "cwe", "mitre_attack"), records):
         one = tmp_path / f"{dataset}.jsonl"
         one.write_text(json.dumps(record) + "\n", encoding="utf-8")
         ingest_file(
@@ -886,6 +886,7 @@ def test_core_query_smoke_test_checks_cve_cwe_attack_and_citations_in_new_proces
     assert Path(result["default_db"]).resolve() == db_path.resolve()
     assert result["status"]["records"] == 3
     assert set(result["queries"]) == {"cve", "cwe", "attack"}
+    assert result["queries"]["cve"]["dataset"] == "cisa_kev"
     for family in ("cve", "cwe", "attack"):
         query = result["queries"][family]
         assert query["count"] == 1
