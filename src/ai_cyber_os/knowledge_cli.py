@@ -41,7 +41,7 @@ def main(argv: list[str] | None = None) -> int:
     manifest_dir.add_argument("path", help="Directory containing real dataset manifests")
     manifest_dir.add_argument(
         "--require", action="append", default=[], metavar="DATASET",
-        help="Required dataset name (repeatable); omit to use the locked 12-source set",
+        help="Required dataset name (repeatable); omit to use the locked 11-source set (NVD/CVSS excluded)",
     )
     manifest_dir.add_argument("--no-checksum", action="store_true", default=False)
 
