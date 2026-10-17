@@ -203,6 +203,8 @@ def evaluate_permanent_database(
                 evidence = matches[0]
                 exact_source = all((
                     evidence.get("dataset") == dataset,
+                    evidence.get("record_id") == record_id,
+                    evidence.get("content") == record.get("content"),
                     evidence.get("title", "") == (record.get("title") or ""),
                     evidence.get("source") == record.get("source"),
                     evidence.get("source_uri") == record.get("source_uri"),
