@@ -138,3 +138,74 @@ def test_live_sampled_evaluation_api_returns_grounded_gate_summary(monkeypatch, 
     assert body["cases_total"] == 10
     assert body["passed"] == 10
     assert not missing_db.exists()
+
+
+
+def test_strict_context_route_uses_read_only_rag_queries(monkeypatch, tmp_path):
+    from ai_cyber_os import ui
+
+    observed = []
+    target_db = tmp_path / "verified-runtime.sqlite3"
+    monkeypatch.setattr(ui, "require_runtime_database", lambda: target_db)
+    monkeypatch.setattr(
+        ui,
+        "build_rag_context",
+        lambda query, **kwargs: (
+            observed.append({"query": query, **kwargs})
+            or {"query": query, "evidence": [], "count": 0, "evidence_only": True}
+        ),
+    )
+
+    status, body, missing_db = _request(
+        monkeypatch,
+        tmp_path,
+        "POST",
+        "/api/knowledge",
+        {"action": "context", "query": "CWE-79"},
+    )
+    assert status == 200
+    assert body["success"] is True
+    assert observed and observed[0]["read_only"] is True
+    assert observed[0]["db_path"] == target_db
+    assert not missing_db.exists()
+
+
+def test_strict_status_route_uses_read_only_store(monkeypatch, tmp_path):
+    from ai_cyber_os import ui
+
+    observed = {}
+    monkeypatch.setattr(
+        ui,
+        "verify_database",
+        lambda db_path, deep=False: {
+            "success": True,
+            "overall": "PASS",
+            "database_file": "verified-runtime.sqlite3",
+            "errors": [],
+        },
+    )
+    def fake_status(**kwargs):
+        observed.update(kwargs)
+        return {
+            "ready": True,
+            "records": 11,
+            "relations": 0,
+            "chunks": 11,
+            "datasets": [],
+            "schema_version": 5,
+            "database_version": "ai-cyber-knowledge-v1",
+            "checkpoints": {"complete": 11},
+            "db": str(kwargs["db_path"]),
+        }
+    monkeypatch.setattr(ui, "knowledge_status", fake_status)
+
+    status, body, missing_db = _request(
+        monkeypatch,
+        tmp_path,
+        "GET",
+        "/api/knowledge/status",
+    )
+    assert status == 200
+    assert body["ready"] is True
+    assert observed["read_only"] is True
+    assert not missing_db.exists()
