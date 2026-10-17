@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -111,12 +112,15 @@ def _query_from_content(row: dict[str, Any]) -> str:
 
 def _provenance_ok(evidence: dict[str, Any]) -> bool:
     digest = str(evidence.get("content_sha256") or "")
+    content = str(evidence.get("content") or "")
+    calculated = hashlib.sha256(content.encode("utf-8")).hexdigest()
     return bool(
         evidence.get("record_id")
         and evidence.get("dataset")
         and evidence.get("source_uri")
         and len(digest) == 64
         and all(ch in "0123456789abcdef" for ch in digest.lower())
+        and digest.lower() == calculated
         and evidence.get("validation_status")
     )
 
