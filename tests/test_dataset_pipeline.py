@@ -1058,8 +1058,12 @@ detection:
 def test_default_build_scope_is_eleven_and_skips_out_of_scope_nvd_cvss_manifests(tmp_path: Path):
     from ai_cyber_os.dataset_pipeline import DEFAULT_REQUIRED_DATASETS, ingest_manifest_directory
     from ai_cyber_os.dataset_readiness import readiness_report
+    from scripts import kaggle_dataset_parser_readiness_gate as source_gate
 
     assert len(DEFAULT_REQUIRED_DATASETS) == 11
+    assert tuple(source_gate.REQUIRED_DATASET_NAMES) == tuple(DEFAULT_REQUIRED_DATASETS)
+    assert len(source_gate.REQUIRED_DATASET_NAMES) == 11
+    assert "nvd_cve" not in source_gate.REQUIRED_DATASET_NAMES
     assert "nvd_cve" not in DEFAULT_REQUIRED_DATASETS
     assert "cvss" not in DEFAULT_REQUIRED_DATASETS
 
