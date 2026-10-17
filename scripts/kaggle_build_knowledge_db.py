@@ -52,6 +52,85 @@ def write_json(path: Path, report: dict[str, Any]) -> None:
     temp.replace(path)
 
 
+def sqlite_integrity_smoke_test(
+    db_path: Path,
+    required_datasets: list[str] | tuple[str, ...],
+) -> dict[str, Any]:
+    """Read-only integrity and source-scope verification of the built Knowledge DB."""
+    if not db_path.is_file() or db_path.stat().st_size <= 0:
+        raise RuntimeError(f"Knowledge DB is missing or empty: {db_path}")
+    connection = sqlite3.connect(f"file:{db_path.resolve().as_posix()}?mode=ro", uri=True, timeout=60)
+    try:
+        integrity_rows = [str(row[0]) for row in connection.execute("PRAGMA integrity_check")]
+        integrity = integrity_rows[0] if len(integrity_rows) == 1 else "; ".join(integrity_rows)
+        if integrity_rows != ["ok"]:
+            raise RuntimeError(f"SQLite PRAGMA integrity_check failed: {integrity_rows[:10]}")
+        metadata = {
+            str(row[0]): str(row[1])
+            for row in connection.execute("SELECT key,value FROM knowledge_meta")
+        }
+        counts = {
+            str(row[0]): int(row[1])
+            for row in connection.execute(
+                "SELECT dataset,COUNT(*) FROM knowledge_records GROUP BY dataset ORDER BY dataset"
+            )
+        }
+        record_count = int(connection.execute("SELECT COUNT(*) FROM knowledge_records").fetchone()[0])
+        fts_count = int(connection.execute("SELECT COUNT(*) FROM knowledge_fts").fetchone()[0])
+        chunk_count = int(connection.execute("SELECT COUNT(*) FROM knowledge_chunks").fetchone()[0])
+        chunk_fts_count = int(connection.execute("SELECT COUNT(*) FROM knowledge_chunks_fts").fetchone()[0])
+        checkpoint_rows = {
+            str(row[0]): int(row[1])
+            for row in connection.execute(
+                "SELECT status,COUNT(*) FROM knowledge_ingestion_checkpoints GROUP BY status"
+            )
+        }
+    finally:
+        connection.close()
+
+    required = set(required_datasets)
+    actual = set(counts)
+    missing = sorted(required - actual)
+    unexpected = sorted(actual - required)
+    excluded_rows = sorted(actual & {"nvd_cve", "cvss"})
+    if metadata.get("database_version") != "ai-cyber-knowledge-v1":
+        raise RuntimeError(f"Unexpected database version: {metadata.get('database_version')!r}")
+    if not metadata.get("source_manifest_digests"):
+        raise RuntimeError("Knowledge DB has no pinned source-manifest digest ledger")
+    if record_count <= 0 or missing:
+        raise RuntimeError(f"Knowledge DB has no records for all required datasets; missing={missing}")
+    if unexpected or excluded_rows:
+        raise RuntimeError(
+            f"Knowledge DB dataset scope differs from the approved 11-source set; "
+            f"unexpected={unexpected}, excluded={excluded_rows}"
+        )
+    if fts_count != record_count:
+        raise RuntimeError(
+            f"Knowledge FTS index count mismatch: records={record_count}, FTS rows={fts_count}"
+        )
+    if chunk_fts_count != chunk_count:
+        raise RuntimeError(
+            f"Knowledge chunk FTS index count mismatch: chunks={chunk_count}, chunk FTS rows={chunk_fts_count}"
+        )
+    unfinished = {key: value for key, value in checkpoint_rows.items() if key != "complete" and value}
+    if unfinished:
+        raise RuntimeError(f"Knowledge DB contains unfinished/failed ingestion checkpoints: {unfinished}")
+    return {
+        "status": "PASS",
+        "sqlite_integrity_check": integrity,
+        "database_version": metadata.get("database_version"),
+        "schema_version": metadata.get("schema_version"),
+        "record_count": record_count,
+        "datasets": counts,
+        "fts_rows": fts_count,
+        "chunks": chunk_count,
+        "chunk_fts_rows": chunk_fts_count,
+        "checkpoint_status_counts": checkpoint_rows,
+        "source_manifest_ledger_present": True,
+        "excluded_dataset_rows": excluded_rows,
+    }
+
+
 
 def print_build_summary(report: dict[str, Any], report_path: Path) -> None:
     """Print compact stage results; the full auditable evidence stays in the JSON report."""
@@ -85,6 +164,7 @@ def print_build_summary(report: dict[str, Any], report_path: Path) -> None:
         ),
         "sqlite_ingestion": (
             "PASS" if batch.get("overall") == "PASS" and report.get("ingestion_performed") is True
+            and (report.get("sqlite_integrity_smoke_test") or {}).get("status") == "PASS"
             else "NOT_RUN" if not report.get("ingestion_performed") else batch.get("overall", "FAIL")
         ),
         "runtime_and_direct_rag": "PASS" if rag_queries_ok else "NOT_RUN" if not queries else "FAIL",
@@ -1022,6 +1102,9 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         report["database_status"] = knowledge_status(db_path=db_path)
+        report["sqlite_integrity_smoke_test"] = sqlite_integrity_smoke_test(
+            db_path, report["required_datasets"]
+        )
         report["core_query_smoke_test"] = core_query_smoke_test(
             db_path, args.probe_cve, args.probe_cwe, args.probe_attack
         )
