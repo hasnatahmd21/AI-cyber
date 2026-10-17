@@ -8,6 +8,7 @@ LLM semantic accuracy because no answer-generating model is invoked.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import random
 import re
@@ -183,8 +184,9 @@ def evaluate_permanent_database(
             query = _make_query(record)
             item: dict[str, Any] = {
                 "dataset": dataset,
-                "record_id": record_id,
-                "query": query,
+                "sample_record_id_sha256": hashlib.sha256(record_id.encode("utf-8")).hexdigest(),
+                "query_sha256": hashlib.sha256(query.encode("utf-8")).hexdigest(),
+                "query_term_count": len(query.split()),
                 "pass": False,
                 "checks": {},
                 "errors": [],
