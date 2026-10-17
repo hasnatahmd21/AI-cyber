@@ -34,6 +34,7 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import hashlib
+import importlib.util
 import json
 import os
 import shutil
@@ -47,7 +48,7 @@ from pathlib import Path
 from typing import Iterable
 
 REPO = os.environ.get("AI_CYBER_REPO", "hasnatahmd21/AI-cyber")
-BRANCH = os.environ.get("AI_CYBER_BRANCH", "repair/forensic-reconstruction")
+BRANCH = os.environ.get("AI_CYBER_BRANCH", "fix/dataset-parser-readiness")
 WORK = Path("/kaggle/working")
 CHECKOUT = WORK / "AI-cyber"
 DATASETS = Path(os.environ.get("DATASET_ROOT", str(CHECKOUT / "datasets")))
@@ -193,35 +194,97 @@ def ensure_lfs() -> bool:
     return True
 
 
+def _load_nvd_readiness_module():
+    """Load the repository's official NVD .meta/hash/parser validator from this checkout."""
+    module_path = CHECKOUT / "scripts" / "kaggle_nvd_feed_readiness.py"
+    if not module_path.is_file():
+        raise FileNotFoundError(f"official NVD readiness script not found: {module_path}")
+    spec = importlib.util.spec_from_file_location("ai_cyber_nvd_feed_readiness", module_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"could not load official NVD readiness script: {module_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _nvd_records_from_manifest(manifest: dict) -> list[dict]:
+    """Convert only a source-verified NVD feed manifest into the acquisition report shape."""
+    schema = manifest.get("schema")
+    if (
+        manifest.get("dataset") != "nvd_cve"
+        or not isinstance(schema, dict)
+        or schema.get("parser_kind") != "nvd"
+        or manifest.get("validation_status") != "local-integrity-verified"
+        or not isinstance(manifest.get("artifacts"), list)
+        or not manifest["artifacts"]
+    ):
+        raise ValueError("NVD artifacts must come from a verified NVD 2.0 feed manifest")
+
+    records: list[dict] = []
+    required = ("path", "version", "source_uri", "byte_size", "sha256", "record_count", "count_kind", "upstream_meta")
+    for artifact in manifest["artifacts"]:
+        if not isinstance(artifact, dict) or any(key not in artifact for key in required):
+            raise ValueError("verified NVD manifest contains an incomplete artifact record")
+        if artifact["count_kind"] != "nvd-feed":
+            raise ValueError("NVD artifact is missing the nvd-feed parser contract")
+        records.append({
+            "dataset": "nvd_cve",
+            "version": artifact["version"],
+            "source": manifest["source"],
+            "source_uri": artifact["source_uri"],
+            "license": manifest["license"],
+            "local_path": artifact["path"],
+            "bytes": artifact["byte_size"],
+            "sha256": artifact["sha256"],
+            "format": artifact.get("format", "NVD JSON 2.0 gzip"),
+            "acquired_at_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "validation_status": manifest["validation_status"],
+            "ingestion_status": manifest.get("ingestion_status", "not-started"),
+            "record_count": artifact["record_count"],
+            "count_kind": artifact["count_kind"],
+            "upstream_meta": artifact["upstream_meta"],
+        })
+    return records
+
+
 def nvd_family() -> list[dict]:
-    out = []
+    """Use the existing official NVD readiness pipeline, not a checksum-blind downloader."""
     root = RAW / "nvd_cve"
     root.mkdir(parents=True, exist_ok=True)
     current_year = dt.datetime.now(dt.timezone.utc).year
-    # NVD 2.0 year feeds are official and are updated daily. We retain each year
-    # separately so a failed/changed feed never silently replaces another year.
-    for year in range(2002, current_year + 1):
-        name = f"nvdcve-2.0-{year}.json.gz"
-        uri = f"https://nvd.nist.gov/feeds/json/cve/2.0/{name}"
-        p = get(uri, root / name)
-        out.append(artifact_record(
-            family="nvd_cve", path=p, source="NVD", source_uri=uri,
-            version=f"NVD-2.0-{year}", license_text="NVD data feed terms; preserve source attribution",
-            format_name="gzip-json",
-        ))
-    for name, label in (
-        ("nvdcve-2.0-recent.json.gz", "NVD-2.0-recent"),
-        ("nvdcve-2.0-modified.json.gz", "NVD-2.0-modified"),
-    ):
-        uri = f"https://nvd.nist.gov/feeds/json/cve/2.0/{name}"
-        p = get(uri, root / name)
-        out.append(artifact_record(
-            family="nvd_cve", path=p, source="NVD", source_uri=uri,
-            version=label, license_text="NVD data feed terms; preserve source attribution",
-            format_name="gzip-json",
-        ))
-    return out
+    nvd_readiness = _load_nvd_readiness_module()
 
+    # This validates each official .meta contract, compressed/uncompressed SHA-256
+    # and size, JSON structure, and parsed CVE IDs before any NVD manifest is written.
+    manifest = nvd_readiness.build_manifest(
+        root, 2002, current_year, include_updates=True, project_root=CHECKOUT
+    )
+    records = _nvd_records_from_manifest(manifest)
+    manifest_path = MANIFESTS / "nvd_cve.json"
+    nvd_readiness.write_json_atomic(manifest_path, manifest)
+
+    report = {
+        "overall": "SOURCE_INTEGRITY_PASS",
+        "dataset": "nvd_cve",
+        "raw_root": str(root),
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": sha256(manifest_path),
+        "feed_count": len(manifest["artifacts"]),
+        "feed_record_occurrences": manifest["record_count"],
+        "unique_cve_id_count": manifest["unique_cve_id_count"],
+        "duplicate_feed_record_occurrences": manifest["duplicate_feed_record_occurrences"],
+        "ingestion_performed": False,
+        "database_created": False,
+        "feeds": manifest["artifacts"],
+    }
+    write_json(REPORTS / f"nvd-readiness-{STAMP}.json", report)
+    print(
+        f"PASS nvd_cve: feeds={len(records)} records={manifest['record_count']} "
+        f"unique_cves={manifest['unique_cve_id_count']} "
+        f"manifest={manifest_path}",
+        flush=True,
+    )
+    return records
 
 def cpe_family() -> list[dict]:
     out = []
@@ -494,6 +557,40 @@ def push() -> None:
             pass
 
 
+
+def write_family_manifests(by_family: dict[str, list[dict]]) -> None:
+    """Write generic family manifests, preserving the richer verified NVD contract."""
+    for family, records in sorted(by_family.items()):
+        target = MANIFESTS / f"{family}.json"
+        if family == "nvd_cve":
+            if not target.is_file():
+                raise RuntimeError(
+                    "refusing to write an unverified nvd_cve manifest; "
+                    "the official NVD readiness pipeline must create it first"
+                )
+            try:
+                manifest = json.loads(target.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                raise RuntimeError(f"verified NVD manifest cannot be read: {target}") from exc
+            schema = manifest.get("schema")
+            if (
+                manifest.get("dataset") != "nvd_cve"
+                or not isinstance(schema, dict)
+                or schema.get("parser_kind") != "nvd"
+                or manifest.get("validation_status") != "local-integrity-verified"
+                or not manifest.get("artifact_set_sha256")
+            ):
+                raise RuntimeError(
+                    "refusing to overwrite nvd_cve.json because its official feed-verification contract is absent"
+                )
+            print(f"Keeping source-verified NVD manifest: {target}", flush=True)
+            continue
+        write_json(target, {
+            "dataset": family,
+            "artifacts": records,
+            "source_of_truth": "acquisition-report",
+        })
+
 def main() -> int:
     print("=" * 88)
     print("AI-CYBER — KAGGLE MASTER DATASET ACQUISITION")
@@ -551,12 +648,7 @@ def main() -> int:
     by_family: dict[str, list[dict]] = {}
     for rec in all_records:
         by_family.setdefault(rec["dataset"], []).append(rec)
-    for family, records in sorted(by_family.items()):
-        write_json(MANIFESTS / f"{family}.json", {
-            "dataset": family,
-            "artifacts": records,
-            "source_of_truth": "acquisition-report",
-        })
+    write_family_manifests(by_family)
 
     if errors:
         print("\nFAIL-CLOSED: one or more dataset families failed.")
