@@ -107,7 +107,7 @@ def download_to(url: str, target: Path, *, retries: int = 5, timeout: int = 180)
 
                 if status == 206:
                     content_range = response.headers.get("Content-Range", "")
-                    match = re.fullmatch(r"bytes (\\d+)-(\\d+)/(\\d+|\\*)", content_range.strip())
+                    match = re.fullmatch(r"bytes (\d+)-(\d+)/(\d+|\*)", content_range.strip())
                     if not match:
                         raise ValueError(f"invalid Content-Range for {url}: {content_range!r}")
                     first, last, total = match.groups()
