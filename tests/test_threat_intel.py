@@ -65,3 +65,36 @@ def test_cpe_normalization(tmp_path: Path):
     path.write_text(json.dumps({"products": [{"cpeName": [{"cpe23Uri": "cpe:2.3:a:example:product:1.0:*:*:*:*:*:*:*"}]}]}), encoding="utf-8")
     rows = parse_cpe(path)
     assert rows[0]["record_id"].startswith("cpe:2.3:")
+
+def test_nvd_manifest_version_is_content_addressed_and_stable(tmp_path: Path, monkeypatch):
+    import hashlib
+    from scripts import kaggle_nvd_feed_readiness as readiness
+
+    project = tmp_path / "project"
+    feed_root = project / "datasets" / "raw" / "nvd_cve"
+    feed_root.mkdir(parents=True)
+
+    def fake_process_feed(root, feed_name, *, dataset_version, project_root):
+        digest = hashlib.sha256(feed_name.encode("utf-8")).hexdigest()
+        artifact = {
+            "path": (root / feed_name).relative_to(project_root).as_posix(),
+            "sha256": digest,
+            "record_count": 1,
+            "byte_size": 100,
+            "version": dataset_version,
+            "upstream_meta": {"last_modified_date": "fixed-fixture-date"},
+        }
+        return artifact, {"CVE-2025-1234"}
+
+    monkeypatch.setattr(readiness, "process_feed", fake_process_feed)
+    first = readiness.build_manifest(
+        feed_root, 2025, 2025, include_updates=False, project_root=project
+    )
+    second = readiness.build_manifest(
+        feed_root, 2025, 2025, include_updates=False, project_root=project
+    )
+
+    expected_version = "NVD-2.0-snapshot-" + first["artifact_set_sha256"][:16]
+    assert first["version"] == expected_version
+    assert second["version"] == expected_version
+    assert first == second, "identical feed bytes must produce a stable resumable manifest"

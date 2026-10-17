@@ -254,11 +254,13 @@ def build_manifest(root: Path, year_start: int, year_end: int, include_updates: 
 
     feed_hashes = "\n".join(item["sha256"] for item in artifacts)
     aggregate_sha = hashlib.sha256(feed_hashes.encode("utf-8")).hexdigest()
-    today = dt.datetime.now(dt.timezone.utc).date().isoformat()
+    # Use the feed bytes, not the calendar date, to identify this snapshot.
+    # Otherwise an identical retry on a later day changes the manifest digest and
+    # blocks checkpoint resume for a database that is already partially ingested.
     return {
         "manifest_format": 1,
         "dataset": "nvd_cve",
-        "version": f"NVD-2.0-snapshot-{today}",
+        "version": f"NVD-2.0-snapshot-{aggregate_sha[:16]}",
         "source": "NIST National Vulnerability Database (NVD)",
         "source_uri": SOURCE_URI,
         "license": LICENSE_TEXT,
