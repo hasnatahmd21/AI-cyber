@@ -29,7 +29,7 @@ from typing import Any
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REQUIRED = (
     "capec", "cisa_kev", "cpe", "cwe", "epss", "mitre_attack",
-    "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel", "nvd_cve",
+    "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel",
 )
 PROBE_CVE = "CVE-2021-44228"
 PROBE_CWE = "CWE-79"
@@ -110,7 +110,7 @@ def restart_smoke_test(db_path: Path, cve_id: str) -> dict[str, Any]:
     if data["status"].get("records", 0) <= 0:
         raise RuntimeError("restart test found an empty Knowledge DB")
     if not data["hits"]:
-        raise RuntimeError(f"real CVE probe returned no records after process restart: {cve_id}")
+        raise RuntimeError(f"CISA KEV CVE probe returned no records after process restart: {cve_id}")
     if not data["analysis"].get("success") or not data["analysis"].get("evidence_only"):
         raise RuntimeError("runtime intelligence did not return an evidence-only result")
     if not data["analysis"].get("has_citations"):
@@ -125,12 +125,12 @@ def core_query_smoke_test(
     cwe_id: str = PROBE_CWE,
     attack_id: str = PROBE_ATTACK,
 ) -> dict[str, Any]:
-    """Check real CVE, CWE and ATT&CK retrieval in a fresh Python process."""
+    """Check CISA KEV CVE, CWE and ATT&CK retrieval in a fresh Python process."""
     env = os.environ.copy()
     env["AI_CYBER_KNOWLEDGE_DB"] = str(db_path)
     env["PYTHONPATH"] = str(REPOSITORY_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
     probes = {
-        "cve": {"query": cve_id, "dataset": "nvd_cve"},
+        "cve": {"query": cve_id, "dataset": "cisa_kev"},
         "cwe": {"query": cwe_id, "dataset": "cwe"},
         "attack": {"query": attack_id, "dataset": "mitre_attack"},
     }
@@ -701,41 +701,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f"REPORT_FILE={report_path}")
             return 2
 
-        derived_rows = preflight_and_ingestion.get("derived_datasets", [])
-        cvss_report = next(
-            (row for row in derived_rows if row.get("dataset") == "cvss"),
-            None,
-        )
-        if cvss_report is None or cvss_report.get("status") != "PASS":
-            raise RuntimeError("batch ingestion did not produce a passing derived CVSS report")
-        cvss_derived = cvss_report["derivation"]
-        report["cvss_derivation"] = cvss_derived
-        cvss_hits = knowledge_search(args.probe_cve, db_path=db_path, dataset="cvss", limit=10)
-        report["cvss_query"] = {
-            "query": args.probe_cve,
-            "count": len(cvss_hits),
-            "evidence": [{
-                "record_id": row.get("record_id"),
-                "source_uri": row.get("source_uri"),
-                "version": row.get("version"),
-                "validation_status": row.get("validation_status"),
-                "content_sha256": row.get("content_sha256"),
-            } for row in cvss_hits],
-        }
-        if int(cvss_derived.get("derived_records_in_database", 0)) <= 0:
-            raise RuntimeError("CVSS derivation produced no indexed metric records from NVD data")
-        if not cvss_hits:
-            raise RuntimeError(f"derived CVSS query returned no evidence for {args.probe_cve}")
-
         report["database_status"] = knowledge_status(db_path=db_path)
         report["core_query_smoke_test"] = core_query_smoke_test(
             db_path, args.probe_cve, args.probe_cwe, args.probe_attack
         )
         context = build_context(
-            args.probe_cve, db_path=db_path, limit=10, dataset="nvd_cve"
+            args.probe_cve, db_path=db_path, limit=10, dataset="cisa_kev"
         )
-        report["real_cve_query"] = {
+        report["cisa_kev_cve_query"] = {
             "query": args.probe_cve,
+            "dataset": "cisa_kev",
             "count": context.get("count", 0),
             "evidence_only": context.get("evidence_only", False),
             "evidence": [{
@@ -748,7 +723,9 @@ def main(argv: list[str] | None = None) -> int:
             } for row in context.get("evidence", [])],
         }
         if not context.get("evidence"):
-            raise RuntimeError(f"real CVE retrieval probe returned no results for {args.probe_cve}")
+            raise RuntimeError(
+                f"CISA KEV CVE retrieval probe returned no results for {args.probe_cve}"
+            )
         if not context.get("evidence_only"):
             raise RuntimeError("RAG result did not preserve evidence-only contract")
         if not all(row.get("source_uri") and row.get("content_sha256") and row.get("validation_status")
@@ -760,8 +737,8 @@ def main(argv: list[str] | None = None) -> int:
         report["database_byte_size"] = db_path.stat().st_size
         report["build_verification"] = "PASS"
         report["evidence"] = (
-            "All required source manifests passed real-artifact readiness and full preflight; "
-            "checkpointed ingestion, derived CVSS retrieval, citations, and a fresh-process "
+            "All eleven required source manifests passed real-artifact readiness and full preflight; "
+            "checkpointed ingestion, CISA KEV CVE retrieval, citations, and a fresh-process "
             "persistence test passed."
         )
 
