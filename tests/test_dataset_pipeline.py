@@ -1059,12 +1059,18 @@ def test_default_build_scope_is_eleven_and_skips_out_of_scope_nvd_cvss_manifests
     from ai_cyber_os.dataset_pipeline import DEFAULT_REQUIRED_DATASETS, ingest_manifest_directory
     from ai_cyber_os.dataset_readiness import readiness_report
     from scripts import kaggle_dataset_parser_readiness_gate as source_gate
+    from scripts.kaggle_build_knowledge_db import DEFAULT_REQUIRED as builder_required
 
     assert len(DEFAULT_REQUIRED_DATASETS) == 11
+    assert tuple(builder_required) == tuple(DEFAULT_REQUIRED_DATASETS)
+    assert len(builder_required) == 11
     assert tuple(source_gate.REQUIRED_DATASET_NAMES) == tuple(DEFAULT_REQUIRED_DATASETS)
     assert len(source_gate.REQUIRED_DATASET_NAMES) == 11
+    assert tuple(source_gate.EXCLUDED_DATASET_NAMES) == ("nvd_cve", "cvss")
     assert "nvd_cve" not in source_gate.REQUIRED_DATASET_NAMES
+    assert "nvd_cve" not in builder_required
     assert "nvd_cve" not in DEFAULT_REQUIRED_DATASETS
+    assert "cvss" not in builder_required
     assert "cvss" not in DEFAULT_REQUIRED_DATASETS
 
     manifest = _manifest(
