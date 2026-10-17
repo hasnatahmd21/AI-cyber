@@ -893,6 +893,169 @@ def persist_via_kaggle_dataset(
         # Keep the upload package for diagnosis/retry if a publish attempt fails.
         raise
 
+
+def sampled_record_retrieval_smoke_test(
+    db_path: Path,
+    *,
+    sample_size: int = 10,
+) -> dict[str, Any]:
+    """Evaluate retrieval fidelity against ten randomly selected real DB records.
+
+    This is an evidence/retrieval test, not generative-answer evaluation: the
+    current RAG contract returns source-backed evidence and does not generate
+    natural-language conclusions.
+    """
+    if sample_size != 10:
+        raise ValueError("the release gate is intentionally fixed to 10 sampled records")
+    required = tuple(DEFAULT_REQUIRED)
+    connection = sqlite3.connect(
+        f"file:{db_path.resolve().as_posix()}?mode=ro", uri=True, timeout=60
+    )
+    try:
+        placeholders = ",".join("?" for _ in required)
+        rows = connection.execute(
+            f"""
+            SELECT record_id, dataset, title, content, source_uri,
+                   content_sha256, validation_status
+              FROM knowledge_records
+             WHERE dataset IN ({placeholders})
+               AND length(trim(COALESCE(content, ''))) > 0
+               AND length(trim(COALESCE(title, ''))) > 0
+               AND length(trim(COALESCE(source_uri, ''))) > 0
+               AND length(COALESCE(content_sha256, '')) = 64
+             ORDER BY RANDOM()
+             LIMIT ?
+            """,
+            (*required, sample_size),
+        ).fetchall()
+    finally:
+        connection.close()
+
+    if len(rows) != sample_size:
+        return {
+            "success": False,
+            "expected_sample_size": sample_size,
+            "sample_count": len(rows),
+            "passed": 0,
+            "failed": sample_size - len(rows),
+            "tests": [],
+            "evaluation_kind": "source-grounded retrieval fidelity; no LLM answer generation",
+            "error": "could not select ten real, cited records from the approved 11 datasets",
+        }
+
+    from ai_cyber_os.rag import build_context
+
+    tests: list[dict[str, Any]] = []
+    stop = {
+        "false", "true", "null", "https", "http", "description", "references",
+        "created", "modified", "updated", "source", "payload", "record",
+    }
+    for record_id, dataset, title, raw_content, source_uri, content_sha256, validation_status in rows:
+        tokens = re.findall(r"[A-Za-z0-9_]{5,}", str(raw_content)[:3500])
+        query_terms: list[str] = []
+        for token in tokens:
+            if token.casefold() in stop or token.casefold() in {x.casefold() for x in query_terms}:
+                continue
+            query_terms.append(token)
+            if len(query_terms) == 6:
+                break
+        if len(query_terms) < 3:
+            query_terms = [
+                token for token in re.findall(r"[A-Za-z0-9_]{3,}", str(title))
+                if token.casefold() not in stop
+            ][:6]
+        query = " ".join(query_terms)
+        result: dict[str, Any] = {}
+        error = None
+        match = None
+        evidence = []
+        try:
+            if not query:
+                raise RuntimeError("selected record has no searchable content tokens")
+            result = build_context(query, db_path=db_path, dataset=str(dataset), limit=50)
+            evidence = result.get("evidence", [])
+            match = next((row for row in evidence if row.get("record_id") == record_id), None)
+            passed = bool(
+                match
+                and match.get("title", "") == (title or "")
+                and match.get("source_uri") == source_uri
+                and match.get("content_sha256") == content_sha256
+                and match.get("validation_status") == validation_status
+            )
+            if not passed:
+                error = "retrieved evidence did not contain the selected record with matching provenance"
+        except Exception as exc:
+            passed = False
+            error = f"{type(exc).__name__}: {exc}"
+        tests.append({
+            "dataset": dataset,
+            "query": query,
+            "expected_record_id": record_id,
+            "expected_title": title,
+            "expected_content_sha256": content_sha256,
+            "expected_source_uri": source_uri,
+            "evidence_count": len(evidence),
+            "expected_record_retrieved": bool(match),
+            "provenance_matches": bool(
+                match
+                and match.get("source_uri") == source_uri
+                and match.get("content_sha256") == content_sha256
+                and match.get("validation_status") == validation_status
+            ),
+            "pass": passed,
+            "error": error,
+        })
+
+    passed_count = sum(row["pass"] is True for row in tests)
+    return {
+        "success": passed_count == sample_size,
+        "expected_sample_size": sample_size,
+        "sample_count": len(tests),
+        "passed": passed_count,
+        "failed": len(tests) - passed_count,
+        "evaluation_kind": "source-grounded retrieval fidelity; no LLM answer generation",
+        "tests": tests,
+    }
+
+
+def run_live_rag_api_smoke_test(db_path: Path, build_report_path: Path) -> dict[str, Any]:
+    """Run the real localhost RAG API verifier in a separate process."""
+    script = REPOSITORY_ROOT / "scripts" / "verify_live_rag_api.py"
+    if not script.is_file():
+        raise FileNotFoundError(f"live RAG API verifier script missing: {script}")
+    output_path = build_report_path.with_name(build_report_path.stem + "-live-rag-api.json")
+    env = os.environ.copy()
+    env["AI_CYBER_KNOWLEDGE_DB"] = str(db_path)
+    env["PYTHONPATH"] = str(REPOSITORY_ROOT / "src") + os.pathsep + env.get("PYTHONPATH", "")
+    proc = subprocess.run(
+        [sys.executable, str(script), "--db-path", str(db_path), "--report", str(output_path)],
+        cwd=REPOSITORY_ROOT,
+        env=env,
+        text=True,
+        capture_output=True,
+        timeout=900,
+        check=False,
+    )
+    if not output_path.is_file():
+        raise RuntimeError(
+            f"live RAG/API verifier did not produce a report; "
+            f"exit={proc.returncode}, stderr={proc.stderr[-3000:]}, stdout={proc.stdout[-3000:]}"
+        )
+    data = json.loads(output_path.read_text(encoding="utf-8"))
+    data["runner_exit_code"] = proc.returncode
+    data["report_path"] = str(output_path)
+    if proc.returncode != 0 or data.get("overall") != "PASS" or data.get("success") is not True:
+        raise RuntimeError(
+            "live RAG/API verification failed: "
+            + json.dumps({
+                "exit_code": proc.returncode,
+                "overall": data.get("overall"),
+                "error": data.get("error"),
+            }, ensure_ascii=False, default=str)
+        )
+    return data
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--raw-root", type=Path, default=REPOSITORY_ROOT / "datasets" / "raw")
@@ -1108,6 +1271,15 @@ def main(argv: list[str] | None = None) -> int:
         report["core_query_smoke_test"] = core_query_smoke_test(
             db_path, args.probe_cve, args.probe_cwe, args.probe_attack
         )
+        report["sampled_record_retrieval_smoke_test"] = sampled_record_retrieval_smoke_test(
+            db_path, sample_size=10
+        )
+        if report["sampled_record_retrieval_smoke_test"].get("success") is not True:
+            raise RuntimeError(
+                "10-record retrieval fidelity evaluation failed: "
+                + json.dumps(report["sampled_record_retrieval_smoke_test"], ensure_ascii=False, default=str)
+            )
+        report["live_rag_api_smoke_test"] = run_live_rag_api_smoke_test(db_path, report_path)
         context = build_context(
             args.probe_cve, db_path=db_path, limit=10, dataset="cisa_kev"
         )
