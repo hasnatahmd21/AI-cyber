@@ -154,3 +154,20 @@ When `AI_CYBER_REQUIRE_VERIFIED_DB=1`, the localhost runtime re-resolves `AI_CYB
 The live API verifier `scripts/verify_live_rag_api.py` performs the full DB gate before starting the localhost server, then selects one random cited record from each of the 11 datasets and checks that `/api/knowledge` returns the exact record ID and matching source URI, content hash, title, and validation state. It also checks fixed CISA KEV/CVE, CWE, and ATT&CK retrieval probes. These are retrieval/provenance checks, not generated-answer accuracy tests: `ai_cyber_os.rag` returns evidence only. Actual generated outputs must be separately supplied to `ai-cyber-evaluate` and pass `validate_security_output` before being treated as grounded answers.
 
 Stage 3 runtime verification is not complete until `ai-cyber-knowledge-verify` passes against the actual restored private artifact, the live API report passes, and the restored DB SHA-256 matches the private publication manifest. A fixture database passing unit tests is not evidence that a permanent production DB has been published.
+
+
+## Stage 4 — end-to-end evidence-grounded security evaluation
+
+Stage 4 is the evaluation gate between RAG retrieval and durable publication. The implementation lives in `src/ai_cyber_os/security_evaluation_runtime.py` and is called by the existing `scripts/kaggle_build_knowledge_db.py` builder before the live API check and private dataset publication. It verifies the supplied DB using the Stage 3 read-only runtime verifier, picks one real source-backed record randomly from each of the eleven approved families, then randomly selects exactly ten distinct families for the release gate.
+
+For each of the ten samples it creates a query from that record's own content, verifies RAG actually returns the exact saved record, compares title/source/source URI/license/version/validation status/content hash against the selected DB row, recalculates evidence integrity, and validates an extractive output that contains only the cited content. It also runs the existing `evaluate_end_to_end` gate with strict top-1 retrieval and grounding thresholds and a negative control that adds an unsupported CVE-like identifier; the evaluator must reject that control. Published build reports keep source text/query terms/record identifiers out of the sample summary.
+
+After restoring the private DB in a new runtime, Stage 4 can be run directly with:
+
+    export AI_CYBER_KNOWLEDGE_DB=/path/to/restored/knowledge-v1.sqlite3
+    export AI_CYBER_REQUIRE_VERIFIED_DB=1
+    ai-cyber-evaluate-live --db "$AI_CYBER_KNOWLEDGE_DB" --report stage4-evaluation.json
+
+The guarded localhost API also supports `POST /api/security-evaluation` with exactly `{"mode":"live-sampled"}`. The endpoint runs through the existing layered-defence operation guard and fails closed with HTTP 503 if strict mode cannot verify the permanent DB. `scripts/verify_live_rag_api.py` remains an additional separate-process API/provenance gate; passing only one of these checks is not enough to publish.
+
+Interpretation boundary: this RAG engine is evidence-only. Stage 4 verifies exact extractive answers, source/hash provenance, and that unsupported identifiers are rejected. It does not claim LLM semantic-answer correctness because no LLM answer generation is wired into the current RAG API. For generated outputs, provide the actual generated JSON to `ai-cyber-evaluate` and require its claim/citation grounding gate to pass.
