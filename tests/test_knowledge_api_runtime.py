@@ -97,3 +97,44 @@ def test_live_sampled_evaluation_api_fails_closed_without_published_db(monkeypat
     assert body["blocked_by"] == "knowledge_runtime_gate"
     assert "does not exist" in body["error"]
     assert not db_path.exists()
+
+
+
+def test_live_sampled_evaluation_api_returns_grounded_gate_summary(monkeypatch, tmp_path):
+    from pathlib import Path
+    from ai_cyber_os import ui
+    from ai_cyber_os import security_evaluation_runtime
+
+    fake_db = tmp_path / "verified-db.sqlite3"
+    monkeypatch.setattr(ui, "require_runtime_database", lambda: fake_db)
+    monkeypatch.setattr(
+        security_evaluation_runtime,
+        "evaluate_permanent_database",
+        lambda db_path, sample_size, deep_verify: {
+            "success": True,
+            "overall": "PASS",
+            "sample_count": 10,
+            "passed": 10,
+            "failed": 0,
+            "source_families_sampled": ["capec", "cisa_kev"],
+            "source_families_not_sampled": ["zeek_intel"],
+            "evaluation_contract": "source-backed extractive answer grounding",
+            "errors": [],
+        },
+    )
+    monkeypatch.setattr(ui, "save_report", lambda kind, result: {"timestamp": "fixture-time"})
+
+    status, body, missing_db = _request(
+        monkeypatch,
+        tmp_path,
+        "POST",
+        "/api/security-evaluation",
+        {"mode": "live-sampled"},
+    )
+    assert status == 200
+    assert body["success"] is True
+    assert body["kind"] == "security-evaluation"
+    assert body["mode"] == "live-sampled"
+    assert body["cases_total"] == 10
+    assert body["passed"] == 10
+    assert not missing_db.exists()
