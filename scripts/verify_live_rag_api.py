@@ -154,16 +154,28 @@ def main(argv=None) -> int:
         env["AI_CYBER_KNOWLEDGE_DB"] = str(db_path)
         src = str(Path(__file__).resolve().parents[1] / "src")
         env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
+        env["AI_CYBER_REQUIRE_VERIFIED_DB"] = "1"
         os.environ.update({
             "AI_CYBER_KNOWLEDGE_DB": str(db_path),
+            "AI_CYBER_REQUIRE_VERIFIED_DB": "1",
             "PYTHONPATH": env["PYTHONPATH"],
         })
         if src not in sys.path:
             sys.path.insert(0, src)
+        from ai_cyber_os.knowledge_runtime import configured_database_path, verify_database
+
+        db_gate = verify_database(db_path, deep=True)
+        report["pre_api_database_verification"] = db_gate
+        if db_gate.get("success") is not True:
+            raise RuntimeError(
+                "configured Knowledge DB failed the read-only integrity/scope gate: "
+                + json.dumps(db_gate.get("errors", []), ensure_ascii=False)
+            )
+
         from ai_cyber_os import ui
         from ai_cyber_os.knowledge import status
 
-        configured_db = Path(ui.DEFAULT_DB).expanduser().resolve()
+        configured_db = configured_database_path().expanduser().resolve()
         if configured_db != db_path:
             raise RuntimeError(f"RAG/API DB mismatch: UI uses {configured_db}, build uses {db_path}")
         store_status = status(db_path=db_path)
