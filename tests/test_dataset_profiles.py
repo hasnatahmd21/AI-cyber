@@ -1,14 +1,14 @@
 from ai_cyber_os.dataset_profiles import TARGET_DATASETS, profile, validate_profile_metadata
 
 def test_target_dataset_families_are_explicit():
-    assert len(TARGET_DATASETS) == 13
+    assert len(TARGET_DATASETS) == 11
     for name in TARGET_DATASETS:
         metadata = profile(name)
         validate_profile_metadata(metadata)
         assert metadata["dataset"] == name
 
 def test_profile_requires_explicit_operator_metadata():
-    metadata = profile("nvd_cve", version="2026", source="NVD", source_uri="local://artifact", license="operator-supplied")
+    metadata = profile("cisa_kev", version="2026", source="CISA KEV", source_uri="local://artifact", license="operator-supplied")
     validate_profile_metadata(metadata)
     assert metadata["version"] == "2026"
 
