@@ -56,7 +56,7 @@ Example metadata shape:
       },
       "_files": {
         "datasets/cisa_kev/known_exploited_vulnerabilities.json": {
-          "dataset": "nvd_cve",
+          "dataset": "cisa_kev",
           "version": "<artifact version>",
           "source": "<authoritative source>",
           "source_uri": "<authoritative URI>",
