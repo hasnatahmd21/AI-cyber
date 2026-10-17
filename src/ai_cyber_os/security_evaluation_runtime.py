@@ -20,6 +20,7 @@ from .knowledge_runtime import APPROVED_DATASETS, verify_database
 from .rag import build_context
 from .security_evaluation import (
     EvaluationThresholds,
+    evaluate_end_to_end,
     evaluate_evidence_quality,
     evaluate_retrieval_case,
     validate_security_output,
@@ -178,7 +179,7 @@ def evaluate_permanent_database(
         candidates = _sample_one_per_dataset(path)
         sampler = rng or random.SystemRandom()
         selected = sampler.sample(candidates, sample_size)
-        for record in selected:
+        for sample_index, record in enumerate(selected, start=1):
             dataset = str(record["dataset"])
             record_id = str(record["record_id"])
             query = _make_query(record)
@@ -216,6 +217,25 @@ def evaluate_permanent_database(
                 )
                 extractive = _extractive_output(evidence)
                 output_result = validate_security_output(extractive, {"evidence": [evidence]})
+                case_id = f"stage4-sample-{sample_index}"
+                end_to_end = evaluate_end_to_end(
+                    [{
+                        "id": case_id,
+                        "query": query,
+                        "limit": 1,
+                        "k": 1,
+                        "expected_record_ids": [record_id],
+                        "relevance": {record_id: 3.0},
+                    }],
+                    path,
+                    outputs={case_id: extractive},
+                    thresholds=EvaluationThresholds(),
+                )
+                end_to_end_pass = (
+                    end_to_end.get("success") is True
+                    and end_to_end.get("cases_total") == 1
+                    and end_to_end.get("passed") == 1
+                )
                 negative = _negative_identifier_control(extractive, evidence)
                 negative_result = validate_security_output(
                     negative["output"], {"evidence": [evidence]}
@@ -235,6 +255,7 @@ def evaluate_permanent_database(
                     "provenance_matches_selected_db_row": exact_source,
                     "evidence_hash_and_validation_pass": evidence_result.get("pass") is True,
                     "extractive_output_is_grounded": output_result.get("pass") is True,
+                    "one_result_end_to_end_gate_passed": end_to_end_pass,
                     "unsupported_identifier_negative_control_rejected": (
                         negative_result.get("pass") is False
                         and negative["unsupported_identifier"]
@@ -254,6 +275,14 @@ def evaluate_permanent_database(
                     "score": output_result.get("score"),
                     "errors": output_result.get("errors", []),
                 }
+                item["end_to_end_gate"] = {
+                    "success": end_to_end.get("success") is True,
+                    "cases_total": end_to_end.get("cases_total"),
+                    "passed": end_to_end.get("passed"),
+                    "failed": end_to_end.get("failed"),
+                    "aggregate": end_to_end.get("aggregate", {}),
+                    "case_pass": end_to_end_pass,
+                }
                 item["negative_control"] = {
                     "unsupported_identifier": negative["unsupported_identifier"],
                     "rejected": checks["unsupported_identifier_negative_control_rejected"],
@@ -264,6 +293,7 @@ def evaluate_permanent_database(
                     "provenance_matches_selected_db_row",
                     "evidence_hash_and_validation_pass",
                     "extractive_output_is_grounded",
+                    "one_result_end_to_end_gate_passed",
                     "unsupported_identifier_negative_control_rejected",
                 )
                 item["pass"] = all(checks[name] is True for name in required_checks)
