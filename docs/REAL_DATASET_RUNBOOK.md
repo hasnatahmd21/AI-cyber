@@ -122,3 +122,18 @@ Before reporting overall PASS, the builder verifies a CISA KEV CVE query, CWE an
 The Kaggle Dataset metadata uses the "other" label because the DB combines sources with separate licenses. This label is not a blanket relicense: per-record source/license metadata remains in the DB, and the published dataset stays private. Do not make it public unless each upstream source's redistribution terms are independently reviewed. Kaggle documents support dataset metadata licenses and private datasets; see the Kaggle dataset metadata reference at https://github.com/Kaggle/kaggle-cli/blob/main/docs/datasets_metadata.md and dataset publishing CLI at https://github.com/Kaggle/kaggle-cli/blob/main/docs/datasets.md.
 
 The raw-source gate still must pass separately. Green fixture tests, a locally populated SQLite file, or a successful upload command by itself is not proof that the full system works: keep the JSON readiness/build reports and repeat the fresh-process retrieval check against the persisted dataset after restoring it in a new runtime.
+
+
+## GitHub Actions private persistence path
+
+The repository workflow `.github/workflows/permanent-knowledge-db-build.yml` uses the existing 11-dataset builder and is intentionally blocked before ingestion until a durable private destination and credentials are configured. This avoids spending hours building a temporary database that cannot be retained.
+
+1. In the repository's **Settings → Secrets and variables → Actions → Secrets**, add `KAGGLE_API_TOKEN` (recommended), or both `KAGGLE_USERNAME` and `KAGGLE_KEY`. Never place token values in source files, workflow inputs, issues, or chat.
+2. In **Settings → Secrets and variables → Actions → Variables**, set `AI_CYBER_KNOWLEDGE_DATASET_ID` to the exact Kaggle dataset owner/slug, such as `your-kaggle-name/ai-cyber-knowledge-db` (replace the example with the actual owner). Set `AI_CYBER_KNOWLEDGE_DATASET_ACTION` to `create` for a new private dataset or `version` for a dataset that already exists.
+3. Open **Actions → Permanent Knowledge DB Build (11 approved datasets) → Run workflow**. Optional workflow inputs override the matching repository variables. Use `create` only if that private dataset does not already exist; choose `version` for updates.
+4. The workflow runs compile and focused regressions, restores existing LFS source bytes, reruns all 11-source integrity gates, ingests with resumable checkpoints, runs SQLite/FTS and fresh-process verification, checks ten random real-record retrievals and the live localhost evidence-only RAG API, then publishes to the private Kaggle dataset. The builder downloads the published DB again and verifies its SHA-256 and restart/retrieval before confirming durability.
+5. Confirm completion only when the workflow and JSON build report say `overall=PASS` and `permanent_persistence=CONFIRMED_KAGGLE_DATASET_PRIVATE`. A workflow artifact containing reports is diagnostic evidence only; it is **not** a permanent database.
+
+The RAG surface in this branch retrieves cited evidence; it does not generate a natural-language answer. The ten-record gate therefore evaluates retrieval fidelity and exact source/hash/validation provenance, not generative-answer correctness.
+
+The repository is public, so do not use the GitHub Release/Git LFS persistence option for these records until redistribution permissions for every source are explicitly reviewed and approved.
