@@ -13,11 +13,14 @@ from .knowledge import DEFAULT_DB
 
 
 def analyze(query: str, *, db_path: str | Path = DEFAULT_DB,
-            limit: int = 8, dataset: str | None = None) -> dict[str, Any]:
+            limit: int = 8, dataset: str | None = None,
+            read_only: bool = False) -> dict[str, Any]:
     """Return only locally indexed, provenance-preserving evidence."""
     if not isinstance(query, str) or not query.strip():
         raise ValueError("query must be non-empty")
-    context = build_context(query.strip(), db_path=db_path, limit=limit, dataset=dataset)
+    context = build_context(
+        query.strip(), db_path=db_path, limit=limit, dataset=dataset, read_only=read_only
+    )
     return {
         "success": True,
         "query": context["query"],
