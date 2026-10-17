@@ -208,6 +208,25 @@ def persist_via_lfs(db_path: Path, report_path: Path, branch: str) -> dict[str, 
         relative_report = report_path.resolve().relative_to(git_root.resolve()).as_posix()
     except ValueError as exc:
         raise ValueError("database and report must be inside the repository to publish with Git LFS") from exc
+
+    # Keep the real-artifact readiness evidence next to the published DB/report.
+    # The report must not point at a file that disappears with the Kaggle session.
+    relative_readiness_report = None
+    if report_path.is_file():
+        try:
+            build_report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise RuntimeError(f"cannot read build report before LFS publication: {report_path}") from exc
+        readiness_value = build_report.get("source_readiness_report")
+        if readiness_value:
+            readiness_path = Path(str(readiness_value)).expanduser().resolve()
+            try:
+                relative_readiness_report = readiness_path.relative_to(git_root.resolve()).as_posix()
+            except ValueError as exc:
+                raise ValueError("source-readiness report must be inside the repository for Git LFS persistence") from exc
+            if not readiness_path.is_file():
+                raise FileNotFoundError(f"source-readiness report missing before LFS publication: {readiness_path}")
+
     import shutil
     if not shutil.which("git-lfs"):
         raise RuntimeError("git-lfs is required for --persist-lfs; no database was pushed")
@@ -223,7 +242,10 @@ def persist_via_lfs(db_path: Path, report_path: Path, branch: str) -> dict[str, 
 
     subprocess.run(["git", "-C", str(git_root), "lfs", "install", "--local"], check=True)
     subprocess.run(["git", "-C", str(git_root), "lfs", "track", relative_db], check=True)
-    subprocess.run(["git", "-C", str(git_root), "add", "--", ".gitattributes", relative_db, relative_report], check=True)
+    files_to_stage = [".gitattributes", relative_db, relative_report]
+    if relative_readiness_report:
+        files_to_stage.append(relative_readiness_report)
+    subprocess.run(["git", "-C", str(git_root), "add", "--", *files_to_stage], check=True)
     staged = subprocess.run(["git", "-C", str(git_root), "diff", "--cached", "--quiet"], check=False)
     if staged.returncode == 0:
         return {"status": "already-persisted", "branch": branch, "database_path": relative_db}
@@ -263,7 +285,7 @@ def persist_via_lfs(db_path: Path, report_path: Path, branch: str) -> dict[str, 
             ["git", "-C", str(git_root), "rev-parse", "HEAD"],
             text=True, capture_output=True, check=True,
         ).stdout.strip()
-        return {"status": "pushed", "branch": branch, "commit": sha, "database_path": relative_db}
+        return {"status": "pushed", "branch": branch, "commit": sha, "database_path": relative_db, "source_readiness_report_path": relative_readiness_report}
     finally:
         askpass.unlink(missing_ok=True)
 
