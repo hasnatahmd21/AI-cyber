@@ -1159,8 +1159,8 @@ def test_manifest_directory_reuses_preflight_inspection_and_reports_progress(tmp
     from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
 
     payload = (
-        '{"id":"PROGRESS-1","title":"progress fixture one","content":"first evidence record"}\\n'
-        '{"id":"PROGRESS-2","title":"progress fixture two","content":"second evidence record"}\\n'
+        '{"id":"PROGRESS-1","title":"progress fixture one","content":"first evidence record"}\n'
+        '{"id":"PROGRESS-2","title":"progress fixture two","content":"second evidence record"}\n'
     )
     manifest = _manifest(tmp_path, payload, count=2)
     db_path = tmp_path / "knowledge-v1.sqlite3"
