@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 
@@ -212,3 +213,34 @@ def test_ndcg_with_no_positive_relevance_is_well_defined():
     assert ndcg_at_k(["irrelevant"], {"gold": 0.0}, 5) == 1.0
     assert ndcg_at_k([], {"gold": 0.0}, 0) == 1.0
 
+
+
+
+def test_end_to_end_evaluator_is_read_only_by_default(tmp_path: Path):
+    db = _fixture_db(tmp_path)
+    before = hashlib.sha256(db.read_bytes()).hexdigest()
+    case_id = "read-only-default"
+    result = evaluate_end_to_end(
+        [{
+            "id": case_id,
+            "query": "CVE-2099-1001",
+            "limit": 1,
+            "k": 1,
+            "expected_record_ids": ["CVE-2099-1001"],
+            "relevance": {"CVE-2099-1001": 3},
+        }],
+        db,
+        outputs={
+            case_id: {
+                "answer": "CVE-2099-1001 is associated with CWE-79.",
+                "claims": [{
+                    "claim_id": "c1",
+                    "text": "CVE-2099-1001 is associated with CWE-79.",
+                    "evidence_ids": ["CVE-2099-1001"],
+                }],
+            }
+        },
+    )
+    after = hashlib.sha256(db.read_bytes()).hexdigest()
+    assert result["success"] is True
+    assert before == after
