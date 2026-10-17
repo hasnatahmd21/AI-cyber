@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import threading
 import webbrowser
@@ -17,7 +18,11 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from .operations import load_report, run_regression, save_report
-from .knowledge import DEFAULT_DB, ingest_file, search as knowledge_search, status as knowledge_status
+from .knowledge import ingest_file, search as knowledge_search, status as knowledge_status
+from .knowledge_runtime import (
+    KnowledgeRuntimeBlocked, configured_database_path, require_runtime_database,
+    require_verified_db_enabled, verify_database,
+)
 from .rag import build_context as build_rag_context
 from .runtime_intelligence import analyze as intelligence_analyze
 from .dataset_pipeline import ingest_manifest, inspect_dataset
@@ -145,7 +150,40 @@ def _guarded_operation(operation: str, payload: Any, action):
 
 
 def _data_fabric_status() -> dict[str, Any]:
-    status = knowledge_status(db_path=DEFAULT_DB)
+    """Report current DB readiness without creating a missing permanent store."""
+    db_path = configured_database_path()
+    strict = require_verified_db_enabled()
+    verification = verify_database(db_path, deep=False) if strict else None
+    if strict and verification and verification.get("success") is not True:
+        status: dict[str, Any] = {
+            "ready": False,
+            "records": 0,
+            "relations": 0,
+            "chunks": 0,
+            "datasets": [],
+            "source": "runtime-gate",
+            "state": "blocked",
+            "db": db_path.name,
+            "database_version": None,
+            "schema_version": None,
+            "evidence": "Configured permanent Knowledge DB failed the read-only runtime gate.",
+        }
+    else:
+        status = knowledge_status(db_path=db_path)
+        status = dict(status)
+        status["db"] = db_path.name if os.environ.get("AI_CYBER_KNOWLEDGE_DB") else "~/.ai-cyber/knowledge.db"
+        status.update(
+            source="live",
+            state="ready" if status.get("ready") and status.get("records", 0) > 0 else "empty",
+            retrieval="deterministic lexical retrieval",
+            provenance_enabled=True,
+        )
+    status["timestamp"] = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
+    status["runtime_strict_mode"] = strict
+    if verification is not None:
+        # Do not leak host absolute paths in the local UI/API status bundle.
+        verification.pop("database_file", None)
+        status["database_verification"] = verification
     manifests: list[dict[str, Any]] = []
     for base in (PROJECT_ROOT / "datasets" / "manifests", PROJECT_ROOT / "docs" / "datasets"):
         try:
@@ -159,20 +197,10 @@ def _data_fabric_status() -> dict[str, Any]:
                         })
         except OSError:
             continue
-    # Do not expose the local user's absolute home-directory path in API responses.
-    status = dict(status)
-    status["db"] = "~/.ai-cyber/knowledge.db"
-    status.update(
-        source="live",
-        timestamp=__import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
-        engine="SQLite FTS5",
-        retrieval="deterministic lexical retrieval",
-        provenance_enabled=True,
-        manifests=manifests,
-        manifest_count=len(manifests),
-    )
+    status["manifests"] = manifests
+    status["manifest_count"] = len(manifests)
+    status["engine"] = "SQLite FTS5"
     return status
-
 
 def _threat_intel_sources() -> dict[str, Any]:
     """List only in-repository files accepted by the existing threat-intel parsers."""
@@ -535,7 +563,7 @@ def _run_regression() -> dict[str, Any]:
 
 def _command_status() -> dict[str, Any]:
     state = _snapshot()
-    state["knowledge"] = knowledge_status(db_path=DEFAULT_DB)
+    state["knowledge"] = knowledge_status(db_path=configured_database_path())
     state["live"] = telemetry.snapshot()
     return state
 
@@ -632,6 +660,12 @@ class Handler(BaseHTTPRequestHandler):
             self._send(200, telemetry.snapshot(since=since))
             return
 
+        if path == "/api/knowledge/health":
+            report = verify_database(configured_database_path(), deep=True)
+            report["runtime_strict_mode"] = require_verified_db_enabled()
+            self._send(200 if report.get("success") is True else 503, report)
+            return
+
         if path == "/api/knowledge/status":
             self._send(200, _data_fabric_status())
             return
@@ -699,7 +733,7 @@ class Handler(BaseHTTPRequestHandler):
                     if not case_items or len(case_items) > 200:
                         raise ValueError("evaluation cases must contain 1-200 cases")
                     result = evaluate_end_to_end(
-                        case_items, DEFAULT_DB, outputs=outputs_map,
+                        case_items, configured_database_path(), outputs=outputs_map,
                         thresholds=EvaluationThresholds(**thresholds),
                     )
                     saved = save_report("security-evaluation", result)
@@ -736,7 +770,7 @@ class Handler(BaseHTTPRequestHandler):
                     lambda: execute_command(
                         command,
                         run_phase=_execute_runtime,
-                        search=lambda query: intelligence_analyze(query, db_path=DEFAULT_DB, limit=10),
+                        search=lambda query: intelligence_analyze(query, db_path=configured_database_path(), limit=10),
                         status=_command_status,
                         regression=_run_regression,
                         red_team=_run_redteam,
@@ -763,6 +797,10 @@ class Handler(BaseHTTPRequestHandler):
                 if not isinstance(body, dict):
                     raise ValueError("JSON object required")
                 action = body.get("action")
+                if require_verified_db_enabled() and action in {"ingest", "ingest-manifest", "ingest-source"}:
+                    raise KnowledgeRuntimeBlocked(
+                        "ingestion is disabled in strict permanent-DB runtime mode; rebuild through the verified ingestion pipeline"
+                    )
 
                 if action in {"search", "context"}:
                     allowed = {"action", "query", "dataset", "limit"}
@@ -781,13 +819,13 @@ class Handler(BaseHTTPRequestHandler):
                     if action == "context":
                         result = _guarded_operation(
                             "knowledge-context", body,
-                            lambda: build_rag_context(query.strip(), db_path=DEFAULT_DB, dataset=dataset, limit=limit),
+                            lambda: build_rag_context(query.strip(), db_path=configured_database_path(), dataset=dataset, limit=limit),
                         )
                         result["success"] = True
                     else:
                         result = _guarded_operation(
                             "knowledge-search", body,
-                            lambda: knowledge_search(query.strip(), db_path=DEFAULT_DB, dataset=dataset, limit=limit),
+                            lambda: knowledge_search(query.strip(), db_path=configured_database_path(), dataset=dataset, limit=limit),
                         )
                         if isinstance(result, list):
                             result = {"success": True, "query": query.strip(), "results": result}
@@ -805,7 +843,7 @@ class Handler(BaseHTTPRequestHandler):
                         "knowledge-ingest", body,
                         lambda: ingest_file(
                             candidate,
-                            db_path=DEFAULT_DB,
+                            db_path=configured_database_path(),
                             dataset=body.get("dataset"),
                             source=body.get("source"),
                             license=body.get("license", ""),
@@ -822,7 +860,7 @@ class Handler(BaseHTTPRequestHandler):
                     _assert_inside_project(manifest_path, "manifest")
                     result = _guarded_operation(
                         "dataset-ingest-manifest", body,
-                        lambda: ingest_manifest(manifest_path, db_path=DEFAULT_DB),
+                        lambda: ingest_manifest(manifest_path, db_path=configured_database_path()),
                     )
                 elif action == "inspect-manifest":
                     raw_manifest = body.get("manifest")
@@ -848,7 +886,7 @@ class Handler(BaseHTTPRequestHandler):
                         lambda: ingest_source(
                             kind,
                             candidate,
-                            db_path=DEFAULT_DB,
+                            db_path=configured_database_path(),
                             dataset=body.get("dataset"),
                             source=body.get("source"),
                             version=body.get("version", ""),
@@ -910,6 +948,8 @@ class Handler(BaseHTTPRequestHandler):
                 raise ValueError("hardening must be a boolean")
             result = _execute(phase, hardening)
             self._send(200 if result["success"] else 422, result)
+        except KnowledgeRuntimeBlocked as exc:
+            self._send(503, {"success": False, "error": str(exc), "blocked_by": "knowledge_runtime_gate"})
         except PermissionError as exc:
             self._send(403, {"success": False, "error": str(exc), "blocked_by": "layered_defence"})
         except Exception as exc:
