@@ -1,21 +1,6 @@
 name: Permanent Knowledge DB Build (11 approved datasets)
 
 on:
-  push:
-    branches:
-      - fix/dataset-parser-readiness
-    paths:
-      - ".github/workflows/permanent-knowledge-db-build.yml"
-      - "scripts/kaggle_build_knowledge_db.py"
-      - "scripts/verify_live_rag_api.py"
-      - "src/ai_cyber_os/knowledge.py"
-      - "src/ai_cyber_os/knowledge_runtime.py"
-      - "src/ai_cyber_os/dataset_pipeline.py"
-      - "src/ai_cyber_os/rag.py"
-      - "src/ai_cyber_os/ui.py"
-      - "datasets/manifests/**"
-      - "datasets/raw/**"
-      - "tests/**"
   workflow_dispatch:
     inputs:
       kaggle_dataset_id:
