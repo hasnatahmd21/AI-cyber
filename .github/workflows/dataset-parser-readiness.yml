@@ -18,6 +18,7 @@ on:
       - "tests/test_threat_intel.py"
       - "tests/test_knowledge.py"
       - "tests/test_knowledge_runtime.py"
+      - "tests/test_knowledge_api_runtime.py"
       - "tests/test_rag.py"
       - "scripts/kaggle_dataset_parser_readiness_gate.py"
       - "scripts/kaggle_nvd_feed_readiness.py"
@@ -63,6 +64,8 @@ jobs:
             tests/test_nvd_feed_readiness.py \
             tests/test_threat_intel.py \
             tests/test_knowledge.py \
+            tests/test_knowledge_runtime.py \
+            tests/test_knowledge_api_runtime.py \
             tests/test_rag.py \
             tests/test_dataset_acquisition_runner.py
       - name: Audit committed real source artifacts without ingestion
