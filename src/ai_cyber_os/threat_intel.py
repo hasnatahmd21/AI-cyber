@@ -988,7 +988,11 @@ def ingest_parsed(records: Iterable[dict[str, Any]], *, db_path: str | Path) -> 
                 (record["record_id"], record["dataset"], record["title"], record["content"]),
             )
             from .knowledge import _index_chunks
-            _index_chunks(db, record)
+            # This parser path can revisit the same CVE across yearly, recent and
+            # modified NVD feeds. When an existing record changes, reindex its
+            # chunks atomically with the latest content rather than leaving stale
+            # chunks from the previous description in the FTS index.
+            _index_chunks(db, record, replace_existing=bool(old))
             if processed_records % 1000 == 0:
                 db.commit()
         db.commit()
