@@ -724,8 +724,8 @@ def search(query: str, *, db_path: str | Path = DEFAULT_DB,
         return [records[record_id] for record_id in ranked_ids if record_id in records]
     finally:
         db.close()
-def status(*, db_path: str | Path = DEFAULT_DB) -> dict[str, Any]:
-    db = open_store(db_path)
+def status(*, db_path: str | Path = DEFAULT_DB, read_only: bool = False) -> dict[str, Any]:
+    db = open_store(db_path, read_only=read_only)
     try:
         total = db.execute("SELECT COUNT(*) FROM knowledge_records").fetchone()[0]
         datasets = db.execute(
