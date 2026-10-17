@@ -81,3 +81,19 @@ def test_strict_runtime_blocks_ingestion_mutations(monkeypatch, tmp_path):
     assert body["blocked_by"] == "knowledge_runtime_gate"
     assert "ingestion is disabled" in body["error"]
     assert not db_path.exists()
+
+
+
+def test_live_sampled_evaluation_api_fails_closed_without_published_db(monkeypatch, tmp_path):
+    status, body, db_path = _request(
+        monkeypatch,
+        tmp_path,
+        "POST",
+        "/api/security-evaluation",
+        {"mode": "live-sampled"},
+    )
+    assert status == 503
+    assert body["success"] is False
+    assert body["blocked_by"] == "knowledge_runtime_gate"
+    assert "does not exist" in body["error"]
+    assert not db_path.exists()
