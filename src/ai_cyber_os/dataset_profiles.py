@@ -10,19 +10,17 @@ from copy import deepcopy
 from typing import Any
 
 TARGET_DATASETS = (
-    "nvd_cve",
-    "cisa_kev",
-    "epss",
-    "cwe",
-    "cpe",
-    "cvss",
-    "mitre_attack",
     "capec",
-    "d3fend",
+    "cisa_kev",
+    "cpe",
+    "cwe",
+    "epss",
+    "mitre_attack",
+    "mitre_d3fend",
+    "mitre_mbc",
     "sigma",
-    "suricata_rules",
+    "suricata",
     "zeek_intel",
-    "mbc",
 )
 
 # Conservative defaults: legal/provenance fields remain explicit placeholders.
