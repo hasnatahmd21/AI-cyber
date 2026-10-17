@@ -1279,6 +1279,15 @@ def main(argv: list[str] | None = None) -> int:
                 "10-record retrieval fidelity evaluation failed: "
                 + json.dumps(report["sampled_record_retrieval_smoke_test"], ensure_ascii=False, default=str)
             )
+        from ai_cyber_os.security_evaluation_runtime import evaluate_permanent_database
+        report["security_evaluation_runtime"] = evaluate_permanent_database(
+            db_path, sample_size=10, deep_verify=False
+        )
+        if report["security_evaluation_runtime"].get("success") is not True:
+            raise RuntimeError(
+                "Stage 4 evidence/answer-grounding evaluation failed: "
+                + json.dumps(report["security_evaluation_runtime"], ensure_ascii=False, default=str)
+            )
         report["live_rag_api_smoke_test"] = run_live_rag_api_smoke_test(db_path, report_path)
         context = build_context(
             args.probe_cve, db_path=db_path, limit=10, dataset="cisa_kev"
