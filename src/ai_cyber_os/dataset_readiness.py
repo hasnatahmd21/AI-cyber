@@ -71,9 +71,33 @@ def readiness_report(
     manifests_dir: str | Path,
     *,
     required_datasets: Iterable[str] = (),
+    excluded_datasets: Iterable[str] = (),
 ) -> dict[str, Any]:
-    """Inspect every JSON manifest and flag required datasets with no manifest."""
+    """Inspect in-scope manifests and flag required datasets with no manifest.
+
+    Excluded dataset identities are outside the selected build scope. They are
+    ignored by identity (manifest filename or its declared dataset field), not
+    treated as failed dependencies.
+    """
     root = Path(manifests_dir)
+    excluded = {str(name).strip().casefold() for name in excluded_datasets if str(name).strip()}
+    excluded_seen: set[str] = set()
+
+    def in_scope(path: Path) -> bool:
+        if path.name.casefold() == "example.json":
+            return False
+        if path.stem.casefold() in excluded:
+            excluded_seen.add(path.stem)
+            return False
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            identity = str(payload.get("dataset") or path.stem).strip() if isinstance(payload, dict) else path.stem
+        except (OSError, json.JSONDecodeError):
+            return True  # Keep malformed in-scope manifests visible as a failure.
+        if identity.casefold() in excluded:
+            excluded_seen.add(identity)
+            return False
+        return True
     if not root.is_dir():
         return {
             "overall": "BLOCKED",
@@ -87,7 +111,7 @@ def readiness_report(
     rows = [
         inspect_manifest_readiness(path)
         for path in sorted(root.rglob("*.json"))
-        if path.name.casefold() != "example.json"
+        if in_scope(path)
     ]
     names = {str(row.get("dataset") or "") for row in rows}
     missing = sorted(set(str(name) for name in required_datasets) - names)
@@ -120,6 +144,7 @@ def readiness_report(
         "blocked": sum(row["status"] == "BLOCKED" for row in rows),
         "fail": sum(row["status"] == "FAIL" for row in rows),
         "missing_required_datasets": missing,
+        "excluded_datasets": sorted(excluded_seen, key=str.casefold),
         "datasets": rows,
         "evidence": evidence,
         "ingestion_performed": False,
@@ -130,8 +155,13 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Inspect AI-CYBER dataset readiness without ingestion")
     parser.add_argument("--manifests-dir", required=True)
     parser.add_argument("--require", action="append", default=[], metavar="DATASET")
+    parser.add_argument("--exclude", action="append", default=[], metavar="DATASET")
     args = parser.parse_args(argv)
-    report = readiness_report(args.manifests_dir, required_datasets=args.require)
+    report = readiness_report(
+        args.manifests_dir,
+        required_datasets=args.require,
+        excluded_datasets=args.exclude,
+    )
     print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
     return 0 if report["overall"] == "PASS" else 1
 
