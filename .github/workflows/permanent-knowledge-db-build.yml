@@ -83,6 +83,8 @@ jobs:
             tests/test_knowledge.py \
             tests/test_knowledge_runtime.py \
             tests/test_knowledge_api_runtime.py \
+            tests/test_security_evaluation.py \
+            tests/test_security_evaluation_runtime.py \
             tests/test_rag.py \
             tests/test_dataset_acquisition_runner.py
 
@@ -181,6 +183,11 @@ jobs:
           api = report.get("live_rag_api_smoke_test") or {}
           if api.get("success") is not True or api.get("overall") != "PASS":
               raise SystemExit("live RAG API gate did not pass")
+          stage4 = report.get("security_evaluation_runtime") or {}
+          if stage4.get("success") is not True or stage4.get("overall") != "PASS":
+              raise SystemExit("Stage 4 end-to-end evidence-grounding gate did not pass")
+          if stage4.get("sample_count") != 10 or stage4.get("passed") != 10:
+              raise SystemExit("Stage 4 did not pass all 10 sampled real-record evaluations")
           print("BUILD_INGESTION_SQLITE_10_RECORD_QA_LIVE_API_PRIVATE_PERSISTENCE=PASS")
           PY
 
