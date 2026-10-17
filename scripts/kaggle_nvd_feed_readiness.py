@@ -15,6 +15,7 @@ import gzip
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -78,35 +79,109 @@ def parse_meta(text: str) -> dict[str, str]:
     return result
 
 
-def download_to(url: str, target: Path, *, retries: int = 4, timeout: int = 180) -> None:
-    """Download to a sibling .part file and atomically replace on success."""
+def download_to(url: str, target: Path, *, retries: int = 5, timeout: int = 180) -> None:
+    """Download atomically, resuming a partial .part file only with a valid HTTP Range response.
+
+    A server that ignores Range causes a clean restart from byte zero, never an
+    append of a second full copy. The caller validates NVD metadata after this
+    transport layer completes, before the file can enter a manifest or DB.
+    """
     target.parent.mkdir(parents=True, exist_ok=True)
+    part = target.with_name(target.name + ".part")
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
-        part = target.with_name(target.name + ".part")
-        part.unlink(missing_ok=True)
-        request = urllib.request.Request(
-            url,
-            headers={
-                "User-Agent": "AI-CYBER-NVD-readiness/1.0",
-                "Accept-Encoding": "identity",
-            },
-        )
+        offset = part.stat().st_size if part.is_file() else 0
+        headers = {
+            "User-Agent": "AI-CYBER-NVD-readiness/1.0",
+            "Accept-Encoding": "identity",
+        }
+        if offset:
+            headers["Range"] = f"bytes={offset}-"
+        request = urllib.request.Request(url, headers=headers)
         try:
-            with urllib.request.urlopen(request, timeout=timeout) as response, part.open("wb") as output:
-                shutil.copyfileobj(response, output, length=1024 * 1024)
-            if not part.is_file() or part.stat().st_size == 0:
-                raise ValueError(f"empty response from {url}")
-            part.replace(target)
-            return
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                status = int(getattr(response, "status", response.getcode()))
+                content_length = response.headers.get("Content-Length")
+                if status not in {200, 206}:
+                    raise ValueError(f"unexpected HTTP status {status} for {url}")
+
+                if status == 206:
+                    content_range = response.headers.get("Content-Range", "")
+                    match = re.fullmatch(r"bytes (\\d+)-(\\d+)/(\\d+|\\*)", content_range.strip())
+                    if not match:
+                        raise ValueError(f"invalid Content-Range for {url}: {content_range!r}")
+                    first, last, total = match.groups()
+                    first_byte, last_byte = int(first), int(last)
+                    if first_byte != offset or last_byte < first_byte:
+                        raise ValueError(
+                            f"invalid resumed range for {url}: requested {offset}, got {content_range!r}"
+                        )
+                    expected_response_bytes = last_byte - first_byte + 1
+                    if content_length is not None and int(content_length) != expected_response_bytes:
+                        raise ValueError(
+                            f"Content-Length disagrees with Content-Range for {url}: "
+                            f"{content_length} vs {expected_response_bytes}"
+                        )
+                    if total != "*" and last_byte >= int(total):
+                        raise ValueError(f"Content-Range exceeds total size for {url}: {content_range!r}")
+                    mode = "ab" if offset else "wb"
+                    complete_response = total == "*" or last_byte == int(total) - 1
+                else:
+                    # HTTP 200 means the server ignored Range (or this was a
+                    # normal request); replace, do not append to stale bytes.
+                    mode = "wb"
+                    complete_response = True
+
+                received = 0
+                with part.open(mode) as output:
+                    while True:
+                        block = response.read(1024 * 1024)
+                        if not block:
+                            break
+                        output.write(block)
+                        received += len(block)
+                    output.flush()
+                    os.fsync(output.fileno())
+
+                if received == 0:
+                    raise ValueError(f"empty response from {url}")
+                if content_length is not None and received != int(content_length):
+                    raise OSError(
+                        f"short HTTP body for {url}: expected {content_length} bytes, received {received}"
+                    )
+                if status == 206 and received != expected_response_bytes:
+                    raise OSError(
+                        f"short ranged HTTP body for {url}: expected {expected_response_bytes}, received {received}"
+                    )
+                if not complete_response:
+                    raise OSError(
+                        f"server returned only a partial suffix for {url}; retained {part.stat().st_size} bytes for resume"
+                    )
+                part.replace(target)
+                return
         except Exception as exc:
             last_error = exc
-            part.unlink(missing_ok=True)
-            print(f"DOWNLOAD RETRY {attempt}/{retries}: {url} ({type(exc).__name__}: {exc})", flush=True)
+            # A 416 often means the retained partial now reaches the server's
+            # current object end (or the remote object changed); restart safely.
+            if getattr(exc, "code", None) == 416:
+                part.unlink(missing_ok=True)
+            print(
+                f"DOWNLOAD RETRY {attempt}/{retries}: {url} "
+                f"({type(exc).__name__}: {exc})",
+                flush=True,
+            )
             if attempt < retries:
                 time.sleep(min(2 ** (attempt - 1), 8))
     raise RuntimeError(f"download failed after {retries} attempts: {url}") from last_error
 
+
+def _download_nvd_source(url: str, target: Path) -> None:
+    """Bound tiny metadata requests while allowing large feed transfers to resume."""
+    path = url.split("?", 1)[0].lower()
+    if path.endswith(".meta"):
+        download_to(url, target, retries=2, timeout=20)
+    else:
+        download_to(url, target, retries=5, timeout=180)
 
 def verified_against_meta(feed_path: Path, meta: dict[str, str]) -> dict[str, Any]:
     """Verify raw gzip bytes, gzip integrity, uncompressed SHA-256 and size."""
@@ -155,7 +230,7 @@ def process_feed(root: Path, feed_name: str, *, dataset_version: str, project_ro
 
     # Read the current authoritative metadata first. Cached data is reused only
     # if it matches this current checksum/size contract exactly.
-    download_to(meta_url, meta_path)
+    _download_nvd_source(meta_url, meta_path)
     meta_text = meta_path.read_text(encoding="utf-8")
     meta = parse_meta(meta_text)
 
@@ -172,7 +247,7 @@ def process_feed(root: Path, feed_name: str, *, dataset_version: str, project_ro
         part = feed_path.with_name(feed_path.name + ".candidate")
         part.unlink(missing_ok=True)
         try:
-            download_to(feed_url, part)
+            _download_nvd_source(feed_url, part)
             cache_evidence = verified_against_meta(part, meta)
             part.replace(feed_path)
         finally:
