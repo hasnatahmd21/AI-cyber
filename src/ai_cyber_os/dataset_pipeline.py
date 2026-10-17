@@ -892,8 +892,11 @@ def derive_cvss_from_nvd_database(
 
 DEFAULT_REQUIRED_DATASETS = (
     "capec", "cisa_kev", "cpe", "cwe", "epss", "mitre_attack",
-    "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel", "nvd_cve",
+    "mitre_d3fend", "mitre_mbc", "sigma", "suricata", "zeek_intel",
 )
+# These are intentionally outside the default 11-dataset build. An operator may
+# still opt into a legacy dataset explicitly via required_datasets.
+OPTIONAL_OUT_OF_SCOPE_DATASETS = frozenset({"nvd_cve", "cvss"})
 
 
 def ingest_manifest_directory(
@@ -912,6 +915,10 @@ def ingest_manifest_directory(
     """
     root = Path(manifests_dir).expanduser().resolve()
     db_file = Path(db_path).expanduser().resolve()
+    requested_required = {str(x) for x in required_datasets}
+    excluded_by_scope = {
+        name.casefold() for name in OPTIONAL_OUT_OF_SCOPE_DATASETS
+    } - {name.casefold() for name in requested_required}
     report: dict[str, Any] = {
         "success": False,
         "ready": False,
@@ -920,7 +927,8 @@ def ingest_manifest_directory(
         "database_resume_status": None,
         "manifests_dir": str(root),
         "db_path": str(db_file),
-        "required_datasets": sorted(set(str(x) for x in required_datasets)),
+        "required_datasets": sorted(requested_required),
+        "excluded_manifests_skipped": [],
         "preflight": [],
         "results": [],
         "missing_required_datasets": [],
@@ -938,9 +946,26 @@ def ingest_manifest_directory(
     preflight_failures: list[dict[str, Any]] = []
     names: set[str] = set()
     for manifest_path in files:
+        # Out-of-scope NVD/CVSS manifests should not block the selected 11-source
+        # build. If explicitly requested through required_datasets, legacy opt-in
+        # behavior remains available.
+        if manifest_path.stem.casefold() in excluded_by_scope:
+            report["excluded_manifests_skipped"].append({
+                "manifest": str(manifest_path),
+                "dataset": manifest_path.stem,
+                "status": "EXCLUDED_BY_SCOPE",
+            })
+            continue
         try:
             manifest = load_manifest(manifest_path)
             dataset = str(manifest.get("dataset") or manifest_path.stem)
+            if dataset.casefold() in excluded_by_scope:
+                report["excluded_manifests_skipped"].append({
+                    "manifest": str(manifest_path),
+                    "dataset": dataset,
+                    "status": "EXCLUDED_BY_SCOPE",
+                })
+                continue
             if dataset in names:
                 raise ValueError(f"duplicate manifest for dataset {dataset!r}; keep one authoritative manifest per dataset")
             names.add(dataset)
@@ -977,7 +1002,7 @@ def ingest_manifest_directory(
             preflight_failures.append(row)
             report["preflight"].append(row)
 
-    required = set(str(x) for x in required_datasets)
+    required = requested_required
     missing = sorted(required - names)
     unexpected = sorted(names - required)
     report["missing_required_datasets"] = missing
@@ -998,8 +1023,8 @@ def ingest_manifest_directory(
             "manifest": "",
             "status": "BLOCKED",
             "evidence": (
-                "Dataset is outside the locked first-wave raw-source set. CVSS must be derived "
-                "from NVD in the database build, not ingested from an independent raw manifest."
+                "Dataset is outside the selected 11-source build scope. "
+                "NVD CVE and derived CVSS manifests are excluded unless explicitly requested."
             ),
         }
         preflight_failures.append(row)
