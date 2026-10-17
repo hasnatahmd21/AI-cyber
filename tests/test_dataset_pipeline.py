@@ -1273,7 +1273,7 @@ def test_cached_readiness_rehash_blocks_changed_artifact_before_ingest(tmp_path:
     from ai_cyber_os import dataset_pipeline
     from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
 
-    original = '{"id":"ARTIFACT-1","title":"original","content":"original evidence"}\\n'
+    original = '{"id":"ARTIFACT-1","title":"original","content":"original evidence"}\n'
     manifest = _manifest(tmp_path, original, count=1)
     inspection = dataset_pipeline.inspect_dataset(manifest)
     cache = {
@@ -1284,7 +1284,7 @@ def test_cached_readiness_rehash_blocks_changed_artifact_before_ingest(tmp_path:
     }
     artifact = tmp_path / "datasets" / "fixtures.jsonl"
     artifact.write_text(
-        '{"id":"ARTIFACT-1","title":"changed","content":"different evidence"}\\n',
+        '{"id":"ARTIFACT-1","title":"changed","content":"different evidence"}\n',
         encoding="utf-8",
     )
 
