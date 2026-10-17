@@ -1200,8 +1200,8 @@ def test_manifest_directory_reuses_readiness_gate_inspection_without_reparsing(t
     from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
 
     payload = (
-        '{"id":"CACHED-1","title":"cache fixture one","content":"first record"}\\n'
-        '{"id":"CACHED-2","title":"cache fixture two","content":"second record"}\\n'
+        '{"id":"CACHED-1","title":"cache fixture one","content":"first record"}\n'
+        '{"id":"CACHED-2","title":"cache fixture two","content":"second record"}\n'
     )
     manifest = _manifest(tmp_path, payload, count=2)
     inspection = dataset_pipeline.inspect_dataset(manifest)
@@ -1244,7 +1244,7 @@ def test_manifest_directory_rejects_manifest_changed_after_readiness_gate(tmp_pa
 
     manifest = _manifest(
         tmp_path,
-        '{"id":"CHANGED-1","title":"snapshot fixture","content":"record"}\\n',
+        '{"id":"CHANGED-1","title":"snapshot fixture","content":"record"}\n',
         count=1,
     )
     inspection = dataset_pipeline.inspect_dataset(manifest)
