@@ -6,7 +6,7 @@ import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .knowledge import ingest_file, iter_records, open_store, status
 
@@ -528,6 +528,7 @@ def ingest_manifest(
     *,
     db_path: str | Path,
     require_checksum: bool = True,
+    preflight_inspection: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Verify then ingest one manifest through its format-specific parser.
 
@@ -537,7 +538,15 @@ def ingest_manifest(
     """
     path = Path(manifest_path).resolve()
     manifest = load_manifest(path)
-    inspection = inspect_dataset(path)
+    if preflight_inspection is None:
+        inspection = inspect_dataset(path)
+    else:
+        # ingest_manifest_directory has already completed an integrity/count
+        # preflight for this exact manifest and artifact snapshot. Reusing that
+        # measured result avoids reparsing every large artifact a second time.
+        if preflight_inspection.get("ready") is not True:
+            raise ValueError("preflight_inspection must be a ready inspection result")
+        inspection = preflight_inspection
 
     if "artifacts" not in manifest:
         if require_checksum and not inspection["sha256_matches"]:
@@ -905,6 +914,7 @@ def ingest_manifest_directory(
     db_path: str | Path,
     required_datasets: tuple[str, ...] | list[str] = DEFAULT_REQUIRED_DATASETS,
     require_checksum: bool = True,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
 ) -> dict[str, Any]:
     """Preflight every requested dataset before creating/modifying the DB.
 
@@ -942,14 +952,22 @@ def ingest_manifest_directory(
         path for path in root.rglob("*.json")
         if path.is_file() and path.name.casefold() != "example.json"
     )
-    loaded: list[tuple[Path, dict[str, Any]]] = []
+    loaded: list[tuple[Path, dict[str, Any], dict[str, Any]]] = []
     preflight_failures: list[dict[str, Any]] = []
     names: set[str] = set()
-    for manifest_path in files:
+    for file_index, manifest_path in enumerate(files, start=1):
         # Out-of-scope NVD/CVSS manifests should not block the selected 11-source
         # build. If explicitly requested through required_datasets, legacy opt-in
         # behavior remains available.
         if manifest_path.stem.casefold() in excluded_by_scope:
+            if progress_callback is not None:
+                progress_callback({
+                    "stage": "preflight_skipped",
+                    "index": file_index,
+                    "total": len(files),
+                    "dataset": manifest_path.stem,
+                    "reason": "excluded_by_scope",
+                })
             report["excluded_manifests_skipped"].append({
                 "manifest": str(manifest_path),
                 "dataset": manifest_path.stem,
@@ -957,6 +975,13 @@ def ingest_manifest_directory(
             })
             continue
         try:
+            if progress_callback is not None:
+                progress_callback({
+                    "stage": "preflight_start",
+                    "index": file_index,
+                    "total": len(files),
+                    "dataset": manifest_path.stem,
+                })
             manifest = load_manifest(manifest_path)
             dataset = str(manifest.get("dataset") or manifest_path.stem)
             if dataset.casefold() in excluded_by_scope:
@@ -979,8 +1004,17 @@ def ingest_manifest_directory(
             if row["status"] != "PASS":
                 row["evidence"] = "SHA-256, byte-size and/or record-count validation failed."
                 preflight_failures.append(row)
-            loaded.append((manifest_path, manifest))
+            loaded.append((manifest_path, manifest, inspection))
             report["preflight"].append(row)
+            if progress_callback is not None:
+                progress_callback({
+                    "stage": "preflight_complete",
+                    "index": file_index,
+                    "total": len(files),
+                    "dataset": dataset,
+                    "status": row["status"],
+                    "records": inspection.get("records"),
+                })
         except FileNotFoundError as exc:
             row = {
                 "dataset": manifest_path.stem,
@@ -990,6 +1024,15 @@ def ingest_manifest_directory(
             }
             preflight_failures.append(row)
             report["preflight"].append(row)
+            if progress_callback is not None:
+                progress_callback({
+                    "stage": "preflight_complete",
+                    "index": file_index,
+                    "total": len(files),
+                    "dataset": manifest_path.stem,
+                    "status": row["status"],
+                    "error": row["evidence"],
+                })
         except (OSError, ValueError, json.JSONDecodeError) as exc:
             message = f"{type(exc).__name__}: {exc}"
             blocked = "missing" in str(exc).casefold() or "git lfs pointer" in str(exc).casefold()
@@ -1001,6 +1044,15 @@ def ingest_manifest_directory(
             }
             preflight_failures.append(row)
             report["preflight"].append(row)
+            if progress_callback is not None:
+                progress_callback({
+                    "stage": "preflight_complete",
+                    "index": file_index,
+                    "total": len(files),
+                    "dataset": manifest_path.stem,
+                    "status": row["status"],
+                    "error": row["evidence"],
+                })
 
     required = requested_required
     missing = sorted(required - names)
@@ -1038,7 +1090,7 @@ def ingest_manifest_directory(
 
     manifest_digests = {
         str(manifest.get("dataset") or manifest_path.stem): sha256_file(manifest_path)
-        for manifest_path, manifest in sorted(loaded, key=lambda row: str(row[0]))
+        for manifest_path, manifest, _inspection in sorted(loaded, key=lambda row: str(row[0]))
     }
     manifest_digest_json = json.dumps(manifest_digests, sort_keys=True, separators=(",", ":"))
 
@@ -1139,13 +1191,37 @@ def ingest_manifest_directory(
     report["ready"] = True
     report["preflight_passed"] = len(loaded)
     total_inserted = total_updated = total_duplicates = 0
-    for manifest_path, manifest in loaded:
+    for dataset_index, (manifest_path, manifest, inspection) in enumerate(loaded, start=1):
         dataset = str(manifest.get("dataset") or manifest_path.stem)
+        started_at = __import__("time").monotonic()
+        if progress_callback is not None:
+            progress_callback({
+                "stage": "ingestion_start",
+                "index": dataset_index,
+                "total": len(loaded),
+                "dataset": dataset,
+                "records": inspection.get("records"),
+            })
         try:
             result = ingest_manifest(
-                manifest_path, db_path=db_file, require_checksum=require_checksum
+                manifest_path,
+                db_path=db_file,
+                require_checksum=require_checksum,
+                preflight_inspection=inspection,
             )
             report["results"].append({"dataset": dataset, **result})
+            if progress_callback is not None:
+                progress_callback({
+                    "stage": "ingestion_complete",
+                    "index": dataset_index,
+                    "total": len(loaded),
+                    "dataset": dataset,
+                    "records": result.get("records"),
+                    "inserted": result.get("inserted", 0),
+                    "updated": result.get("updated", 0),
+                    "duplicates": result.get("duplicates", 0),
+                    "elapsed_seconds": round(__import__("time").monotonic() - started_at, 2),
+                })
             total_inserted += int(result.get("inserted", 0))
             total_updated += int(result.get("updated", 0))
             total_duplicates += int(result.get("duplicates", 0))
@@ -1155,6 +1231,15 @@ def ingest_manifest_directory(
                 "success": False,
                 "error": f"{type(exc).__name__}: {exc}",
             })
+            if progress_callback is not None:
+                progress_callback({
+                    "stage": "ingestion_failed",
+                    "index": dataset_index,
+                    "total": len(loaded),
+                    "dataset": dataset,
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "elapsed_seconds": round(__import__("time").monotonic() - started_at, 2),
+                })
             report["overall"] = "FAIL"
             report["evidence"] = (
                 "Ingestion failed after preflight. Completed artifacts are checkpointed; "
@@ -1171,7 +1256,7 @@ def ingest_manifest_directory(
     nvd_manifest = next(
         (
             (manifest_path, manifest)
-            for manifest_path, manifest in loaded
+            for manifest_path, manifest, _inspection in loaded
             if str(manifest.get("dataset") or manifest_path.stem) == "nvd_cve"
         ),
         None,
