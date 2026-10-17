@@ -1052,3 +1052,43 @@ detection:
     assert "attack.t1059.001" in hits[0]["content"]
     assert hits[0]["source_uri"] == "https://example.invalid/sigma"
     assert status(db_path=db_path)["checkpoints"]["complete"] == 1
+
+
+
+def test_default_build_scope_is_eleven_and_skips_out_of_scope_nvd_cvss_manifests(tmp_path: Path):
+    from ai_cyber_os.dataset_pipeline import DEFAULT_REQUIRED_DATASETS, ingest_manifest_directory
+    from ai_cyber_os.dataset_readiness import readiness_report
+
+    assert len(DEFAULT_REQUIRED_DATASETS) == 11
+    assert "nvd_cve" not in DEFAULT_REQUIRED_DATASETS
+    assert "cvss" not in DEFAULT_REQUIRED_DATASETS
+
+    manifest = _manifest(
+        tmp_path,
+        '{"id":"SCOPE-1","title":"scope fixture","content":"eleven source scope"}\\n',
+        count=1,
+    )
+    manifests_dir = manifest.parent
+    (manifests_dir / "nvd_cve.json").write_text("{ invalid legacy NVD manifest", encoding="utf-8")
+    (manifests_dir / "cvss.json").write_text("{ invalid legacy CVSS manifest", encoding="utf-8")
+
+    ready = readiness_report(
+        manifests_dir,
+        required_datasets=["fixture-threat-intel"],
+        excluded_datasets=["nvd_cve", "cvss"],
+    )
+    assert ready["overall"] == "PASS"
+    assert ready["count"] == 1
+    assert set(ready["excluded_datasets"]) == {"nvd_cve", "cvss"}
+
+    db_path = tmp_path / "knowledge-v1.sqlite3"
+    ingested = ingest_manifest_directory(
+        manifests_dir,
+        db_path=db_path,
+        required_datasets=["fixture-threat-intel"],
+    )
+    assert ingested["overall"] == "PASS"
+    assert ingested["ingestion_performed"] is True
+    assert {row["dataset"] for row in ingested["excluded_manifests_skipped"]} == {
+        "nvd_cve", "cvss"
+    }
