@@ -1193,3 +1193,77 @@ def test_manifest_directory_reuses_preflight_inspection_and_reports_progress(tmp
     assert completed["dataset"] == "fixture-threat-intel"
     assert completed["inserted"] == 2
 
+
+
+def test_manifest_directory_reuses_readiness_gate_inspection_without_reparsing(tmp_path: Path, monkeypatch):
+    from ai_cyber_os import dataset_pipeline
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+
+    payload = (
+        '{"id":"CACHED-1","title":"cache fixture one","content":"first record"}\\n'
+        '{"id":"CACHED-2","title":"cache fixture two","content":"second record"}\\n'
+    )
+    manifest = _manifest(tmp_path, payload, count=2)
+    inspection = dataset_pipeline.inspect_dataset(manifest)
+    assert inspection["ready"] is True
+    cache = {
+        str(manifest.resolve()): {
+            "manifest_sha256": dataset_pipeline.sha256_file(manifest),
+            "inspection": inspection,
+        }
+    }
+
+    def forbidden_reinspection(_path):
+        raise AssertionError("cached readiness inspection should be reused")
+
+    monkeypatch.setattr(dataset_pipeline, "inspect_dataset", forbidden_reinspection)
+    events = []
+    result = ingest_manifest_directory(
+        manifest.parent,
+        db_path=tmp_path / "cached-knowledge-v1.sqlite3",
+        required_datasets=["fixture-threat-intel"],
+        preflight_inspections=cache,
+        progress_callback=events.append,
+    )
+
+    assert result["overall"] == "PASS"
+    assert result["inserted"] == 2
+    assert result["preflight_inspection_reuse_count"] == 1
+    row = result["preflight"][0]
+    assert row["inspection_reused_from_readiness_gate"] is True
+    assert any(
+        event["stage"] == "preflight_complete"
+        and event.get("inspection_reused_from_readiness_gate") is True
+        for event in events
+    )
+
+
+def test_manifest_directory_rejects_manifest_changed_after_readiness_gate(tmp_path: Path):
+    from ai_cyber_os import dataset_pipeline
+    from ai_cyber_os.dataset_pipeline import ingest_manifest_directory
+
+    manifest = _manifest(
+        tmp_path,
+        '{"id":"CHANGED-1","title":"snapshot fixture","content":"record"}\\n',
+        count=1,
+    )
+    inspection = dataset_pipeline.inspect_dataset(manifest)
+    cache = {
+        str(manifest.resolve()): {
+            "manifest_sha256": dataset_pipeline.sha256_file(manifest),
+            "inspection": inspection,
+        }
+    }
+    payload = json.loads(manifest.read_text(encoding="utf-8"))
+    payload["version"] = "changed-after-gate"
+    manifest.write_text(json.dumps(payload), encoding="utf-8")
+
+    result = ingest_manifest_directory(
+        manifest.parent,
+        db_path=tmp_path / "changed-knowledge-v1.sqlite3",
+        required_datasets=["fixture-threat-intel"],
+        preflight_inspections=cache,
+    )
+    assert result["overall"] == "FAIL"
+    assert result["ingestion_performed"] is False
+    assert "manifest changed after source-readiness gate" in result["preflight_failures"][0]["evidence"]
