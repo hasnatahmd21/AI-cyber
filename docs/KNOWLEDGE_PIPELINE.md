@@ -47,7 +47,13 @@ must remain outside the Git repository and be represented by manifests.
 ## Supported threat-intelligence adapters
 
 The offline source adapters accept operator-downloaded files and preserve the
-manifest's provenance instead of silently fetching or trusting remote content:
+manifest's provenance instead of silently fetching or trusting remote content.
+
+Scope note: the NVD adapter remains available for explicit legacy/optional use,
+but the locked first-wave Knowledge DB build uses eleven datasets and does not
+require or acquire the full NVD CVE corpus. CVSS derivation from NVD is not a
+gate for that build.
+
 
 - `nvd` — NVD CVE JSON 2.x, including NVD metrics/CVSS fields.
 - `cisa-kev` — CISA Known Exploited Vulnerabilities JSON.
