@@ -411,3 +411,59 @@ def test_chunk_index_recovers_orphaned_chunk_primary_key_collision(tmp_path: Pat
         assert fts == 1
     finally:
         conn.close()
+
+
+def test_parsed_ingestion_replaces_old_chunks_when_record_content_changes(tmp_path: Path):
+    from ai_cyber_os import knowledge
+    from ai_cyber_os.threat_intel import ingest_parsed
+
+    db = tmp_path / "parsed-record-update.db"
+    record_id = "CVE-2026-987654"
+    old_record = knowledge._normalize(
+        {
+            "id": record_id,
+            "title": "Fixture vulnerability",
+            "content": "obsoleteevidenceonly " * 900,
+        },
+        dataset="nvd_cve",
+        source="NVD fixture",
+        validation_status="fixture-validated",
+    )
+    first = ingest_parsed([old_record], db_path=db)
+    assert first["processed_records"] == 1
+    assert search("obsoleteevidenceonly", db_path=db, dataset="nvd_cve")
+    assert status(db_path=db)["records"] == 1
+
+    new_record = knowledge._normalize(
+        {
+            "id": record_id,
+            "title": "Fixture vulnerability",
+            "content": "replacementmarkerxyz latest evidence",
+        },
+        dataset="nvd_cve",
+        source="NVD fixture",
+        validation_status="fixture-validated",
+    )
+    second = ingest_parsed([new_record], db_path=db)
+    assert second["processed_records"] == 1
+    assert status(db_path=db)["records"] == 1
+    assert search("obsoleteevidenceonly", db_path=db, dataset="nvd_cve") == []
+    hits = search("replacementmarkerxyz", db_path=db, dataset="nvd_cve")
+    assert hits and hits[0]["record_id"] == record_id
+
+    conn = knowledge.open_store(db)
+    try:
+        chunks = conn.execute(
+            "SELECT content FROM knowledge_chunks WHERE record_id=? ORDER BY chunk_index",
+            (record_id,),
+        ).fetchall()
+        chunk_fts = conn.execute(
+            "SELECT content FROM knowledge_chunks_fts WHERE record_id=?",
+            (record_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+    assert len(chunks) == len(knowledge._chunk_text(new_record["content"])) == 1
+    assert len(chunk_fts) == 1
+    assert chunks[0]["content"] == new_record["content"]
+    assert chunk_fts[0]["content"] == new_record["content"]
