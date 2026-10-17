@@ -246,6 +246,7 @@ def evaluate_retrieval_cases(
             db_path=db_path,
             limit=limit,
             dataset=case.get("dataset"),
+            read_only=read_only,
         )
         result = evaluate_retrieval_case(case, context)
         metrics = result["metrics"]
@@ -573,6 +574,7 @@ def evaluate_end_to_end(
     *,
     outputs: Mapping[str, Mapping[str, Any] | str] | None = None,
     thresholds: EvaluationThresholds | None = None,
+    read_only: bool = False,
 ) -> dict[str, Any]:
     """Evaluate retrieval, evidence integrity and optional generated outputs."""
     thresholds = thresholds or EvaluationThresholds()
