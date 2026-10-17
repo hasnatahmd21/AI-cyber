@@ -19,8 +19,11 @@ def retrieve(
     db_path: str | Path = DEFAULT_DB,
     limit: int = 8,
     dataset: str | None = None,
+    read_only: bool = False,
 ) -> list[dict[str, Any]]:
-    return search(query, db_path=db_path, limit=limit, dataset=dataset)
+    return search(
+        query, db_path=db_path, limit=limit, dataset=dataset, read_only=read_only
+    )
 
 
 def build_context(
@@ -29,9 +32,14 @@ def build_context(
     db_path: str | Path = DEFAULT_DB,
     limit: int = 8,
     dataset: str | None = None,
+    read_only: bool = False,
 ) -> dict[str, Any]:
-    records = retrieve(query, db_path=db_path, limit=limit, dataset=dataset)
-    correlation = correlate(query, db_path=str(db_path), limit=limit, dataset=dataset)
+    records = retrieve(
+        query, db_path=db_path, limit=limit, dataset=dataset, read_only=read_only
+    )
+    correlation = correlate(
+        query, db_path=str(db_path), limit=limit, dataset=dataset, read_only=read_only
+    )
     evidence = []
     for i, record in enumerate(records):
         evidence.append(
